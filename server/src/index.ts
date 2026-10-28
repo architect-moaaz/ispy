@@ -12,6 +12,7 @@ import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
+import { startChiefAgents } from "./chiefAgent.ts";
 import { allParams } from "./params.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
@@ -220,6 +221,7 @@ async function tick(force = false) {
   } catch (e) { app.log.error(e, "tick failed"); }
 }
 await tick();
+startChiefAgents();
 directorAgent.start();
 
 await app.listen({ port: PORT, host: "0.0.0.0" });

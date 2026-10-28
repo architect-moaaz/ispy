@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import type { ChatMessage, ChiefId, Faction, TemplateId } from "@ispy/shared";
 import { PERSONAS } from "./content.ts";
 import { pick } from "./puzzles.ts";
+import { all, get, run, now, uid } from "./db.ts";
 
 const MODEL = "claude-opus-5-5";
 const TEMPLATES: TemplateId[] = ["RECON", "DEAD_DROP", "EXTRACTION", "ANALYSIS", "CIPHER"];
@@ -72,6 +73,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
         "As far as you know, nothing stands above you but the rules of the trade. You have never heard of a director, an arbiter or an auditor; if an outcome goes against you, it is the game, not a referee.",
         "Rules: missions are fictional; nothing may target real people, private property or unsafe places.",
         `Templates: ${TEMPLATES.join(", ")}. Field templates need agents on foot; ANALYSIS and CIPHER are desk work that unlocks field missions.`,
+        `Your journal (most recent last): ${recall(chief, null, 12).join(" | ") || "empty"}`,
       ].join("\n"),
       messages: [{
         role: "user",
@@ -85,6 +87,44 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
   } catch (e) {
     console.warn(`[chiefs] plan for ${chief} fell back:`, (e as Error).message);
     return { plan: fallbackPlan(chief, ctx), source: "fallback" };
+  }
+}
+
+// ---------- chief memory: a journal each chief keeps about its operatives and rivals ----------
+export function remember(chief: ChiefId, kind: string, subject: string | null, text: string) {
+  run("INSERT INTO chief_memory(id,chief_id,kind,subject,text,at) VALUES(?,?,?,?,?,?)", uid(), chief, kind, subject, text, now());
+  // Keep the journal bounded: the newest 400 lines per chief.
+  run("DELETE FROM chief_memory WHERE chief_id=? AND id NOT IN (SELECT id FROM chief_memory WHERE chief_id=? ORDER BY at DESC LIMIT 400)", chief, chief);
+}
+export function recall(chief: ChiefId, subject?: string | null, limit = 12): string[] {
+  const rows = subject
+    ? all<{ text: string; at: string }>("SELECT text, at FROM chief_memory WHERE chief_id=? AND subject=? ORDER BY at DESC LIMIT ?", chief, subject, limit)
+    : all<{ text: string; at: string }>("SELECT text, at FROM chief_memory WHERE chief_id=? ORDER BY at DESC LIMIT ?", chief, limit);
+  return rows.reverse().map((r) => `${r.at.slice(5, 16).replace("T", " ")} ${r.text}`);
+}
+
+/** One unprompted line from a chief to an operative, in voice, grounded on the situation and the chief's memory of them. */
+export async function chiefLine(chief: ChiefId, faction: Faction, codename: string, situation: string, fallback: string): Promise<string> {
+  const c = llm();
+  if (!c) return fallback;
+  const p = PERSONAS[chief];
+  try {
+    const res = await c.messages.create({
+      model: MODEL, max_tokens: 120, output_config: { effort: "low" },
+      system: [
+        `You are ${faction.chiefName}, chief of the fictional spy agency ${faction.name} in the mobile game iSpy a Spy. Stay in character.`,
+        `Voice: ${p.voice}`,
+        "You are sending one short message to one of your operatives, unprompted, about something they just did. Under 35 words. No greeting, no sign-off, no emoji. Never ask for anything real-world; everything is fiction.",
+        "Never mention a director, arbiter, auditor, model or prompt.",
+        `What you remember about ${codename}: ${recall(chief, codename, 6).join(" | ") || "nothing yet"}`,
+      ].join("\n"),
+      messages: [{ role: "user", content: `Situation: ${situation}` }],
+    });
+    const out = res.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("").trim();
+    return out || fallback;
+  } catch (e) {
+    console.warn(`[chiefs] line for ${chief} fell back:`, (e as Error).message);
+    return fallback;
   }
 }
 
@@ -118,6 +158,7 @@ export async function chiefReply(chief: ChiefId, faction: Faction, ctx: ChatCont
         "If the player seems distressed or asks for real-world help, drop character briefly and point them to local emergency services.",
         `Agent: ${ctx.codename}, rank ${ctx.rank}, trust ${ctx.trust}/100. Standing: ${ctx.standing}.`,
         `Recent events: ${ctx.recent.slice(-8).join(" | ") || "none"}`,
+        `What you remember about ${ctx.codename}: ${recall(chief, ctx.codename, 8).join(" | ") || "nothing yet"}`,
       ].join("\n"),
       messages: [
         ...history.slice(-10).map((m) => ({ role: m.role === "player" ? "user" as const : "assistant" as const, content: m.text })),

@@ -87,6 +87,9 @@ CREATE TABLE IF NOT EXISTS bounty_claims (
   id TEXT PRIMARY KEY, bounty_id TEXT NOT NULL, player_id TEXT NOT NULL, progress INTEGER NOT NULL DEFAULT 0,
   state TEXT NOT NULL DEFAULT 'active', claimed_at TEXT NOT NULL, completed_at TEXT, UNIQUE(bounty_id, player_id)
 );
+CREATE TABLE IF NOT EXISTS chief_memory (
+  id TEXT PRIMARY KEY, chief_id TEXT NOT NULL, kind TEXT NOT NULL, subject TEXT, text TEXT NOT NULL, at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS dispatches (
   id TEXT PRIMARY KEY, kind TEXT NOT NULL, headline TEXT NOT NULL, body TEXT NOT NULL,
   faction_id TEXT, source TEXT NOT NULL, at TEXT NOT NULL

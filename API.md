@@ -91,3 +91,11 @@ happened and its own recent decisions, and returns an assessment plus up to six 
 set: message an operative in their chief's voice, brief a chief, publish a contract, set a parameter
 (bounded), publish a dispatch, refill the pool, or wait. Each thought is a `director.thought` ledger
 event. Without a model, the rule-based reactions, tuning and strategy room run instead.
+
+Chief agents (chiefAgent.ts): each chief is a resident agent notified of its own operatives' events
+(recruit, deploy, verified, dropped, flagged scan, fragment, contract, cover burned) and of contests
+on its targets. It responds in its own voice (model when configured, scripted otherwise), keeps a
+journal (chief_memory) it plans and chats from, refills its pool the moment an operative deploys, and
+checks every minute for deployed operatives with nothing to do. Dispatch is proximity-first: field
+missions are built on targets near the agency's deployed agents, extraction legs are neighbours, and
+the matcher weights walking distance above skill fit.

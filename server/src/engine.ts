@@ -225,11 +225,30 @@ export function refreshPool() {
   }
 }
 
+/** Pick a target near this faction's deployed field agents: closest ones most likely, with some spread. */
+function nearbyTarget(f: Faction, areaId: string, targets: TargetRow[], seed: string): TargetRow {
+  const agents = all<{ lat: number; lng: number }>(
+    "SELECT p.last_lat lat, p.last_lng lng FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.area_id=? AND p.mode='field' AND p.expires_at>? AND p.last_lat IS NOT NULL",
+    f.id, areaId, now());
+  if (!agents.length) return pick(targets, seed + ":t");
+  const inPool = new Set(all<{ target_id: string }>("SELECT target_id FROM missions WHERE faction_id=? AND state IN ('pool','offered') AND target_id IS NOT NULL", f.id).map((r) => r.target_id));
+  const scored = targets.map((t) => {
+    const d = Math.min(...agents.map((a) => distanceM(a.lat, a.lng, t.lat, t.lng)));
+    // Nearer is better, but never the same target twice in the pool; keep a little randomness so routes vary.
+    return { t, w: (inPool.has(t.id) ? 0.15 : 1) / (120 + d) * (0.7 + 0.6 * rand(seed + t.id)) };
+  });
+  const total = scored.reduce((s, x) => s + x.w, 0);
+  let r = rand(seed + ":pick") * total;
+  for (const x of scored) { r -= x.w; if (r <= 0) return x.t; }
+  return scored[scored.length - 1].t;
+}
+
 function buildMission(f: Faction, area: AreaRow, template: TemplateId, mode: Mode, targets: TargetRow[], plan: AreaPlan, seed: string) {
-  const target = pick(targets, seed + ":t");
+  const target = mode === "field" ? nearbyTarget(f, area.id, targets, seed) : pick(targets, seed + ":t");
   if (mode === "field") {
     if (template === "EXTRACTION") {
-      const second = pick(targets.filter((t) => t.id !== target.id), seed + ":t2") ?? target;
+      // Second leg: the nearest other target to the first, so an extraction is a walk, not a trek.
+      const second = targets.filter((t) => t.id !== target.id).sort((a, b) => distanceM(target.lat, target.lng, a.lat, a.lng) - distanceM(target.lat, target.lng, b.lat, b.lng))[0] ?? target;
       const id = createMission(f, area.id, template, mode, target, { route: [target.id, second.id], leg: 0 }, seed);
       maybeContest(id, f.id, target.id, plan.contestAppetite);
       return;
@@ -312,11 +331,12 @@ export function offersFor(player: Player): OfferCard[] {
         if (s.walkM == null || s.walkM > player.walkRadiusM) return null;
         if (m.target_id && recentTargets.has(m.target_id)) return null;
       }
-      const dist = pres.mode === "field" ? 1 - Math.min(1, (s.walkM ?? 0) / player.walkRadiusM) : 0.5;
+      // Proximity first: a 150 m walk scores near 1, the edge of the radius near 0.
+      const dist = pres.mode === "field" ? 1 - Math.min(1, Math.max(0, (s.walkM ?? 0) - 100) / Math.max(1, player.walkRadiusM - 100)) : 0.5;
       // A desk mission with a field agent already waiting on it outranks everything else.
       const waiting = pres.mode === "desk" && m.desk_link_id && get(
         "SELECT 1 FROM desk_links l JOIN missions f ON f.id=l.field_mission_id WHERE l.id=? AND l.state='open' AND f.state='active'", m.desk_link_id) ? 1 : 0;
-      const score = waiting + 0.45 * skillFit(player.skills, m.template_id) + 0.35 * dist + 0.2 * rand(m.id + player.id);
+      const score = waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
       return { m, score };
     }).filter((x): x is { m: MissionRow; score: number } => !!x).sort((a, b) => b.score - a.score);
     for (const { m } of scored.slice(0, 2 - open.length)) {
@@ -596,12 +616,13 @@ export function contactsFor(player: Player): Contact[] {
 }
 
 /** A chief speaks to one operative, unprompted. The Director's main engagement channel. */
-export function chiefSay(playerId: string, text: string, why: string) {
+export function chiefSay(playerId: string, text: string, why: string, force = false) {
   const p = get<{ faction_id: FactionId | null }>("SELECT faction_id FROM players WHERE id=?", playerId);
   if (!p?.faction_id) return;
-  // Never pile up: at most one unprompted line every 3 minutes per operative.
+  // Never pile up: at most one unprompted line every 3 minutes per operative. A direct response to the
+  // operative's own action (a debrief) is not unprompted and goes through.
   const last = get<{ at: string }>("SELECT at FROM chat WHERE player_id=? AND role='chief' ORDER BY at DESC LIMIT 1", playerId);
-  if (last && Date.parse(last.at) > Date.now() - 3 * 60_000) return;
+  if (!force && last && Date.parse(last.at) > Date.now() - 3 * 60_000) return;
   run("INSERT INTO chat(id,player_id,role,text,at) VALUES(?,?,?,?,?)", uid(), playerId, "chief", text, now());
   logEvent("chief.message", `chief:${factionById(p.faction_id).chief}`, { why }, playerId);
 }

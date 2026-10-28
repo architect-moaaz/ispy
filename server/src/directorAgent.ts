@@ -100,25 +100,18 @@ class DirectorAgent {
         // Make sure there is something to hand this operative within seconds.
         const pool = get<{ n: number }>("SELECT COUNT(*) n FROM missions WHERE faction_id=? AND mode=? AND state='pool'", m.factionId, m.mode)!.n;
         if (pool === 0) { refreshPool(); this.note("pool refilled on deployment", { for: m.codename }); }
-        if (m.verified === 0 && m.offersSeen === 0) {
-          const f = factionById(m.factionId);
-          chiefSay(m.playerId, pick(PERSONAS[f.chief].lines.welcome, m.playerId) + (m.mode === "field" ? " Orders are on the board. Walk." : " The intercepts are yours."), "deployment");
-        }
         return;
       }
       case "mission.offered": if (o) { o.offersSeen++; o.lastActivity = Date.now(); } return;
       case "mission.accepted": if (o) { o.accepted++; o.lastActivity = Date.now(); } return;
       case "mission.verified": {
         if (o) { o.verified++; o.lastActivity = Date.now(); }
-        if (s.payload?.contestOutcome === "won" && o) chiefSay(o.playerId, pick(["Beat them to it. They will remember that.", "First in. Somebody else is explaining themselves to their chief right now."], s.at), "contest won");
-        if (s.payload?.contestOutcome === "lost" && o) chiefSay(o.playerId, "A rival got there first. I want to know who. Keep an eye on the dossier.", "contest lost");
         return;
       }
       case "mission.expired": case "mission.abandoned": {
         if (o) { o.declines++; o.lastActivity = Date.now(); }
         if (o && o.declines >= 2 && Date.now() - o.lastNudge > 10 * 60_000) {
           o.lastNudge = Date.now();
-          chiefSay(o.playerId, pick(["Not your kind of work? Tell me what you want and I will find it.", "Two passes. Fine. Something closer is coming."], s.at), "repeated declines");
           await refreshPlans(true, { factionId: o.factionId, areaId: o.areaId ?? undefined, reason: `operative ${o.codename} declined or dropped two missions; vary the mix and keep walks short` });
           refreshPool();
           this.note("replan after declines", { for: o.codename });
@@ -126,7 +119,7 @@ class DirectorAgent {
         return;
       }
       case "location.flagged": {
-        if (o) { o.failedScans++; if (o.failedScans === 2) chiefSay(o.playerId, "Your position is not verifying. Stand still, let the signal settle, scan again.", "scan help"); }
+        if (o) o.failedScans++;
         return;
       }
       case "contest.formed": {
@@ -140,13 +133,10 @@ class DirectorAgent {
       }
       case "case.confirmed": {
         // The exposed operative's chief warns them; the world hears about it.
-        const exposedId = get<{ target_id: string }>("SELECT target_id FROM cases WHERE id=?", s.payload?.caseId)?.target_id;
-        if (exposedId) chiefSay(exposedId, "Your cover is burned in this sector. Rotate, keep your head down, and let the desk do the next move.", "cover burned");
         await director.publishDispatches(true);
         return;
       }
       case "world_event.fragment": {
-        if (o) chiefSay(o.playerId, `Fragment ${s.payload?.fragments} is ours. Keep moving.`, "fragment");
         return;
       }
       case "world_event.resolved": {
@@ -155,7 +145,6 @@ class DirectorAgent {
         return;
       }
       case "bounty.completed": {
-        if (o) chiefSay(o.playerId, "Contract closed. Credits are in your account. Spend them on a wire if you are hunting someone.", "bounty");
         return;
       }
     }
@@ -169,18 +158,11 @@ class DirectorAgent {
       if (worldGet("paused", "0") !== "1") {
         this.observe();
         const t = Date.now();
-        // Operatives deployed with nothing to do.
+        // Operatives deployed with nothing to do: make sure their chief has something to hand out.
         for (const o of this.operatives.values()) {
-          const idle = t - o.lastActivity;
-          if (o.mode === "field" && idle > IDLE_NUDGE_MS && t - o.lastNudge > IDLE_NUDGE_MS) {
+          if (o.mode === "field" && t - o.lastActivity > IDLE_NUDGE_MS && t - o.lastNudge > IDLE_NUDGE_MS) {
             const hasWork = get("SELECT 1 FROM missions WHERE assignee_id=? AND state='active'", o.playerId) || get("SELECT 1 FROM offers WHERE player_id=? AND state='open'", o.playerId);
-            if (!hasWork) {
-              refreshPool();
-              const target = get<{ name: string }>("SELECT t.name FROM missions m JOIN targets t ON t.id=m.target_id WHERE m.faction_id=? AND m.state='pool' AND m.mode='field' ORDER BY m.created_at DESC LIMIT 1", o.factionId);
-              chiefSay(o.playerId, target ? `You have gone quiet. There is work near ${target.name}. Open the board.` : "You have gone quiet. Stay deployed; something is coming.", "idle");
-              o.lastNudge = t;
-              this.note("nudged idle operative", { who: o.codename });
-            }
+            if (!hasWork) { refreshPool(); o.lastNudge = t; this.note("refilled pool for idle operative", { who: o.codename }); }
           }
         }
         // Chiefs: stale plans while agents wait, or empty pools.
