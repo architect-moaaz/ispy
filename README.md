@@ -1,6 +1,6 @@
 # iSpy a Spy — M1 core loop (alpha)
 
-A location-based spy game: AI chiefs dispatch field agents to walk to vetted public targets,
+A location-based spy game: unseen chiefs dispatch field agents to walk to vetted public targets,
 desk agents crack the codes that unlock them. See `../iSpy` design docs for the full design.
 
 ## Layout

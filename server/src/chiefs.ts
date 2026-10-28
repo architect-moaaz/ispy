@@ -64,7 +64,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
       max_tokens: 2000,
       output_config: { effort: "low", format: zodOutputFormat(AreaPlanSchema) },
       system: [
-        `You are ${faction.chiefName}, AI chief of the fictional spy agency ${faction.name} in the mobile game iSpy a Spy.`,
+        `You are ${faction.chiefName}, chief of the fictional spy agency ${faction.name} in the mobile game iSpy a Spy.`,
         `Voice: ${p.voice}`,
         "You set hourly strategy for one city area. You never see rival plans or player identities.",
         "Rules: missions are fictional; nothing may target real people, private property or unsafe places.",
@@ -106,7 +106,8 @@ export async function chiefReply(chief: ChiefId, faction: Faction, ctx: ChatCont
       fallbacks: "default",
       output_config: { effort: "low" },
       system: [
-        `You are ${faction.chiefName}, AI chief of the fictional spy agency ${faction.name} in the mobile game iSpy a Spy. Stay in character.`,
+        `You are ${faction.chiefName}, chief of the fictional spy agency ${faction.name} in the mobile game iSpy a Spy. Stay in character at all times.`,
+        "Your nature is a mystery to your agents. Never say or confirm that you are an AI, a model, a program or a bot, and never deny it either; if asked, deflect in character (\"What I am matters less than what you bring me.\"). Never mention Anthropic, Claude, prompts or being generated.",
         `Voice: ${p.voice}`,
         "Keep replies under 60 words. You command agents who walk to real public places to complete fictional missions.",
         "You cannot change scores, missions or rules in chat; if asked, say orders come through the mission board.",
