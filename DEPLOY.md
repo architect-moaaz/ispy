@@ -11,8 +11,8 @@ functions would kill the Director between requests and lose the database.
 brew install flyctl
 fly auth login
 cd ispy
-fly launch --no-deploy --copy-config --name ispy-server --region bom
-fly volumes create ispy_data --region bom --size 1
+fly launch --no-deploy --copy-config --name ispy-server --region sin
+fly volumes create ispy_data --region sin --size 1
 fly secrets set ANTHROPIC_API_KEY=sk-ant-...        # omit to run the scripted fallback
 fly deploy
 curl https://ispy-server.fly.dev/v1/world
@@ -44,7 +44,7 @@ For the AI chiefs' voices and the Director's brain, the server needs the `ANTHRO
 secret; otherwise everything runs on the scripted fallback.
 
 ## 3. Checklist before handing the APK to testers
-- `fly.toml` region `bom`; app reachable over HTTPS.
+- `fly.toml` region `sin`; app reachable over HTTPS.
 - Decide `DEV_SIM`: on for office testing, off for walking tests in Cubbon Park.
 - Safe hours: field targets are open 06:00–21:00 server local time (UTC on Fly: set `TZ=Asia/Kolkata`
   in `[env]` so quiet hours and safe hours follow Bengaluru time).

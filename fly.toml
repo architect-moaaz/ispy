@@ -1,6 +1,6 @@
 # Fly.io app for the iSpy a Spy server. Create once with: fly launch --no-deploy --copy-config
 app = "ispy-server"
-primary_region = "bom"
+primary_region = "sin"
 
 [build]
   dockerfile = "server/Dockerfile"
