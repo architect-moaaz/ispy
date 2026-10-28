@@ -134,7 +134,8 @@ function cannedReply(chief: ChiefId, text: string) {
   const p = PERSONAS[chief];
   const t = text.toLowerCase();
   if (/mission|order|task|what.*do/.test(t)) return "Check the duty board. When you are on duty in the area, orders come to you.";
-  if (/who are you|hello|hi\b/.test(t)) return p.lines.welcome[0];
+  if (/are you (an? |a )?(ai|bot|robot|machine|program|human|real|person)|who are you|what are you/.test(t)) return "What I am matters less than what you bring me. Back to work.";
+  if (/hello|hi\b/.test(t)) return p.lines.welcome[0];
   if (/rank|xp|trust/.test(t)) return "Your standing is on your profile. Earn it in the field.";
   return pick(p.lines.idle, text);
 }
