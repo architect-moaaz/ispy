@@ -4,7 +4,7 @@ import type { FactionId } from "@ispy/shared";
 import { all, get, run, now, uid, json, parse, logEvent } from "./db.ts";
 import { FACTIONS, factionById } from "./content.ts";
 import { pick, rand } from "./puzzles.ts";
-import { llmClient } from "./chiefs.ts";
+import { llmClient, llmFailed } from "./chiefs.ts";
 
 /**
  * The Narrator room of the World Director. It writes: the next campaign's fiction,
@@ -93,7 +93,7 @@ export async function proposeCampaign(): Promise<{ spec: CampaignSpec; source: "
     if (!res.parsed_output) throw new Error("no parsed output");
     return { spec: res.parsed_output, source: "llm" };
   } catch (e) {
-    console.warn("[director] campaign fell back:", (e as Error).message);
+    console.warn("[director] campaign fell back:", (e as Error).message); llmFailed(e);
     return { spec: fallback, source: "fallback" };
   }
 }
@@ -113,7 +113,7 @@ export async function writeEpilogue(eventName: string, winner: FactionId | null,
     const text = res.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("").trim();
     return text || fallback;
   } catch (e) {
-    console.warn("[director] epilogue fell back:", (e as Error).message);
+    console.warn("[director] epilogue fell back:", (e as Error).message); llmFailed(e);
     return fallback;
   }
 }
@@ -136,7 +136,7 @@ export async function publishDispatches(force = false) {
       });
       if (res.parsed_output) { items = res.parsed_output.dispatches; source = "llm"; }
     } catch (e) {
-      console.warn("[director] dispatches fell back:", (e as Error).message);
+      console.warn("[director] dispatches fell back:", (e as Error).message); llmFailed(e);
     }
   }
   if (!items.length) {

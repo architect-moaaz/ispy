@@ -10,6 +10,7 @@ import * as auditor from "./auditor.ts";
 import { param, setParam, PARAM_SPEC } from "./params.ts";
 import * as strategy from "./strategy.ts";
 import * as brain from "./brain.ts";
+import { llmFailed } from "./chiefs.ts";
 
 /**
  * The World Director as a resident agent. It does not wait for a clock: every ledger
@@ -288,7 +289,7 @@ class DirectorAgent {
       this.lastThought = Date.now();
       if (out) { this.lastThoughtText = out.assessment; this.note(`thought (${trigger})`, { assessment: out.assessment, applied: out.applied }); }
     } catch (e) {
-      console.warn("[director] thinking failed, rules continue:", (e as Error).message);
+      console.warn("[director] thinking failed, rules continue:", (e as Error).message); llmFailed(e);
       this.note("thinking failed; rules continue", (e as Error).message);
     } finally {
       this.thinking = false;

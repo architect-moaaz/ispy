@@ -41,6 +41,13 @@ function llm(): Anthropic | null {
   return client;
 }
 export const llmEnabled = () => llm() !== null;
+/** A rejected credential means every call will fail: switch the whole game to the scripted fallback until restart. */
+export function llmFailed(e: unknown) {
+  if (e instanceof Anthropic.AuthenticationError || (e as any)?.status === 401) {
+    if (client) console.warn("[llm] credential rejected; running on the scripted fallback until the key is fixed and the server restarts");
+    client = null;
+  }
+}
 export const llmClient = llm;
 
 /** Deterministic plan from the persona; used when no model is configured or a call fails. */
@@ -87,7 +94,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
     if (!res.parsed_output) throw new Error("no parsed output");
     return { plan: res.parsed_output, source: "llm" };
   } catch (e) {
-    console.warn(`[chiefs] plan for ${chief} fell back:`, (e as Error).message);
+    console.warn(`[chiefs] plan for ${chief} fell back:`, (e as Error).message); llmFailed(e);
     return { plan: fallbackPlan(chief, ctx), source: "fallback" };
   }
 }
@@ -125,7 +132,7 @@ export async function chiefLine(chief: ChiefId, faction: Faction, codename: stri
     const out = res.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("").trim();
     return out || fallback;
   } catch (e) {
-    console.warn(`[chiefs] line for ${chief} fell back:`, (e as Error).message);
+    console.warn(`[chiefs] line for ${chief} fell back:`, (e as Error).message); llmFailed(e);
     return fallback;
   }
 }
@@ -171,7 +178,7 @@ export async function chiefReply(chief: ChiefId, faction: Faction, ctx: ChatCont
     const out = res.content.filter((b) => b.type === "text").map((b) => (b as any).text).join("").trim();
     return out || cannedReply(chief, text);
   } catch (e) {
-    console.warn(`[chiefs] chat for ${chief} fell back:`, (e as Error).message);
+    console.warn(`[chiefs] chat for ${chief} fell back:`, (e as Error).message); llmFailed(e);
     return cannedReply(chief, text);
   }
 }
