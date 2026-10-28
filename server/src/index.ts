@@ -19,7 +19,7 @@ import { allParams } from "./params.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
-  scan, worldStatus, unreadChief, markChiefRead,
+  scan, worldStatus, unreadChief, markChiefRead, createTestArea,
 } from "./engine.ts";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -216,6 +216,12 @@ app.post("/v1/admin/pause", async (req) => {
   return { paused };
 });
 app.post("/v1/admin/tick", async () => { await tick(true); return { ok: true }; });
+app.post("/v1/admin/areas/test", async (req) => {
+  const b = z.object({ name: z.string().min(2).max(40), lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180), radiusM: z.number().min(400).max(3000).optional() }).parse(req.body);
+  const out = createTestArea(b.name, b.lat, b.lng, b.radiusM);
+  await tick(true);
+  return out;
+});
 app.get("/v1/admin/director", async () => ({ ...directorAgent.status(), params: allParams() }));
 
 // ---- the World Director lives here; the forced tick remains for tests ----

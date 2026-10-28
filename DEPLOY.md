@@ -49,3 +49,15 @@ secret; otherwise everything runs on the scripted fallback.
 - Safe hours: field targets are open 06:00–21:00 server local time (UTC on Fly: set `TZ=Asia/Kolkata`
   in `[env]` so quiet hours and safe hours follow Bengaluru time).
 - Targets' coordinates are approximate; site-check them once on foot.
+
+## 4. Walking tests anywhere
+With `DEV_SIM=0` the app uses the phone's real GPS and the dev panel disappears. Only Cubbon Park is
+seeded, so to test from somewhere else create a temporary sector around your position (owner action,
+targets are virtual checkpoints 150–450 m out, not vetted places; use judgment on foot):
+
+```bash
+curl -X POST https://ispy-server.fly.dev/v1/admin/areas/test \
+  -H 'content-type: application/json' \
+  -d '{"name":"Home test","lat":12.9716,"lng":77.5946}'
+```
+Deploy in the app and the sector is found; each checkpoint shows its code on arrival.

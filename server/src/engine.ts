@@ -4,7 +4,7 @@ import type {
   NavigateResponse, OfferCard, Player, Presence, Rank, ScanRequest, ScanResponse, Skills, TemplateId,
 } from "@ispy/shared";
 import { all, get, run, tx, now, uid, json, parse, logEvent, worldGet } from "./db.ts";
-import { areaForPoint, bearingDeg, distanceM, type AreaRow } from "./geo.ts";
+import { areaForPoint, bearingDeg, distanceM, offsetM, type AreaRow } from "./geo.ts";
 import { FACTIONS, PERSONAS, RANKS, factionById } from "./content.ts";
 import { makeAnalysis, makeCipher, norm, pick, rand } from "./puzzles.ts";
 import { planArea, type AreaPlan } from "./chiefs.ts";
@@ -75,7 +75,11 @@ export function checkIn(player: Player, body: { mode: Mode; lat?: number; lng?: 
     if (body.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
     if (body.mock && !body.sim) throw new ApiError(400, "mock location provider detected");
     const area = areaForPoint(body.lat, body.lng);
-    if (!area) throw new ApiError(400, "you are not inside a play area");
+    if (!area) {
+      const nearest = all<AreaRow>("SELECT * FROM areas").map((a) => ({ a, d: distanceM(body.lat!, body.lng!, a.lat, a.lng) - a.radius_m })).sort((x, y) => x.d - y.d)[0];
+      const km = nearest ? Math.max(0.1, nearest.d / 1000) : null;
+      throw new ApiError(400, nearest ? `You are outside every sector. The nearest is ${nearest.a.name}, about ${km! < 10 ? km!.toFixed(1) : Math.round(km!)} km away.` : "No sectors exist yet.");
+    }
     areaId = area.id; lat = body.lat; lng = body.lng;
   } else {
     // Desk agents are tied to their home area: the area with the most activity for the alpha.
@@ -631,6 +635,27 @@ export function unreadChief(playerId: string): number {
   return get<{ n: number }>("SELECT COUNT(*) n FROM chat WHERE player_id=? AND role='chief' AND at>?", playerId, p?.chief_read_at ?? "")!.n;
 }
 export function markChiefRead(playerId: string) { run("UPDATE players SET chief_read_at=? WHERE id=?", now(), playerId); }
+
+/**
+ * Owner action: a test sector around a point, with virtual checkpoints on a ring 150–450 m out.
+ * These targets are NOT vetted public places; they are for the team's own walking tests.
+ */
+export function createTestArea(name: string, lat: number, lng: number, radiusM = 1200) {
+  const id = "test-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  run("INSERT OR REPLACE INTO areas(id,name,city,lat,lng,radius_m,merge_group) VALUES(?,?,?,?,?,?,?)", id, name, "Test", lat, lng, radiusM, null);
+  run("DELETE FROM targets WHERE area_id=?", id);
+  const spots = ["North point", "East point", "South point", "West point", "Near corner", "Far corner", "Mid ring", "Outer ring"];
+  spots.forEach((spot, i) => {
+    const r = 150 + (i % 4) * 100;
+    const a = (i * 45 * Math.PI) / 180;
+    const p = offsetM(lat, lng, r * Math.cos(a), r * Math.sin(a));
+    const code = String(1000 + Math.floor(rand(id + spot) * 9000));
+    run(`INSERT INTO targets(id,area_id,name,kind,lat,lng,approach_radius_m,safe_start,safe_end,capacity,state,observation,observation_answer) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `${id}-${i}`, id, `${name} ${spot}`, "test", p.lat, p.lng, 45, 0, 24, 4, "ACTIVE", `Test checkpoint. Enter the code ${code}.`, code);
+  });
+  logEvent("admin.test_area", "owner", { id, name, lat, lng, radiusM }, null);
+  return { id, name, targets: spots.length };
+}
 
 export function worldStatus() {
   const areas = all<AreaRow>("SELECT * FROM areas").map<Area>((a) => ({ id: a.id, name: a.name, city: a.city, lat: a.lat, lng: a.lng, radiusM: a.radius_m }));

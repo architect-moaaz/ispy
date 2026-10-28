@@ -10,7 +10,7 @@ primary_region = 'sin'
   dockerfile = 'server/Dockerfile'
 
 [env]
-  DEV_SIM = '1'
+  DEV_SIM = '0'
   ISPY_DB = '/data/ispy.db'
   LOG_LEVEL = 'info'
   PORT = '4000'
