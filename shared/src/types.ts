@@ -86,6 +86,16 @@ export interface Presence {
   expiresAt: string;
 }
 
+/** A coarse, anonymised sighting of another on-duty field agent in your area. */
+export interface Contact {
+  id: string; // rotates daily; never a player id
+  lat: number; // snapped to a 100 m grid
+  lng: number;
+  distanceM: number; // from the caller's last fix, rounded to 10 m
+  faction: FactionId | "unknown"; // own faction is named; rivals stay unknown until investigated
+}
+export interface ContactsResponse { contacts: Contact[] }
+
 // ---- Missions ----
 export type MissionState =
   | "pool"

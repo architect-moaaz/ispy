@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import type {
-  Area, Briefing, DeskMissionDetail, DeskSubmitResponse, Faction, FactionId, MissionSummary, Mode,
+  Area, Briefing, Contact, DeskMissionDetail, DeskSubmitResponse, Faction, FactionId, MissionSummary, Mode,
   NavigateResponse, OfferCard, Player, Presence, Rank, ScanRequest, ScanResponse, Skills, TemplateId,
 } from "@ispy/shared";
 import { all, get, run, tx, now, uid, json, parse, logEvent, worldGet } from "./db.ts";
@@ -563,6 +564,27 @@ export function briefing(player: Player): Briefing {
     standing: { rank: player.rank, xp: player.xp, trust: player.trust, nextRankAt: next?.at ?? player.xp },
     recent: history(player.id, 6).map((h) => h.text),
   };
+}
+
+/** Other on-duty field agents in the same area, snapped to a 100 m grid. Rivals are "unknown". */
+export function contactsFor(player: Player): Contact[] {
+  const me = get<PresenceRow>("SELECT * FROM presence WHERE player_id=? AND expires_at>?", player.id, now());
+  if (!me?.area_id || me.last_lat == null) return [];
+  const day = now().slice(0, 10);
+  const rows = all<PresenceRow & { faction_id: FactionId }>(
+    "SELECT p.*, pl.faction_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE p.area_id=? AND p.mode='field' AND p.expires_at>? AND p.player_id<>? AND p.last_lat IS NOT NULL",
+    me.area_id, now(), player.id);
+  const cell = 0.0009; // about 100 m
+  return rows.map((r) => {
+    const lat = Math.round(r.last_lat! / cell) * cell;
+    const lng = Math.round(r.last_lng! / cell) * cell;
+    return {
+      id: createHash("sha256").update(r.player_id + day).digest("hex").slice(0, 8),
+      lat, lng,
+      distanceM: Math.round(distanceM(me.last_lat!, me.last_lng!, lat, lng) / 10) * 10,
+      faction: r.faction_id === player.factionId ? r.faction_id : "unknown",
+    };
+  });
 }
 
 export function worldStatus() {

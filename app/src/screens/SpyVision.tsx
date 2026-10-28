@@ -1,0 +1,336 @@
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Dimensions, Easing, StyleSheet, Text, View } from "react-native";
+import Svg, { Circle, G, Line, Path, Polygon, Rect } from "react-native-svg";
+import type { Contact, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse } from "@ispy/shared";
+import { api } from "../api";
+import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix } from "../location";
+import { C, F, factionColor } from "../theme";
+import { Body, Button, Dossier, Input, Screen, Stamp, Typed, fmtCountdown } from "../ui";
+import { Projector, SatMap } from "../SatMap";
+import { DevPanel } from "./DevPanel";
+
+const TEMPLATE_NAME: Record<string, string> = { RECON: "RECON", DEAD_DROP: "VIRTUAL DEAD DROP", EXTRACTION: "EXTRACTION", ANALYSIS: "ANALYSIS", CIPHER: "CIPHER" };
+
+export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Presence; devSim: boolean; onHQ: () => void; onOffDuty: () => void }) {
+  const width = Math.min(Dimensions.get("window").width, 560) - 28;
+  const height = 460;
+  const [fix, setFix] = useState<Fix | null>(getSimFix());
+  const [offers, setOffers] = useState<OfferCard[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [mission, setMission] = useState<MissionSummary | null>(null);
+  const [nav, setNav] = useState<NavigateResponse | null>(null);
+  const [scan, setScan] = useState<ScanResponse | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [targets, setTargets] = useState<{ id: string; name: string; lat: number; lng: number }[]>([]);
+
+  const refresh = async () => {
+    try {
+      if (mission) {
+        setNav(await api.navigate(mission.id));
+      } else {
+        const [o, a] = await Promise.all([api.offers(), api.activeMission()]);
+        setOffers(o.offers); setNotice(o.notice ?? null);
+        if (a.mission) setMission(a.mission);
+      }
+      setContacts((await api.contacts()).contacts);
+      setErr(null);
+    } catch (e: any) { if (e.status !== 401) setErr(e.message); }
+  };
+
+  useEffect(() => {
+    const stop = watchFix(setFix, (e) => setErr(e.message));
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    if (devSim) api.devTargets().then((r) => setTargets(r.targets)).catch(() => {});
+    return () => { stop(); clearInterval(t); };
+  }, []);
+  useEffect(() => {
+    refresh();
+    const p = setInterval(refresh, mission ? 8000 : 5000);
+    const hb = setInterval(async () => {
+      try { const f = getSimFix() ?? (await currentFix()); await api.heartbeat({ lat: f.lat, lng: f.lng, sim: f.sim }); } catch { /* server expires presence */ }
+    }, 120000);
+    return () => { clearInterval(p); clearInterval(hb); };
+  }, [mission?.id]);
+
+  const target = nav ? { lat: nav.lat, lng: nav.lng } : null;
+  const dist = fix && target ? distanceM(fix, target) : null;
+  // With a live target, frame both ends of the walk; otherwise centre on the agent.
+  const center = fix && target ? { lat: (fix.lat + target.lat) / 2, lng: (fix.lng + target.lng) / 2 } : fix ?? nav ?? { lat: 12.9763, lng: 77.5929 };
+  const zoom = dist == null ? 17 : dist > 1400 ? 15 : dist > 650 ? 16 : 17;
+  const bearing = fix && target ? bearingDeg(fix, target) : null;
+  const onSite = dist != null && nav != null && dist <= nav.approachRadiusM;
+  const nearest = mission ? dist : offers.reduce<number | null>((m, o) => (o.mission.walkM != null && (m == null || o.mission.walkM < m) ? o.mission.walkM : m), null);
+
+  const accept = async (o: OfferCard) => {
+    setBusy(true); setErr(null);
+    try { const r = await api.acceptMission(o.offerId); setMission(r.mission); setOffers([]); setScan(null); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const decline = async (o: OfferCard) => {
+    setOffers((os) => os.filter((x) => x.offerId !== o.offerId));
+    try { await api.declineMission(o.offerId); } catch { /* expires anyway */ }
+  };
+  const doScan = async (onSiteCode?: string) => {
+    if (!mission) return refresh();
+    setBusy(true); setErr(null);
+    try {
+      const f = fix ?? (await currentFix());
+      const r = await api.scan(mission.id, { ...f, onSiteCode });
+      setScan(r);
+      if (r.result === "verified" && !r.reward) { setCode(""); setTimeout(refresh, 300); }
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const abandon = async () => {
+    if (!mission) return;
+    setBusy(true);
+    try { await api.abandon(mission.id); finishMission(); } catch (e: any) { setErr(e.message); setBusy(false); }
+  };
+  const finishMission = () => { setMission(null); setNav(null); setScan(null); setCode(""); setBusy(false); };
+
+  const completed = scan?.result === "verified" && scan.reward;
+
+  return (
+    <Screen>
+      {devSim && <DevPanel />}
+      <View style={s.titleBar}>
+        <View style={s.titleTick} />
+        <Text style={s.titleText}>Spy Vision Map · Real world satellite</Text>
+      </View>
+      <View style={s.statusRow}>
+        <View style={{ flexDirection: "row", gap: 3, alignItems: "flex-end" }}>
+          {[6, 9, 12].map((h) => <View key={h} style={{ width: 4, height: h, backgroundColor: C.cyan }} />)}
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: C.ok, marginLeft: 6, marginBottom: 2 }} />
+        </View>
+        <Text style={s.mono}>gps: {fix ? `${fix.lat.toFixed(5)}, ${fix.lng.toFixed(5)}` : "acquiring"}</Text>
+        <Text style={s.sector}>{presence.areaName?.toUpperCase() ?? "NO SECTOR"}</Text>
+      </View>
+
+      <SatMap center={center} zoom={zoom} width={width} height={height}>
+        {(project) => (
+          <MapOverlay project={project} width={width} height={height} fix={fix} offers={offers} target={target ? { ...target, name: nav!.targetName, locked: !nav!.unlocked } : null}
+            contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} />
+        )}
+      </SatMap>
+
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+        <View style={{ flex: 1.4 }}>
+          <Button title={mission ? (onSite ? "Scan region" : nav?.unlocked ? "Scan on arrival" : "Site locked") : "Scan region"} onPress={() => doScan()} loading={busy} disabled={!!mission && (!nav?.unlocked || !onSite)} style={{ marginTop: 0, paddingVertical: 16 }} />
+        </View>
+        <View style={{ flex: 1, gap: 6 }}>
+          <Button title="HQ link" kind="ghost" onPress={onHQ} style={{ marginTop: 0, paddingVertical: 8 }} />
+          <Button title="Off duty" kind="ghost" onPress={onOffDuty} style={{ marginTop: 0, paddingVertical: 8 }} />
+        </View>
+      </View>
+
+      {completed && (
+        <Dossier tab={scan.reward!.contestOutcome === "lost" ? C.dim : C.ok} style={{ marginTop: 12 }}>
+          <View style={{ alignItems: "center", marginVertical: 6 }}>
+            <Stamp text={scan.reward!.contestOutcome === "lost" ? "Outrun" : scan.reward!.contestOutcome === "won" ? "First in" : "Verified"} size={40} color={scan.reward!.contestOutcome === "lost" ? C.dim : C.red} />
+          </View>
+          <Typed>{scan.debrief}</Typed>
+          <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1 }}>+{scan.reward!.xp} XP   TRUST {scan.reward!.trust >= 0 ? "+" : ""}{scan.reward!.trust}</Text>
+          <Button title="Back to the board" onPress={finishMission} />
+        </Dossier>
+      )}
+
+      {mission && nav && !completed && (
+        <Dossier tab={mission.contested ? C.red : C.cyan} style={{ marginTop: 12 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <Text style={s.panelTitle}>{TEMPLATE_NAME[mission.templateId] ?? mission.title} · {nav.targetName}</Text>
+            <Text style={s.mono}>{fmtCountdown(mission.expiresAt, now)}</Text>
+          </View>
+          {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
+          <Typed>{mission.brief}</Typed>
+          {nav.steps.map((st, i) => <Typed key={i} style={{ color: C.dim, marginBottom: 2 }}>{i + 1}. {st}</Typed>)}
+          {!nav.unlocked && <Typed style={{ color: C.amber }}>Locked until your desk agent cracks the cipher{mission.deskLink?.fallbackAt ? `, or at ${new Date(mission.deskLink.fallbackAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} you get a solo version` : ""}.</Typed>}
+          {scan?.result === "needs_code" && (
+            <View style={{ marginTop: 6 }}>
+              <Text style={[s.panelTitle, { color: C.cyan }]}>On-site check</Text>
+              <Typed>{scan.puzzle?.prompt}</Typed>
+              {scan.reason && <Typed style={{ color: C.red }}>{scan.reason}</Typed>}
+              <Input value={code} onChangeText={setCode} placeholder="ANSWER" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={() => doScan(code)} />
+              <Button title="Confirm" onPress={() => doScan(code)} loading={busy} />
+            </View>
+          )}
+          {scan?.result === "too_far" && <Typed style={{ color: C.amber }}>Still {Math.round(scan.distanceM ?? 0)} m out. Get within {nav.approachRadiusM} m.</Typed>}
+          {(scan?.result === "rejected" || scan?.result === "flagged") && <Typed style={{ color: C.red }}>{scan.reason ?? "Scan could not be verified."}</Typed>}
+          {scan?.result === "verified" && !scan.reward && <Typed style={{ color: C.ok }}>{scan.debrief}</Typed>}
+          <Button title="Abandon mission" kind="ghost" onPress={abandon} disabled={busy} />
+        </Dossier>
+      )}
+
+      {!mission && (
+        <View style={{ marginTop: 12 }}>
+          <Text style={s.sectionTitle}>Active orders · {offers.length} available</Text>
+          {offers.length === 0 && <Dossier tab={C.cyanDim}><Body dim style={{ marginBottom: 0 }}>{notice ?? "Your chief is choosing. Orders land within seconds when the sector has open targets."}</Body></Dossier>}
+          {offers.map((o) => (
+            <Dossier key={o.offerId} tab={o.mission.contested ? C.red : C.cyan}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={s.panelTitle}>{TEMPLATE_NAME[o.mission.templateId] ?? o.mission.title}</Text>
+                <Text style={[s.mono, { color: C.cyan }]}>{o.mission.rewardXp} XP</Text>
+              </View>
+              <Text style={s.mono}>{o.mission.targetName?.toUpperCase()}{o.mission.walkM != null ? ` · ${Math.round(o.mission.walkM)}M` : ""}{o.mission.contested ? " · RIVAL ACTIVITY" : ""}{o.mission.deskLink ? " · DESK LINK" : ""}</Text>
+              <Typed style={{ marginTop: 4 }}>{o.mission.brief}</Typed>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Button title="Accept mission" onPress={() => accept(o)} loading={busy} style={{ flex: 1.3 }} />
+                <Button title="Decline" kind="ghost" onPress={() => decline(o)} style={{ flex: 1 }} />
+              </View>
+              <Text style={[s.mono, { marginTop: 6 }]}>ACCEPT WITHIN {fmtCountdown(o.acceptBy, now)}</Text>
+            </Dossier>
+          ))}
+        </View>
+      )}
+      {err && <Body style={{ color: C.red }}>{err}</Body>}
+    </Screen>
+  );
+}
+
+// ---------- overlay ----------
+function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius }: {
+  project: Projector; width: number; height: number; fix: Fix | null; offers: OfferCard[];
+  target: { lat: number; lng: number; name: string; locked: boolean } | null; contacts: Contact[];
+  bearing: number | null; dist: number | null; nearest: number | null; radius: number;
+}) {
+  const sweep = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const a = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: 4000, easing: Easing.linear, useNativeDriver: true }));
+    const b = Animated.loop(Animated.timing(pulse, { toValue: 1, duration: 1600, easing: Easing.out(Easing.quad), useNativeDriver: true }));
+    a.start(); b.start();
+    return () => { a.stop(); b.stop(); };
+  }, []);
+  const me = fix ? project(fix) : { x: width / 2, y: height / 2 };
+  const tgt = target ? project(target) : null;
+  const rPx = radius / project.metersPerPx;
+  const rotate = sweep.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  const ringScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 2.2] });
+  const ringOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0] });
+  // Scan wedge from the player toward the target (or north).
+  const wedgeAngle = bearing ?? 0;
+  const inRange = dist != null && dist <= radius;
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+        {/* targets offered but not accepted */}
+        {!target && offers.map((o) => null)}
+        {/* approach radius + reticle on the live target */}
+        {tgt && (
+          <G>
+            <Circle cx={tgt.x} cy={tgt.y} r={rPx} fill={C.cyan} fillOpacity={target!.locked ? 0.05 : 0.12} stroke={inRange ? C.ok : C.cyan} strokeWidth={1.5} strokeDasharray="6 4" />
+            <Reticle x={tgt.x} y={tgt.y} color={inRange ? C.ok : target!.locked ? C.amber : C.cyan} />
+          </G>
+        )}
+        {/* line of bearing */}
+        {tgt && fix && <Line x1={me.x} y1={me.y} x2={tgt.x} y2={tgt.y} stroke={C.cyan} strokeOpacity={0.55} strokeWidth={1} strokeDasharray="3 5" />}
+        {/* contacts */}
+        {contacts.map((c) => { const p = project(c); return <ContactGlyph key={c.id} x={p.x} y={p.y} color={c.faction === "unknown" ? C.cyan : factionColor(c.faction)} />; })}
+        {/* player */}
+        <Circle cx={me.x} cy={me.y} r={16} fill={C.cyan} fillOpacity={0.15} />
+        <Circle cx={me.x} cy={me.y} r={5} fill={C.cyan} />
+        <Circle cx={me.x} cy={me.y} r={9} fill="none" stroke={C.cyan} strokeWidth={1.5} />
+      </Svg>
+      {/* rotating sweep anchored on the player */}
+      <Animated.View style={{ position: "absolute", left: me.x - 110, top: me.y - 110, width: 220, height: 220, transform: [{ rotate }] }}>
+        <Svg width={220} height={220}>
+          <Path d="M110 110 L110 0 A110 110 0 0 1 180 24 Z" fill={C.cyan} fillOpacity={0.16} />
+          <Line x1={110} y1={110} x2={110} y2={0} stroke={C.cyan} strokeOpacity={0.9} strokeWidth={1.5} />
+        </Svg>
+      </Animated.View>
+      {/* wedge toward the target */}
+      {tgt && <View style={{ position: "absolute", left: me.x - 110, top: me.y - 110, width: 220, height: 220, transform: [{ rotate: `${wedgeAngle}deg` }] }}>
+        <Svg width={220} height={220}><Path d="M110 110 L92 0 A110 110 0 0 1 128 0 Z" fill={C.cyan} fillOpacity={0.22} /></Svg>
+      </View>}
+      {/* pulse on the target */}
+      {tgt && <Animated.View style={{ position: "absolute", left: tgt.x - 14, top: tgt.y - 14, width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: inRange ? C.ok : C.cyan, transform: [{ scale: ringScale }], opacity: ringOpacity }} />}
+
+      {/* labels */}
+      {tgt && <HudLabel width={width} height={height} x={tgt.x + 18} y={tgt.y - 14} title={target!.locked ? "LOCKED SITE" : "OBJECTIVE"} sub={`${target!.name.toUpperCase()}${dist != null ? ` (${Math.round(dist)}m)` : ""}`} color={inRange ? C.ok : C.cyan} />}
+      {!target && offers.map((o, i) => { const px = offerPoint(o, project, me, i); return px ? <HudLabel width={width} height={height} key={o.offerId} x={px.x + 14} y={px.y - 14} title={TEMPLATE_NAME[o.mission.templateId] ?? o.mission.title} sub={`${o.mission.targetName?.toUpperCase() ?? ""} · ${o.mission.walkM != null ? Math.round(o.mission.walkM) + "m" : "?"}`} /> : null; })}
+      {contacts.map((c) => { const p = project(c); return <HudLabel width={width} height={height} key={"l" + c.id} x={p.x + 16} y={p.y - 12} title={c.faction === "unknown" ? "CONTACT // UNKNOWN" : `CONTACT // ${c.faction.toUpperCase()}`} sub={`(${c.distanceM}m)`} small color={c.faction === "unknown" ? C.cyan : factionColor(c.faction)} />; })}
+
+      {/* compass */}
+      <View style={s.compass}>
+        <Svg width={84} height={84}>
+          <Circle cx={42} cy={42} r={38} fill={C.glass} stroke={C.cyan} strokeOpacity={0.7} />
+          <Circle cx={42} cy={42} r={26} fill="none" stroke={C.cyan} strokeOpacity={0.3} />
+          {bearing != null && <G rotation={bearing} origin="42, 42"><Path d="M42 42 L30 12 A32 32 0 0 1 54 12 Z" fill={C.cyan} fillOpacity={0.5} /></G>}
+          <Polygon points="42,34 38,46 42,43 46,46" fill={C.cyan} />
+        </Svg>
+        <Text style={[s.compassText, { top: 4, left: 37 }]}>N</Text>
+        <Text style={[s.compassText, { bottom: 4, left: 38 }]}>S</Text>
+        <Text style={[s.compassText, { top: 34, left: 6 }]}>W</Text>
+        <Text style={[s.compassText, { top: 34, right: 6 }]}>E</Text>
+      </View>
+      <Text style={[s.hudText, { position: "absolute", left: 10, top: 100 }]}>SIGNAL LOCK: {fix ? "STABLE" : "SEARCHING"}</Text>
+      <Text style={[s.hudText, { position: "absolute", left: 10, bottom: 16 }]}>NEAREST OBJECTIVE: {nearest == null ? "--" : `${Math.round(nearest)}M`}</Text>
+      {/* frame ticks */}
+      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+        {[0, 0.25, 0.5, 0.75, 1].map((k) => <Line key={k} x1={width * k} y1={height - 6} x2={width * k} y2={height} stroke={C.cyan} strokeOpacity={0.7} />)}
+        <Rect x={width - 60} y={8} width={52} height={14} fill={C.glass} stroke={C.cyan} strokeOpacity={0.4} />
+      </Svg>
+      <Text style={[s.hudText, { position: "absolute", right: 12, top: 9, fontSize: 9 }]}>SECTOR</Text>
+    </View>
+  );
+}
+
+function offerPoint(o: OfferCard, project: Projector, me: { x: number; y: number }, i: number) {
+  // Offers carry distance but not coordinates (targets stay withheld until accepted); place
+  // the label on a ring at that distance so the player sees how far, not where.
+  if (o.mission.walkM == null) return null;
+  const r = o.mission.walkM / project.metersPerPx;
+  const a = (-60 + i * 75) * (Math.PI / 180);
+  return { x: me.x + r * Math.cos(a), y: me.y + r * Math.sin(a) };
+}
+
+function Reticle({ x, y, color }: { x: number; y: number; color: string }) {
+  const s = 14;
+  return (
+    <G stroke={color} strokeWidth={1.5} fill="none">
+      <Path d={`M${x - s} ${y - s / 2} V${y - s} H${x - s / 2} M${x + s / 2} ${y - s} H${x + s} V${y - s / 2} M${x + s} ${y + s / 2} V${y + s} H${x + s / 2} M${x - s / 2} ${y + s} H${x - s} V${y + s / 2}`} />
+      <Circle cx={x} cy={y} r={5} />
+      <Circle cx={x} cy={y} r={1.5} fill={color} />
+    </G>
+  );
+}
+function ContactGlyph({ x, y, color }: { x: number; y: number; color: string }) {
+  return (
+    <G>
+      <Rect x={x - 11} y={y - 11} width={22} height={22} fill={C.glass} stroke={color} strokeWidth={1} />
+      <Circle cx={x} cy={y - 5} r={2.6} fill={color} />
+      <Path d={`M${x - 4} ${y + 8} V${y + 1} a4 4 0 0 1 8 0 V${y + 8} Z`} fill={color} />
+    </G>
+  );
+}
+function HudLabel({ x, y, title, sub, color = C.cyan, small, width = 360, height = 460 }: { x: number; y: number; title: string; sub?: string; color?: string; small?: boolean; width?: number; height?: number }) {
+  // Keep labels inside the map frame.
+  const left = Math.max(4, Math.min(x, width - 176));
+  const top = Math.max(4, Math.min(y, height - 44));
+  return (
+    <View style={[s.label, { left, top, borderColor: color }]}>
+      <Text style={[s.labelTitle, { color, fontSize: small ? 10 : 12 }]}>{title}</Text>
+      {sub ? <Text style={[s.labelSub, { fontSize: small ? 9.5 : 11 }]}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  titleBar: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: C.line, backgroundColor: C.ink2, paddingVertical: 8, paddingHorizontal: 10, marginBottom: 6 },
+  titleTick: { width: 3, height: 18, backgroundColor: C.cyan },
+  titleText: { color: C.cyan, fontFamily: F.displayMed, fontSize: 17, letterSpacing: 1.6, textTransform: "uppercase" },
+  statusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6, paddingHorizontal: 2 },
+  mono: { color: C.dim, fontFamily: F.typed, fontSize: 11.5 },
+  sector: { color: C.text, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.2, backgroundColor: C.ink2, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.line },
+  compass: { position: "absolute", left: 10, top: 10, width: 84, height: 84 },
+  compassText: { position: "absolute", color: C.cyan, fontFamily: F.displayMed, fontSize: 10 },
+  hudText: { color: C.cyan, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1.2, backgroundColor: C.glass, paddingHorizontal: 6, paddingVertical: 2 },
+  label: { position: "absolute", backgroundColor: C.glass, borderLeftWidth: 2, paddingHorizontal: 7, paddingVertical: 3, maxWidth: 190 },
+  labelTitle: { fontFamily: F.displayMed, letterSpacing: 1.2 },
+  labelSub: { color: C.text, fontFamily: F.typed },
+  panelTitle: { color: C.text, fontFamily: F.displayMed, fontSize: 17, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 2, flexShrink: 1 },
+  sectionTitle: { color: C.cyanDim, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 8 },
+});

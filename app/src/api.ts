@@ -6,6 +6,7 @@ import type {
   Briefing,
   ChatMessage,
   CheckInRequest,
+  ContactsResponse,
   DeskMissionDetail,
   DeskSubmitResponse,
   Faction,
@@ -107,6 +108,7 @@ export const api = {
   briefing: () => get<Briefing>("/v1/chief/briefing"),
   messages: () => get<{ messages: ChatMessage[] }>("/v1/chief/messages"),
   sendMessage: (text: string) => post<{ reply: ChatMessage }>("/v1/chief/messages", { text }),
+  contacts: () => get<ContactsResponse>("/v1/world/contacts"),
   history: () => get<{ events: { at: string; text: string }[] }>("/v1/profile/history"),
   devTargets: () => get<{ targets: DevTarget[] }>("/v1/dev/targets"),
 };

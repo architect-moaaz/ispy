@@ -67,9 +67,9 @@ export default function App() {
   let body: React.ReactNode;
   if (!player) body = <Welcome onRegistered={(p) => { setPlayer(p); }} />;
   else if (!player.factionId) body = <Assessment onRecruited={(p) => { setPlayer(p); refreshMe(); setTab("duty"); }} />;
-  else if (tab === "hq") body = <HQ factionId={player.factionId} />;
+  else if (tab === "hq") body = <HQ factionId={player.factionId} onDuty={() => setTab("duty")} />;
   else if (tab === "profile") body = <Profile player={player} faction={faction} onSignOut={signOut} />;
-  else body = <Duty presence={presence} devSim={!!world?.devSim} onPresence={(p) => { setPresence(p); refreshMe(); }} />;
+  else body = <Duty presence={presence} devSim={!!world?.devSim} onPresence={(p) => { setPresence(p); refreshMe(); }} onHQ={() => setTab("hq")} />;
 
   const inGame = !!player?.factionId;
   const accent = factionColor(player?.factionId);
@@ -99,6 +99,6 @@ const s = StyleSheet.create({
   body: { flex: 1 },
   tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.ink, paddingBottom: 16 },
   tab: { flex: 1, alignItems: "center", paddingTop: 12, gap: 6 },
-  tabText: { color: C.dim, fontFamily: F.display, fontSize: 19 },
+  tabText: { color: C.dim, fontFamily: F.displayMed, fontSize: 16, letterSpacing: 2, textTransform: "uppercase" },
   tabLine: { height: 3, width: 36, borderRadius: 2, backgroundColor: "transparent" },
 });

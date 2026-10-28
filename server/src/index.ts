@@ -8,7 +8,7 @@ import { ASSESSMENT, FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { norm } from "./puzzles.ts";
 import { chiefReply, llmEnabled } from "./chiefs.ts";
 import {
-  ApiError, DEV_SIM, abandon, boardNotice, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
+  ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
   scan, worldStatus,
 } from "./engine.ts";
@@ -163,6 +163,7 @@ app.post("/v1/chief/messages", async (req) => {
 const chatHistory = (playerId: string): ChatMessage[] =>
   all<ChatMessage>("SELECT id, role, text, at FROM chat WHERE player_id=? ORDER BY at DESC LIMIT 40", playerId).reverse();
 
+app.get("/v1/world/contacts", async (req) => ({ contacts: contactsFor(need(req)) }));
 app.get("/v1/profile/history", async (req) => ({ events: history(need(req).id) }));
 
 // ---- dev & admin ----

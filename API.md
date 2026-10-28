@@ -40,3 +40,4 @@ Desk: check-in desk → /v1/desk/active → submit answer → unlocks a linked f
 Dev simulation: when `devSim` is true the app may send `sim: true` with any lat/lng
 (check-in, heartbeat, scan). Real devices send `expo-location` fixes with `mock` from
 `Location.LocationObject.mocked`.
+| GET | /v1/world/contacts | → `ContactsResponse` (coarse sightings of other field agents in your area) |

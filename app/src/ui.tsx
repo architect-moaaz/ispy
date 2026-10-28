@@ -1,59 +1,57 @@
 import React, { useEffect, useRef } from "react";
 import {
-  ActivityIndicator,
-  Animated,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TextInputProps,
-  View,
-  ViewStyle,
+  ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle,
 } from "react-native";
 import { C, F } from "./theme";
 
-export function Screen({ children, scroll = true }: { children: React.ReactNode; scroll?: boolean }) {
+export function Screen({ children, scroll = true, pad = true }: { children: React.ReactNode; scroll?: boolean; pad?: boolean }) {
   if (!scroll) return <View style={s.screen}>{children}</View>;
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, !pad && { padding: 0 }]} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
   );
 }
 
-/** Big condensed headline. The type is the poster. */
-export function Display({ children, size = 44, color = C.text, style }: { children: React.ReactNode; size?: number; color?: string; style?: any }) {
-  return <Text style={[s.display, { fontSize: size, lineHeight: size * 0.94, color }, style]}>{children}</Text>;
+/** Screen title in the HUD voice: condensed caps, cyan, bracketed. */
+export function Display({ children, size = 34, color = C.cyan, style }: { children: React.ReactNode; size?: number; color?: string; style?: any }) {
+  return <Text style={[s.display, { fontSize: size, lineHeight: size * 1.05, color }, style]}>{children}</Text>;
 }
 export function Title({ children, color = C.text, style }: { children: React.ReactNode; color?: string; style?: any }) {
   return <Text style={[s.title, { color }, style]}>{children}</Text>;
 }
-/** One quiet line above a headline: where you are, what this is. Sentence case, never tracked caps. */
-export function Kicker({ children, color = C.dim }: { children: React.ReactNode; color?: string }) {
+/** Small instrument label. */
+export function Kicker({ children, color = C.cyanDim }: { children: React.ReactNode; color?: string }) {
   return <Text style={[s.kicker, { color }]}>{children}</Text>;
 }
 export function Body({ children, dim, onPaper, style }: { children: React.ReactNode; dim?: boolean; onPaper?: boolean; style?: any }) {
-  const color = onPaper ? (dim ? C.onPaperDim : C.onPaper) : dim ? C.dim : C.text;
-  return <Text style={[s.body, { color }, style]}>{children}</Text>;
+  return <Text style={[s.body, { color: dim ? C.dim : C.text }, style]}>{children}</Text>;
 }
-/** Typewriter text for the words of a dossier: briefs, intercepts, codes. */
-export function Typed({ children, onPaper = true, bold, style }: { children: React.ReactNode; onPaper?: boolean; bold?: boolean; style?: any }) {
-  return <Text style={[s.typed, { color: onPaper ? C.onPaper : C.text, fontFamily: bold ? F.typedBold : F.typed }, style]}>{children}</Text>;
+/** Monospace readout: coordinates, intercepts, codes. */
+export function Typed({ children, onPaper, bold, style }: { children: React.ReactNode; onPaper?: boolean; bold?: boolean; style?: any }) {
+  return <Text style={[s.typed, { fontFamily: bold ? F.typedBold : F.typed }, style]}>{children}</Text>;
 }
 
-/** A paper document with a coloured ink tab on its left edge. Mission briefs and offers live here. */
-export function Dossier({ children, tab = C.amber, style }: { children: React.ReactNode; tab?: string; style?: ViewStyle }) {
+/** Glass panel with a coloured edge and HUD corner brackets. */
+export function Dossier({ children, tab = C.cyan, style }: { children: React.ReactNode; tab?: string; style?: ViewStyle }) {
   return (
-    <View style={[s.dossier, style]}>
-      <View style={[s.dossierTab, { backgroundColor: tab }]} />
-      <View style={s.dossierBody}>{children}</View>
+    <View style={[s.panel, { borderColor: tab + "88" }, style]}>
+      <View style={[s.edge, { backgroundColor: tab }]} />
+      <Corner color={tab} pos="tl" /><Corner color={tab} pos="tr" /><Corner color={tab} pos="bl" /><Corner color={tab} pos="br" />
+      <View style={s.panelBody}>{children}</View>
     </View>
   );
 }
-/** Dark raised surface for app chrome (stats, chat, settings). */
-export function Panel({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
-  return <View style={[s.panel, style]}>{children}</View>;
+export const Panel = Dossier;
+
+function Corner({ color, pos }: { color: string; pos: "tl" | "tr" | "bl" | "br" }) {
+  const v: ViewStyle = { position: "absolute", width: 10, height: 10, borderColor: color };
+  const side: ViewStyle =
+    pos === "tl" ? { top: -1, left: -1, borderTopWidth: 2, borderLeftWidth: 2 }
+    : pos === "tr" ? { top: -1, right: -1, borderTopWidth: 2, borderRightWidth: 2 }
+    : pos === "bl" ? { bottom: -1, left: -1, borderBottomWidth: 2, borderLeftWidth: 2 }
+    : { bottom: -1, right: -1, borderBottomWidth: 2, borderRightWidth: 2 };
+  return <View pointerEvents="none" style={[v, side]} />;
 }
 
 export function Button({
@@ -62,15 +60,16 @@ export function Button({
   title: string; onPress: () => void; kind?: "primary" | "ghost" | "danger" | "ink" | "paperGhost";
   disabled?: boolean; loading?: boolean; style?: ViewStyle;
 }) {
-  const bg = { primary: C.amber, danger: C.stamp, ink: C.onPaper, ghost: "transparent", paperGhost: "transparent" }[kind];
-  const fg = { primary: C.ink, danger: C.paper, ink: C.paper, ghost: C.text, paperGhost: C.onPaper }[kind];
-  const border = kind === "ghost" ? C.line : kind === "paperGhost" ? C.onPaper : bg;
+  const primary = kind === "primary" || kind === "ink";
+  const bg = primary ? C.cyan : kind === "danger" ? C.red : "transparent";
+  const fg = primary ? C.ink : kind === "danger" ? C.text : C.cyan;
+  const border = kind === "danger" ? C.red : C.cyan;
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
       accessibilityRole="button"
-      style={({ pressed }) => [s.btn, { backgroundColor: bg, borderColor: border, opacity: disabled ? 0.45 : pressed ? 0.75 : 1 }, style]}
+      style={({ pressed }) => [s.btn, { backgroundColor: bg, borderColor: border, opacity: disabled ? 0.4 : pressed ? 0.75 : 1 }, primary && s.btnGlow, style]}
     >
       {loading ? <ActivityIndicator color={fg} /> : <Text style={[s.btnText, { color: fg }]}>{title}</Text>}
     </Pressable>
@@ -78,29 +77,21 @@ export function Button({
 }
 
 export function Input(props: TextInputProps & { onPaper?: boolean }) {
-  const { onPaper, style, ...rest } = props;
-  return (
-    <TextInput
-      placeholderTextColor={onPaper ? C.onPaperDim : C.dim}
-      {...rest}
-      style={[s.input, onPaper && { backgroundColor: C.paper2, color: C.onPaper, borderColor: C.paper2, fontFamily: F.typed }, style]}
-    />
-  );
+  const { onPaper: _p, style, ...rest } = props;
+  return <TextInput placeholderTextColor={C.dim} {...rest} style={[s.input, style]} />;
 }
 
-/** A choice in a list of answers. */
-export function Choice({ label, on, onPress, onPaper }: { label: string; on: boolean; onPress: () => void; onPaper?: boolean }) {
-  const border = on ? C.stamp : onPaper ? "#CFC4A8" : C.line;
+export function Choice({ label, on, onPress }: { label: string; on: boolean; onPress: () => void; onPaper?: boolean }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={[s.choice, { borderColor: border, backgroundColor: onPaper ? (on ? "#F9E3E0" : C.paper2) : on ? "#2A1A22" : C.ink2 }]}>
-      <View style={[s.choiceDot, { borderColor: border, backgroundColor: on ? C.stamp : "transparent" }]} />
-      <Text style={[s.body, { color: onPaper ? C.onPaper : C.text, flex: 1, marginBottom: 0 }]}>{label}</Text>
+    <Pressable onPress={onPress} accessibilityRole="button" style={[s.choice, { borderColor: on ? C.cyan : C.line, backgroundColor: on ? C.cyanGlow : C.paper2 }]}>
+      <View style={[s.choiceDot, { borderColor: on ? C.cyan : C.line, backgroundColor: on ? C.cyan : "transparent" }]} />
+      <Text style={[s.body, { color: C.text, flex: 1, marginBottom: 0 }]}>{label}</Text>
     </Pressable>
   );
 }
 
-/** A rubber stamp that slams in when it appears. */
-export function Stamp({ text, color = C.stamp, angle = -8, size = 34, style }: { text: string; color?: string; angle?: number; size?: number; style?: ViewStyle }) {
+/** A stamp that slams in when it appears. */
+export function Stamp({ text, color = C.red, angle = -8, size = 34, style }: { text: string; color?: string; angle?: number; size?: number; style?: ViewStyle }) {
   const scale = useRef(new Animated.Value(2.4)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -124,53 +115,48 @@ export function Banner({ text, color = C.amber }: { text: string; color?: string
   );
 }
 
-export function Meter({ value, color = C.amber, onPaper }: { value: number; color?: string; onPaper?: boolean }) {
+export function Meter({ value, color = C.cyan }: { value: number; color?: string; onPaper?: boolean }) {
   return (
-    <View style={[s.meterBg, onPaper && { backgroundColor: C.paper2 }]}>
+    <View style={s.meterBg}>
       <View style={[s.meterFill, { width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`, backgroundColor: color }]} />
     </View>
   );
 }
 
 export function Spinner() {
-  return (
-    <View style={{ padding: 24, alignItems: "center" }}>
-      <ActivityIndicator color={C.amber} />
-    </View>
-  );
+  return <View style={{ padding: 24, alignItems: "center" }}><ActivityIndicator color={C.cyan} /></View>;
 }
 
 export function fmtCountdown(iso: string, now: number) {
   const ms = new Date(iso).getTime() - now;
-  if (ms <= 0) return "expired";
+  if (ms <= 0) return "EXPIRED";
   const sec = Math.floor(ms / 1000);
-  if (sec < 90) return `${sec}s`;
+  if (sec < 90) return `${sec}S`;
   const m = Math.floor(sec / 60);
-  return `${m}m ${(sec % 60).toString().padStart(2, "0")}s`;
+  return `${m}M ${(sec % 60).toString().padStart(2, "0")}S`;
 }
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.ink },
-  content: { padding: 18, paddingBottom: 48, maxWidth: 520, width: "100%", alignSelf: "center" },
-  display: { fontFamily: F.display, letterSpacing: -0.5, marginBottom: 10 },
-  title: { fontFamily: F.display, fontSize: 26, lineHeight: 26, marginBottom: 6 },
-  kicker: { fontFamily: F.displayMed, fontSize: 16, marginBottom: 4 },
+  content: { padding: 14, paddingBottom: 40, maxWidth: 560, width: "100%", alignSelf: "center" },
+  display: { fontFamily: F.displayMed, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 2, textAlign: "center" },
+  title: { fontFamily: F.displayMed, fontSize: 22, lineHeight: 24, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 },
+  kicker: { fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 6 },
   body: { fontSize: 15, lineHeight: 21, marginBottom: 8 },
-  typed: { fontSize: 14.5, lineHeight: 21, marginBottom: 8 },
-  dossier: { flexDirection: "row", backgroundColor: C.paper, borderRadius: 3, marginBottom: 14, overflow: "hidden",
-    shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 6 },
-  dossierTab: { width: 8 },
-  dossierBody: { flex: 1, padding: 14, paddingLeft: 14 },
-  panel: { backgroundColor: C.ink2, borderRadius: 6, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: C.line },
-  btn: { paddingVertical: 13, paddingHorizontal: 16, borderRadius: 4, borderWidth: 1.5, alignItems: "center", marginTop: 8 },
-  btnText: { fontFamily: F.display, fontSize: 19, letterSpacing: 0.3 },
-  input: { backgroundColor: C.ink2, color: C.text, borderColor: C.line, borderWidth: 1, borderRadius: 4, padding: 12, fontSize: 16, marginBottom: 8 },
-  choice: { flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderRadius: 4, borderWidth: 1.5, marginBottom: 6 },
-  choiceDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
-  stamp: { alignSelf: "flex-start", borderWidth: 3, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 2 },
+  typed: { fontSize: 13.5, lineHeight: 19, marginBottom: 6, color: C.text },
+  panel: { backgroundColor: C.glass, borderWidth: 1, marginBottom: 12, flexDirection: "row" },
+  edge: { width: 4 },
+  panelBody: { flex: 1, padding: 12 },
+  btn: { paddingVertical: 13, paddingHorizontal: 16, borderWidth: 1.5, alignItems: "center", marginTop: 8 },
+  btnGlow: { shadowColor: C.cyan, shadowOpacity: 0.55, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } },
+  btnText: { fontFamily: F.displayMed, fontSize: 19, letterSpacing: 2, textTransform: "uppercase" },
+  input: { backgroundColor: C.paper2, color: C.text, borderColor: C.line, borderWidth: 1, padding: 12, fontSize: 16, marginBottom: 8, fontFamily: F.typed },
+  choice: { flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderWidth: 1, marginBottom: 6 },
+  choiceDot: { width: 12, height: 12, borderWidth: 1.5 },
+  stamp: { alignSelf: "flex-start", borderWidth: 3, paddingHorizontal: 10, paddingVertical: 2 },
   stampText: { fontFamily: F.display, letterSpacing: 2, textTransform: "uppercase" },
   banner: { padding: 10, alignItems: "center" },
-  bannerText: { color: C.ink, fontFamily: F.displayMed, fontSize: 16 },
-  meterBg: { height: 7, backgroundColor: C.ink, borderRadius: 2, overflow: "hidden", marginBottom: 10 },
-  meterFill: { height: 7 },
+  bannerText: { color: C.ink, fontFamily: F.displayMed, fontSize: 15, letterSpacing: 1.5, textTransform: "uppercase" },
+  meterBg: { height: 6, backgroundColor: C.ink, overflow: "hidden", marginBottom: 10, borderWidth: 1, borderColor: C.line },
+  meterFill: { height: 6 },
 });
