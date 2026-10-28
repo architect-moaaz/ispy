@@ -12,6 +12,7 @@ import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
+import { allParams } from "./params.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
@@ -204,7 +205,7 @@ app.post("/v1/admin/pause", async (req) => {
   return { paused };
 });
 app.post("/v1/admin/tick", async () => { await tick(true); return { ok: true }; });
-app.get("/v1/admin/director", async () => directorAgent.status());
+app.get("/v1/admin/director", async () => ({ ...directorAgent.status(), params: allParams() }));
 
 // ---- the World Director lives here; the forced tick remains for tests ----
 let lastAudit = 0;

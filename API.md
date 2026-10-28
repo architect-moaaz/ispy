@@ -69,3 +69,9 @@ heartbeat of 20 s while anyone is deployed and 5 min when the sector is empty. H
 (Narrator proposes the fiction and parameters, Arbiter holds the win rule and resolves) → dispatches
 (6 h) → audit (1 h). The Narrator uses Claude when configured and scripted text otherwise; it only
 narrates facts already committed to the ledger. The Auditor never changes state; it raises flags.
+
+World parameters (params.ts): bounded knobs the Director tunes every 10 minutes from the last hour's
+signals (reward multiplier, walk scale, contests per hour, contest appetite boost, pool depth, offer
+TTL, decoy rate, desk-link fallback). Each change is a `world_param.changed` ledger event; untouched
+knobs drift back to default; the Auditor flags churn. Chiefs and operatives never see the Director:
+chief replans arrive as "situation updates from your analysts", and no player copy names an arbiter.

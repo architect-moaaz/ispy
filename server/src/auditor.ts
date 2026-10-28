@@ -53,7 +53,9 @@ export function runAudit(hours = 1): { metrics: Record<string, unknown>; flags: 
   const overrides = get<{ n: number }>("SELECT COUNT(*) n FROM events WHERE actor='owner' AND at>?", start)!.n;
   if (overrides) flags.push({ severity: "info", code: "OWNER_INTERVENTIONS", detail: `${overrides} owner action${overrides === 1 ? "" : "s"} in the window` });
 
-  const metrics = { windowHours: hours, perFaction, overrides, plansFallback, plansTotal };
+  const tuned = all<{ payload: string }>("SELECT payload FROM events WHERE type='world_param.changed' AND at>?", start).map((r) => parse<any>(r.payload, {}));
+  if (tuned.length >= 6) flags.push({ severity: "warn", code: "PARAM_CHURN", detail: `${tuned.length} world parameter changes in ${hours}h: ${tuned.map((t) => `${t.key}→${t.to}`).join(", ")}` });
+  const metrics = { windowHours: hours, perFaction, overrides, plansFallback, plansTotal, paramChanges: tuned };
   run("INSERT INTO audits(id,window_start,window_end,metrics,flags,at) VALUES(?,?,?,?,?,?)", uid(), start, end, json(metrics), json(flags), end);
   logEvent("audit.completed", "auditor", { flags: flags.length, critical: flags.filter((f) => f.severity === "critical").length }, null);
   return { metrics, flags };

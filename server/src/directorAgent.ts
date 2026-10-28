@@ -7,6 +7,7 @@ import { chiefSay, refreshPlans, refreshPool } from "./engine.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
+import { param, setParam, PARAM_SPEC } from "./params.ts";
 
 /**
  * The World Director as a resident agent. It does not wait for a clock: every ledger
@@ -30,6 +31,7 @@ class DirectorAgent {
   private busy = false;
   private lastAudit = 0;
   private lastHousekeeping = 0;
+  private lastTuning = 0;
   private log: { at: string; what: string; detail?: unknown }[] = [];
 
   start() {
@@ -186,6 +188,7 @@ class DirectorAgent {
           await director.publishDispatches(false);
           this.lastHousekeeping = t;
         }
+        if (t - this.lastTuning > 10 * 60_000) { this.tune(); this.lastTuning = t; }
         if (t - this.lastAudit > 3600_000) { const a = auditor.runAudit(1); this.lastAudit = t; if (a.flags.some((f) => f.severity === "critical")) this.note("audit raised critical flags", a.flags); }
       }
     } catch (e) {
@@ -194,6 +197,48 @@ class DirectorAgent {
       this.busy = false;
       const anyone = this.operatives.size > 0;
       this.timer = setTimeout(() => void this.heartbeat(), anyone ? FAST_MS : SLOW_MS);
+    }
+  }
+
+  /**
+   * Shape the game from what the last hour shows. Small, bounded, reversible moves; each one logged.
+   * The signals: declines vs accepts (walks too long?), idle deployed operatives (not enough work?),
+   * contests formed vs field agents (too few or too many encounters?), rejected accusations (decoys too thick?).
+   */
+  private tune() {
+    const since = new Date(Date.now() - 3600_000).toISOString();
+    const n = (sql: string, ...a: any[]) => get<{ n: number }>(sql, ...a)!.n;
+    const offered = n("SELECT COUNT(*) n FROM events WHERE type='mission.offered' AND at>?", since);
+    const accepted = n("SELECT COUNT(*) n FROM events WHERE type='mission.accepted' AND at>?", since);
+    const dropped = n("SELECT COUNT(*) n FROM events WHERE type IN ('mission.expired','mission.abandoned') AND at>?", since);
+    const verified = n("SELECT COUNT(*) n FROM missions WHERE mode='field' AND state='completed' AND completed_at>?", since);
+    const contests = n("SELECT COUNT(*) n FROM events WHERE type='contest.formed' AND at>?", since);
+    const fieldAgents = [...this.operatives.values()].filter((o) => o.mode === "field").length;
+    const idle = [...this.chiefs.values()].reduce((s, c) => s + c.idleAgents, 0);
+    const rejected = n("SELECT COUNT(*) n FROM events WHERE type='case.rejected' AND at>?", since);
+    const confirmed = n("SELECT COUNT(*) n FROM events WHERE type='case.confirmed' AND at>?", since);
+    const step = (key: keyof typeof PARAM_SPEC, delta: number, reason: string) => {
+      const v = setParam(key, param(key) + delta, "director", reason);
+      if (v != null) this.note("tuned world", { key, to: v, reason });
+    };
+    // Walks: many offers, few accepts, drops piling up → shorter walks and a sweeter reward; the reverse eases back.
+    if (offered >= 6 && accepted / offered < 0.4) { step("walkScale", -0.1, `only ${accepted}/${offered} offers accepted`); step("rewardMultiplier", +0.1, "low acceptance"); }
+    else if (offered >= 6 && accepted / offered > 0.8 && param("walkScale") < 1) step("walkScale", +0.1, "offers are being accepted again");
+    if (dropped >= 4 && dropped > verified) step("deskLinkFallbackMin", -3, `${dropped} missions dropped against ${verified} verified`);
+    // Work supply: idle deployed operatives → deeper pools; nobody idle for a long stretch → ease back.
+    if (idle >= 2) step("poolPerMode", +1, `${idle} deployed operatives idle`);
+    else if (idle === 0 && fieldAgents > 0 && param("poolPerMode") > PARAM_SPEC.poolPerMode.def) step("poolPerMode", -1, "nobody idle");
+    // Encounters: plenty of field agents but no contests → raise appetite; contests every few minutes → lower it.
+    if (fieldAgents >= 4 && contests === 0) step("contestAppetiteBoost", +0.1, `${fieldAgents} field agents and no contests in an hour`);
+    else if (contests >= 8) step("contestAppetiteBoost", -0.1, `${contests} contests in an hour`);
+    // Investigations: rejections outnumbering confirmations → thin the decoys; nobody failing → thicken them.
+    if (rejected >= 3 && rejected > confirmed * 2) step("decoyRate", -0.05, `${rejected} rejected accusations vs ${confirmed} confirmed`);
+    else if (confirmed >= 3 && rejected === 0) step("decoyRate", +0.05, `${confirmed} confirmed accusations with no failures`);
+    // Drift home: anything that no signal touched creeps back toward default.
+    for (const key of Object.keys(PARAM_SPEC) as (keyof typeof PARAM_SPEC)[]) {
+      const def = PARAM_SPEC[key].def, cur = param(key);
+      const recently = get("SELECT 1 FROM events WHERE type='world_param.changed' AND at>? AND json_extract(payload,'$.key')=?", since, key);
+      if (!recently && Math.abs(cur - def) > 1e-6) setParam(key, cur + (def - cur) * 0.5, "director", "drifting back toward default");
     }
   }
 

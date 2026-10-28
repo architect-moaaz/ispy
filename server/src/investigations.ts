@@ -4,6 +4,7 @@ import { all, get, run, tx, now, uid, logEvent } from "./db.ts";
 import { FACTIONS, factionById } from "./content.ts";
 import { pick, rand } from "./puzzles.ts";
 import { award } from "./rewards.ts";
+import { param } from "./params.ts";
 
 /**
  * Investigations: Detect -> Observe -> Investigate -> Accuse -> Confirm.
@@ -14,7 +15,7 @@ import { award } from "./rewards.ts";
 export const ACCUSE_THRESHOLD = 0.8;
 export const CLUES_PER_DAY = 3;
 export const WIRE_COST = 10;
-const DECOY_RATE = 0.22;
+
 const COOLDOWN_MS = 60 * 60_000;
 
 interface CaseRow { id: string; investigator_id: string; target_id: string; subject: string; state: string; verdict: string | null; cooldown_until: string | null; created_at: string; updated_at: string }
@@ -52,7 +53,7 @@ const FILES: Record<string, string[]> = {
 export function addEvidence(caseId: string, kind: keyof typeof FILES, source: string, seed: string): EvidenceRow {
   const c = get<CaseRow>("SELECT * FROM cases WHERE id=?", caseId)!;
   const target = get<{ faction_id: FactionId }>("SELECT faction_id FROM players WHERE id=?", c.target_id)!;
-  const decoy = rand(seed + ":decoy") < DECOY_RATE;
+  const decoy = rand(seed + ":decoy") < param("decoyRate");
   const hint = decoy ? pick(FACTIONS.filter((f) => f.id !== target.faction_id), seed + ":wrong").id : target.faction_id;
   const weight = Math.round((0.45 + rand(seed + ":w") * 0.5) * 100) / 100;
   const n = String(10 + Math.floor(rand(seed + ":n") * 89));
@@ -191,6 +192,6 @@ export function accuse(playerId: string, caseId: string, factionId: FactionId): 
     run("UPDATE cases SET state='cooldown', cooldown_until=?, updated_at=? WHERE id=?", new Date(Date.now() + COOLDOWN_MS).toISOString(), now(), caseId);
     award(playerId, 0, -5, "Accusation rejected");
     logEvent("case.rejected", "arbiter", { caseId, subject: c.subject, accused: factionId }, playerId);
-    return { correct: false, reward: { xp: 0, trust: -5 }, debrief: "The Arbiter found no match. The subject goes quiet for an hour, and your trust takes the hit." };
+    return { correct: false, reward: { xp: 0, trust: -5 }, debrief: "No match. The subject goes quiet for an hour, and your trust takes the hit." };
   });
 }

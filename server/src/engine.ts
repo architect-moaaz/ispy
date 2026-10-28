@@ -9,15 +9,16 @@ import { FACTIONS, PERSONAS, RANKS, factionById } from "./content.ts";
 import { makeAnalysis, makeCipher, norm, pick, rand } from "./puzzles.ts";
 import { planArea, type AreaPlan } from "./chiefs.ts";
 import { award, rankFor } from "./rewards.ts";
+import { param } from "./params.ts";
 import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 const PRESENCE_TTL_MS = 15 * 60_000;
-const OFFER_TTL_MS = 90_000;
+const OFFER_TTL_MS = () => param("offerTtlSec") * 1000;
 const MISSION_TTL_MS = 90 * 60_000;
 const PLAN_TTL_MS = 60 * 60_000;
-const POOL_PER_MODE = 3;
+
 const CONTEST_WINDOW_MS = 30 * 60_000;
 const WALK_SPEED_MAX_MPS = 25_000 / 3600;
 
@@ -50,7 +51,7 @@ export function playerView(id: string): Player {
   return {
     id: p.id, codename: p.codename, factionId: p.faction_id, rank: r.rank, xp: p.xp, trust: p.trust,
     skills: { observation: 0.5, reasoning: 0.5, cipher: 0.5, cooperation: 0.5, ...parse<Partial<Skills>>(p.skills, {}) },
-    walkRadiusM: r.walkM, dailyFieldCap: r.cap, fieldToday, credits: p.credits ?? 0,
+    walkRadiusM: Math.round(r.walkM * param("walkScale")), dailyFieldCap: r.cap, fieldToday, credits: p.credits ?? 0,
   };
 }
 export const playerFaction = (p: Player): Faction | null => (p.factionId ? factionById(p.factionId) : null);
@@ -192,11 +193,11 @@ function maybeContest(missionId: string, factionId: FactionId, targetId: string,
     targetId, factionId, since);
   if (!rival) return;
   const rivalPlan = latestPlan(rival.faction_id, rival.area_id)?.plan;
-  const p = Math.min(appetite, rivalPlan?.contestAppetite ?? 0.3);
+  const p = Math.min(1, Math.max(0, Math.min(appetite, rivalPlan?.contestAppetite ?? 0.3) + param("contestAppetiteBoost")));
   if (rand(missionId + rival.id) > p) return;
   const perHour = get<{ n: number }>("SELECT COUNT(DISTINCT contested_group_id) n FROM missions WHERE contested_group_id IS NOT NULL AND created_at>?",
     new Date(Date.now() - 3_600_000).toISOString())!.n;
-  if (perHour >= 3) return;
+  if (perHour >= param("contestsPerHour")) return;
   const g = uid();
   run("UPDATE missions SET contested_group_id=? WHERE id IN (?,?)", g, missionId, rival.id);
   logEvent("contest.formed", "allocator", { group: g, missions: [missionId, rival.id], targetId }, null);
@@ -214,7 +215,7 @@ export function refreshPool() {
       if (!plan) continue;
       for (const mode of ["field", "desk"] as Mode[]) {
         const have = get<{ n: number }>("SELECT COUNT(*) n FROM missions WHERE faction_id=? AND area_id=? AND mode=? AND state='pool'", f.id, area.id, mode)!.n;
-        for (let i = have; i < POOL_PER_MODE; i++) {
+        for (let i = have; i < param("poolPerMode"); i++) {
           const seed = `${f.id}:${area.id}:${mode}:${now()}:${i}`;
           const template = weightedTemplate(plan.mix, mode, seed);
           tx(() => buildMission(f, area, template, mode, targets, plan, seed));
@@ -240,7 +241,7 @@ function buildMission(f: Faction, area: AreaRow, template: TemplateId, mode: Mod
       const cipher = makeCipher(seed + ":c");
       const deskId = createMission(f, area.id, "CIPHER", "desk", null, { puzzle: cipher, forField: id }, seed + ":d");
       const linkId = uid();
-      run("INSERT INTO desk_links(id,desk_mission_id,field_mission_id,state,fallback_after_s) VALUES(?,?,?,?,?)", linkId, deskId, id, "open", 15 * 60);
+      run("INSERT INTO desk_links(id,desk_mission_id,field_mission_id,state,fallback_after_s) VALUES(?,?,?,?,?)", linkId, deskId, id, "open", Math.round(param("deskLinkFallbackMin") * 60));
       run("UPDATE missions SET desk_link_id=?, params=? WHERE id=?", linkId, json({ pickupCode: cipher.answer }), id);
       run("UPDATE missions SET desk_link_id=? WHERE id=?", linkId, deskId);
     }
@@ -321,7 +322,7 @@ export function offersFor(player: Player): OfferCard[] {
     for (const { m } of scored.slice(0, 2 - open.length)) {
       const id = uid();
       run("INSERT INTO offers(id,mission_id,player_id,state,expires_at,created_at) VALUES(?,?,?,?,?,?)",
-        id, m.id, player.id, "open", new Date(Date.now() + OFFER_TTL_MS).toISOString(), now());
+        id, m.id, player.id, "open", new Date(Date.now() + OFFER_TTL_MS()).toISOString(), now());
       run("UPDATE missions SET state='offered' WHERE id=?", m.id);
       logEvent("mission.offered", "matcher", { missionId: m.id, template: m.template_id }, player.id);
     }
@@ -456,7 +457,7 @@ function makeCipherPrompt(answer: string, seed: string) {
 function complete(player: Player, m: MissionRow, trust: number, distance: number): ScanResponse {
   const f = factionById(m.faction_id);
   let contestOutcome: "won" | "lost" | null = null;
-  let xp = m.reward_xp;
+  let xp = Math.round(m.reward_xp * param("rewardMultiplier"));
   if (m.contested_group_id) {
     const rivalDone = get<MissionRow>("SELECT * FROM missions WHERE contested_group_id=? AND id<>? AND state='completed'", m.contested_group_id, m.id);
     contestOutcome = rivalDone ? "lost" : "won";

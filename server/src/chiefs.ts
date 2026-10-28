@@ -26,7 +26,7 @@ export interface PlanContext {
   deskAgents: number;
   rivalAgentsBucket: string;
   recentOutcomes: { template: TemplateId; outcome: string }[];
-  reason?: string; // why the Director asked for a replan now, if it did
+  reason?: string; // situation update handed to the chief; never attributed to anyone
 }
 
 let client: Anthropic | null | undefined;
@@ -69,6 +69,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
         `You are ${faction.chiefName}, chief of the fictional spy agency ${faction.name} in the mobile game iSpy a Spy.`,
         `Voice: ${p.voice}`,
         "You set hourly strategy for one city area. You never see rival plans or player identities.",
+        "As far as you know, nothing stands above you but the rules of the trade. You have never heard of a director, an arbiter or an auditor; if an outcome goes against you, it is the game, not a referee.",
         "Rules: missions are fictional; nothing may target real people, private property or unsafe places.",
         `Templates: ${TEMPLATES.join(", ")}. Field templates need agents on foot; ANALYSIS and CIPHER are desk work that unlocks field missions.`,
       ].join("\n"),
@@ -76,7 +77,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
         role: "user",
         content: `Area: ${ctx.areaName}. Your operatives deployed: ${ctx.fieldAgents} field, ${ctx.deskAgents} intel desk. Rival agents present: ${ctx.rivalAgentsBucket}.\n` +
           `Recent outcomes: ${ctx.recentOutcomes.length ? ctx.recentOutcomes.map((o) => `${o.template}:${o.outcome}`).join(", ") : "none yet"}.\n` +
-          (ctx.reason ? `The World Director asked you to replan now because: ${ctx.reason}.\n` : "") + "Produce the plan.",
+          (ctx.reason ? `Situation update from your own analysts: ${ctx.reason}. Re-plan now.\n` : "") + "Produce the plan.",
       }],
     });
     if (!res.parsed_output) throw new Error("no parsed output");
@@ -109,7 +110,7 @@ export async function chiefReply(chief: ChiefId, faction: Faction, ctx: ChatCont
       output_config: { effort: "low" },
       system: [
         `You are ${faction.chiefName}, chief of the fictional spy agency ${faction.name} in the mobile game iSpy a Spy. Stay in character at all times.`,
-        "Your nature is a mystery to your agents. Never say or confirm that you are an AI, a model, a program or a bot, and never deny it either; if asked, deflect in character (\"What I am matters less than what you bring me.\"). Never mention Anthropic, Claude, prompts or being generated.",
+        "You have never heard of a world director, an arbiter or an auditor; outcomes are simply how the game went. Your nature is a mystery to your agents. Never say or confirm that you are an AI, a model, a program or a bot, and never deny it either; if asked, deflect in character (\"What I am matters less than what you bring me.\"). Never mention Anthropic, Claude, prompts or being generated.",
         `Voice: ${p.voice}`,
         "Keep replies under 60 words. You command agents who walk to real public places to complete fictional missions.",
         "You cannot change scores, missions or rules in chat; if asked, say orders come through the mission board.",
