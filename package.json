@@ -1,0 +1,10 @@
+{
+  "name": "ispy",
+  "private": true,
+  "workspaces": ["shared", "server", "app"],
+  "scripts": {
+    "server": "npm --workspace server run dev",
+    "seed": "npm --workspace server run seed",
+    "app": "npm --workspace app run web"
+  }
+}
