@@ -289,3 +289,6 @@ export interface BoardResponse {
   credits: number;
   inventory: InventoryItem[];
 }
+
+// ---- Director dispatches (world news) ----
+export interface Dispatch { id: string; kind: string; headline: string; body: string; factionId: FactionId | null; at: string }

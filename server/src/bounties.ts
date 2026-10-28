@@ -3,6 +3,7 @@ import { all, get, run, tx, now, uid, json, parse, logEvent } from "./db.ts";
 import { FACTIONS, RANKS, factionById } from "./content.ts";
 import { pick, rand } from "./puzzles.ts";
 import { award, rankFor, rankIndex } from "./rewards.ts";
+import { proposeCampaign, writeEpilogue } from "./director.ts";
 
 /**
  * Bounties are chief-issued contracts with non-cash rewards (XP + intel credits).
@@ -109,16 +110,18 @@ export function onMissionVerified(playerId: string, m: { template_id: string; mo
 // ---------- global event ----------
 const FRAGMENTS = 5;
 
-export function refreshEvent() {
+export async function refreshEvent() {
   const active = get<EventRow>("SELECT * FROM world_events WHERE state='active'");
-  if (active) { if (active.ends_at <= now()) resolveEvent(active); return; }
+  if (active) { if (active.ends_at <= now()) await resolveEvent(active); return; }
   const recent = get<EventRow>("SELECT * FROM world_events WHERE state='resolved' AND ends_at > ?", new Date(Date.now() - 6 * 3600_000).toISOString());
   if (recent) return; // breathing room between campaigns
+  // The Narrator proposes the fiction and the parameters; the win rule itself is fixed here.
+  const { spec, source } = await proposeCampaign();
   const progress = Object.fromEntries(FACTIONS.map((f) => [f.id, 0]));
   run("INSERT INTO world_events(id,name,brief,state,starts_at,ends_at,ruleset,progress) VALUES(?,?,?,?,?,?,?,?)",
-    uid(), "OPERATION ECLIPSE", "Five fragments of one encrypted dossier are in play across the sector. Every verified drop or extraction recovers a fragment for your agency. The first to five owns the epilogue.",
-    "active", now(), new Date(Date.now() + 24 * 3600_000).toISOString(), json({ fragments: FRAGMENTS, counts: ["DEAD_DROP", "EXTRACTION"] }), json(progress));
-  logEvent("world_event.published", "director", { name: "OPERATION ECLIPSE" }, null);
+    uid(), spec.name, spec.brief, "active", now(), new Date(Date.now() + spec.hours * 3600_000).toISOString(),
+    json({ fragments: spec.fragments, counts: spec.counts }), json(progress));
+  logEvent("world_event.published", "director", { name: spec.name, source, fragments: spec.fragments, counts: spec.counts }, null);
 }
 
 function eventProgress(playerId: string, m: { template_id: string }) {
@@ -131,17 +134,18 @@ function eventProgress(playerId: string, m: { template_id: string }) {
   progress[f] = Math.min(rules.fragments, (progress[f] ?? 0) + 1);
   run("UPDATE world_events SET progress=? WHERE id=?", json(progress), ev.id);
   logEvent("world_event.fragment", "authority", { event: ev.name, faction: f, fragments: progress[f] }, playerId);
-  if (progress[f] >= rules.fragments) resolveEvent(get<EventRow>("SELECT * FROM world_events WHERE id=?", ev.id)!);
+  if (progress[f] >= rules.fragments) void resolveEvent(get<EventRow>("SELECT * FROM world_events WHERE id=?", ev.id)!);
 }
 
 /** Fixed rule: most fragments wins; ties go to whoever got there first (lower updated order = earlier). */
-function resolveEvent(ev: EventRow) {
+async function resolveEvent(ev: EventRow) {
+  // Commit the verdict first (Arbiter), then let the Narrator write the epilogue.
   const progress = parse<Record<string, number>>(ev.progress, {});
   const ranked = FACTIONS.map((f) => ({ f, n: progress[f.id] ?? 0 })).sort((a, b) => b.n - a.n);
   const winner = ranked[0].n > 0 ? ranked[0].f : null;
-  const epilogue = winner
-    ? `${winner.name} reassembled the dossier with ${ranked[0].n} fragment${ranked[0].n === 1 ? "" : "s"}. ${winner.chiefName} sends regards to the other chiefs.`
-    : "Nobody recovered a single fragment. The dossier stays encrypted, and the chiefs say nothing.";
+  if (get<{ state: string }>("SELECT state FROM world_events WHERE id=?", ev.id)?.state !== "active") return;
+  run("UPDATE world_events SET state='resolving' WHERE id=?", ev.id);
+  const epilogue = await writeEpilogue(ev.name, winner?.id ?? null, ranked[0].n);
   tx(() => {
     run("UPDATE world_events SET state='resolved', resolved=? WHERE id=?", json({ winner: winner?.id ?? null, epilogue }), ev.id);
     if (winner) for (const p of all<{ id: string }>("SELECT id FROM players WHERE faction_id=?", winner.id)) award(p.id, 150, 1, `Campaign won: ${ev.name}`, 40);

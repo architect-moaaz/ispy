@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import type { BoardResponse, BountyCard as BountyT } from "@ispy/shared";
+import type { BoardResponse, BountyCard as BountyT, Dispatch } from "@ispy/shared";
 import { api } from "../api";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Dossier as Panel, Screen, Spinner, fmtCountdown } from "../ui";
@@ -10,10 +10,11 @@ import { ART } from "../art";
 /** Bounty board, the live global event, and the operative's inventory. */
 export function Board() {
   const [data, setData] = useState<BoardResponse | null>(null);
+  const [news, setNews] = useState<Dispatch[]>([]);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const load = () => api.board().then(setData).catch((e) => setErr(e.message));
+  const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {})]).catch((e) => setErr(e.message));
   useEffect(() => { load(); const t = setInterval(() => setNow(Date.now()), 1000); const p = setInterval(load, 20000); return () => { clearInterval(t); clearInterval(p); }; }, []);
 
   const claim = async (id: string) => {
@@ -53,6 +54,20 @@ export function Board() {
         </View>
       )}
 
+      {news.length > 0 && (
+        <>
+          <Text style={s.section}>World dispatches</Text>
+          {news.slice(0, 3).map((d) => (
+            <Panel key={d.id} tab={d.factionId ? factionColor(d.factionId) : C.cyanDim} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={s.title}>{d.headline}</Text>
+                <Text style={s.sub}>{new Date(d.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+              </View>
+              <Text style={[s.sub, { color: C.text }]}>{d.body}</Text>
+            </Panel>
+          ))}
+        </>
+      )}
       <Text style={s.section}>Contracts</Text>
       {data.bounties.length === 0 && <Body dim>No contracts posted yet. The chiefs publish new ones every few minutes.</Body>}
       {data.bounties.map((b) => <BountyCard key={b.id} b={b} now={now} busy={busy === b.id} onClaim={() => claim(b.id)} />)}

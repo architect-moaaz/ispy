@@ -37,6 +37,7 @@ function llm(): Anthropic | null {
   return client;
 }
 export const llmEnabled = () => llm() !== null;
+export const llmClient = llm;
 
 /** Deterministic plan from the persona; used when no model is configured or a call fails. */
 export function fallbackPlan(chief: ChiefId, ctx: PlanContext): AreaPlan {

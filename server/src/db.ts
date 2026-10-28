@@ -86,6 +86,14 @@ CREATE TABLE IF NOT EXISTS bounty_claims (
   id TEXT PRIMARY KEY, bounty_id TEXT NOT NULL, player_id TEXT NOT NULL, progress INTEGER NOT NULL DEFAULT 0,
   state TEXT NOT NULL DEFAULT 'active', claimed_at TEXT NOT NULL, completed_at TEXT, UNIQUE(bounty_id, player_id)
 );
+CREATE TABLE IF NOT EXISTS dispatches (
+  id TEXT PRIMARY KEY, kind TEXT NOT NULL, headline TEXT NOT NULL, body TEXT NOT NULL,
+  faction_id TEXT, source TEXT NOT NULL, at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audits (
+  id TEXT PRIMARY KEY, window_start TEXT NOT NULL, window_end TEXT NOT NULL,
+  metrics TEXT NOT NULL, flags TEXT NOT NULL, at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS world_events (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, brief TEXT NOT NULL, state TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL,
   ruleset TEXT NOT NULL, progress TEXT NOT NULL, resolved TEXT

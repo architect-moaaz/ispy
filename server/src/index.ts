@@ -9,6 +9,8 @@ import { norm } from "./puzzles.ts";
 import { chiefReply, llmEnabled } from "./chiefs.ts";
 import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
+import * as director from "./director.ts";
+import * as auditor from "./auditor.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
@@ -178,6 +180,10 @@ app.post<{ Params: { id: string } }>("/v1/investigations/:id/accuse", async (req
 app.get("/v1/bounties", async (req) => bounties.board(need(req).id));
 app.post<{ Params: { id: string } }>("/v1/bounties/:id/claim", async (req) => { bounties.claimBounty(need(req).id, req.params.id); return { ok: true }; });
 app.get("/v1/world/event", async () => ({ event: bounties.currentEvent() }));
+app.get("/v1/world/dispatches", async () => ({ dispatches: director.recentDispatches() }));
+app.get("/v1/admin/audit", async () => ({ audits: auditor.latestAudits() }));
+app.post("/v1/admin/audit", async () => auditor.runAudit(1));
+app.post("/v1/admin/dispatch", async () => { await director.publishDispatches(true); return { dispatches: director.recentDispatches(3) }; });
 
 app.get("/v1/profile/history", async (req) => ({ events: history(need(req).id) }));
 
@@ -199,8 +205,16 @@ app.post("/v1/admin/pause", async (req) => {
 app.post("/v1/admin/tick", async () => { await tick(true); return { ok: true }; });
 
 // ---- loops: hourly strategy, 5-minute pool ----
+let lastAudit = 0;
 async function tick(force = false) {
-  try { await refreshPlans(force); refreshPool(); bounties.refreshBounties(); bounties.refreshEvent(); } catch (e) { app.log.error(e, "tick failed"); }
+  try {
+    await refreshPlans(force);
+    refreshPool();
+    bounties.refreshBounties();
+    await bounties.refreshEvent();
+    await director.publishDispatches(force);
+    if (force || Date.now() - lastAudit > 3600_000) { auditor.runAudit(1); lastAudit = Date.now(); }
+  } catch (e) { app.log.error(e, "tick failed"); }
 }
 await tick();
 setInterval(() => void tick(), 5 * 60_000);

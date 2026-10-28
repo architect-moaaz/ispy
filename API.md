@@ -54,3 +54,12 @@ Evidence is created by the authority when a field mission verifies while a rival
 (the contested rival if any); analyst (desk) completions expose one decoy. Bounties progress on
 verified missions matching their criteria; the Director seeds OPERATION ECLIPSE (24 h, five
 fragments from dead drops and extractions) and the Arbiter resolves it on a fixed rule.
+| GET | /v1/world/dispatches | → `{ dispatches: Dispatch[] }` (Narrator's world news, every 6 h) |
+| GET | /v1/admin/audit | → `{ audits }` (Auditor reports: per-faction metrics and flags, hourly) |
+| POST | /v1/admin/audit | → run an audit now |
+| POST | /v1/admin/dispatch | → force a dispatch now |
+
+World Director loop (every 5 min): chief plans (hourly) → mission pool → bounties → campaign lifecycle
+(Narrator proposes the fiction and parameters, Arbiter holds the win rule and resolves) → dispatches
+(6 h) → audit (1 h). The Narrator uses Claude when configured and scripted text otherwise; it only
+narrates facts already committed to the ledger. The Auditor never changes state; it raises flags.
