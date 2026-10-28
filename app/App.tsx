@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { useFonts, BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold } from "@expo-google-fonts/barlow-condensed";
+import { CourierPrime_400Regular, CourierPrime_700Bold } from "@expo-google-fonts/courier-prime";
 import type { Faction, Player, Presence } from "@ispy/shared";
 import { api, loadToken, setToken, setUnauthorizedHandler, type World } from "./src/api";
-import { C, factionColor } from "./src/theme";
+import { C, F, factionColor } from "./src/theme";
 import { Banner, Spinner } from "./src/ui";
 import { Welcome } from "./src/screens/Welcome";
 import { Assessment } from "./src/screens/Assessment";
@@ -14,6 +16,7 @@ import { Profile } from "./src/screens/Profile";
 type Tab = "hq" | "duty" | "profile";
 
 export default function App() {
+  const [fontsLoaded] = useFonts({ BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold, CourierPrime_400Regular, CourierPrime_700Bold });
   const [booted, setBooted] = useState(false);
   const [player, setPlayer] = useState<Player | null>(null);
   const [faction, setFaction] = useState<Faction | null>(null);
@@ -59,7 +62,7 @@ export default function App() {
     return () => clearInterval(id);
   }, [player?.id, refreshMe]);
 
-  if (!booted) return <View style={s.root}><Spinner /></View>;
+  if (!booted || !fontsLoaded) return <View style={s.root}><Spinner /></View>;
 
   let body: React.ReactNode;
   if (!player) body = <Welcome onRegistered={(p) => { setPlayer(p); }} />;
@@ -70,17 +73,19 @@ export default function App() {
 
   const inGame = !!player?.factionId;
   const accent = factionColor(player?.factionId);
+  const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Duty"], ["profile", player?.codename ?? "You"]];
   return (
     <View style={s.root}>
       <StatusBar style="light" />
-      {offline && <Banner text="Server unreachable. Retrying…" color={C.danger} />}
-      {world?.paused && <Banner text="The world is paused by the owner." />}
+      {offline && <Banner text="Can't reach the bureau. Retrying." color={C.stamp} />}
+      {world?.paused && <Banner text="The world is paused." />}
       <View style={s.body}>{body}</View>
       {inGame && (
         <View style={s.tabs}>
-          {(["hq", "duty", "profile"] as Tab[]).map((t) => (
+          {tabs.map(([t, label]) => (
             <Pressable key={t} onPress={() => { setTab(t); refreshMe(); }} style={s.tab} accessibilityRole="button" testID={`tab-${t}`}>
-              <Text style={[s.tabText, tab === t && { color: accent }]}>{t === "hq" ? "HQ" : t === "duty" ? "DUTY" : "PROFILE"}</Text>
+              <Text style={[s.tabText, tab === t && { color: C.text }]} numberOfLines={1}>{label}</Text>
+              <View style={[s.tabLine, tab === t && { backgroundColor: accent }]} />
             </Pressable>
           ))}
         </View>
@@ -90,9 +95,10 @@ export default function App() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+  root: { flex: 1, backgroundColor: C.ink },
   body: { flex: 1 },
-  tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.panel, paddingBottom: 18 },
-  tab: { flex: 1, alignItems: "center", paddingVertical: 14 },
-  tabText: { color: C.dim, fontWeight: "700", letterSpacing: 2, fontSize: 12 },
+  tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.ink, paddingBottom: 16 },
+  tab: { flex: 1, alignItems: "center", paddingTop: 12, gap: 6 },
+  tabText: { color: C.dim, fontFamily: F.display, fontSize: 19 },
+  tabLine: { height: 3, width: 36, borderRadius: 2, backgroundColor: "transparent" },
 });

@@ -3,21 +3,17 @@ import { Text, View } from "react-native";
 import type { MissionSummary, Mode, OfferCard, Presence } from "@ispy/shared";
 import { api } from "../api";
 import { currentFix, getSimFix } from "../location";
-import { C, mono } from "../theme";
-import { Button, Card, H1, Label, P, Screen, fmtCountdown } from "../ui";
+import { C, F } from "../theme";
+import { Body, Button, Display, Dossier, Kicker, Panel, Screen, Stamp, Typed, fmtCountdown } from "../ui";
 import { DevPanel } from "./DevPanel";
 import { Desk } from "./Desk";
 import { Mission } from "./Mission";
 
-export function Duty({
-  presence,
-  devSim,
-  onPresence,
-}: {
-  presence: Presence | null;
-  devSim: boolean;
-  onPresence: (p: Presence | null) => void;
-}) {
+const TEMPLATE_NAME: Record<string, string> = {
+  RECON: "Reconnaissance", DEAD_DROP: "Dead drop", EXTRACTION: "Extraction", ANALYSIS: "Analysis", CIPHER: "Cipher",
+};
+
+export function Duty({ presence, devSim, onPresence }: { presence: Presence | null; devSim: boolean; onPresence: (p: Presence | null) => void }) {
   const [offers, setOffers] = useState<OfferCard[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [mission, setMission] = useState<MissionSummary | null>(null);
@@ -49,18 +45,11 @@ export function Duty({
     const p = setInterval(poll, 5000);
     const hb = setInterval(async () => {
       try {
-        const sim = getSimFix();
-        const f = sim ?? (await currentFix());
+        const f = getSimFix() ?? (await currentFix());
         onPresence(await api.heartbeat({ lat: f.lat, lng: f.lng, sim: f.sim }));
-      } catch {
-        // keep polling; the server expires presence on its own
-      }
+      } catch { /* the server expires presence on its own */ }
     }, 120000);
-    return () => {
-      alive = false;
-      clearInterval(p);
-      clearInterval(hb);
-    };
+    return () => { alive = false; clearInterval(p); clearInterval(hb); };
   }, [onDuty, mode, mission?.id]);
 
   useEffect(() => {
@@ -74,9 +63,8 @@ export function Duty({
     setBusy(true);
     setErr(null);
     try {
-      if (m === "desk") {
-        onPresence(await api.checkIn({ mode: "desk" }));
-      } else {
+      if (m === "desk") onPresence(await api.checkIn({ mode: "desk" }));
+      else {
         const f = await currentFix();
         onPresence(await api.checkIn({ mode: "field", lat: f.lat, lng: f.lng, accuracyM: f.accuracyM, mock: f.mock, sim: f.sim }));
       }
@@ -90,75 +78,44 @@ export function Duty({
 
   const checkOut = async () => {
     setBusy(true);
-    try {
-      await api.checkOut();
-      onPresence(null);
-      setOffers([]);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
+    try { await api.checkOut(); onPresence(null); setOffers([]); }
+    catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
   };
 
   const accept = async (o: OfferCard) => {
     setBusy(true);
     setErr(null);
-    try {
-      const r = await api.acceptMission(o.offerId);
-      setMission(r.mission);
-      setOffers([]);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setBusy(false);
-    }
+    try { const r = await api.acceptMission(o.offerId); setMission(r.mission); setOffers([]); }
+    catch (e: any) { setErr(e.message); }
+    finally { setBusy(false); }
   };
   const decline = async (o: OfferCard) => {
     setOffers((os) => os.filter((x) => x.offerId !== o.offerId));
-    try {
-      await api.declineMission(o.offerId);
-    } catch {
-      // the server expires it anyway
-    }
+    try { await api.declineMission(o.offerId); } catch { /* the server expires it anyway */ }
   };
 
-  if (mission) {
-    return (
-      <Mission
-        mission={mission}
-        devSim={devSim}
-        onDone={() => {
-          setMission(null);
-          setOffers([]);
-        }}
-      />
-    );
-  }
-
+  if (mission) return <Mission mission={mission} devSim={devSim} onDone={() => { setMission(null); setOffers([]); }} />;
   if (onDuty && mode === "desk") return <Desk onOffDuty={checkOut} />;
 
   if (!onDuty) {
     return (
       <Screen>
         {devSim && <DevPanel />}
-        <Label>Off duty</Label>
-        <H1>Report for duty</H1>
-        <P dim>
-          Field agents walk to real targets in their area. Desk agents crack the codes that unlock them. Both earn
-          rank.
-        </P>
-        <Card>
-          <Label>Field</Label>
-          <P>Uses your location once to find your area, then while a mission is active. Daylight, public places only.</P>
-          <Button title="Go on duty · Field" onPress={() => checkIn("field")} loading={busy} />
-        </Card>
-        <Card>
-          <Label>Desk</Label>
-          <P>No location needed. You get ciphers and analysis that field agents are waiting on.</P>
-          <Button title="Go on duty · Desk" kind="ghost" onPress={() => checkIn("desk")} loading={busy} />
-        </Card>
-        {err && <P style={{ color: C.danger }}>{err}</P>}
+        <Kicker color={C.amber}>Off duty</Kicker>
+        <Display>Report in</Display>
+        <Body dim>Field agents walk to real places. Desk agents crack the codes that let them in. Both climb the same ladder.</Body>
+        <Panel>
+          <Text style={{ fontFamily: F.display, fontSize: 24, color: C.text }}>Field</Text>
+          <Body dim>Reads your location once to find your area, then only while a mission is live. Daylight, public places.</Body>
+          <Button title="Go on duty in the field" onPress={() => checkIn("field")} loading={busy} />
+        </Panel>
+        <Panel>
+          <Text style={{ fontFamily: F.display, fontSize: 24, color: C.text }}>Desk</Text>
+          <Body dim>No location. Ciphers and analysis that a field agent is waiting on right now.</Body>
+          <Button title="Go on duty at the desk" kind="ghost" onPress={() => checkIn("desk")} loading={busy} />
+        </Panel>
+        {err && <Body style={{ color: C.stamp }}>{err}</Body>}
       </Screen>
     );
   }
@@ -166,38 +123,41 @@ export function Duty({
   return (
     <Screen>
       {devSim && <DevPanel />}
-      <Label>
-        Field · on duty in {presence?.areaName ?? "no approved area"} · {fmtCountdown(presence!.expiresAt, now)}
-      </Label>
-      <H1>Orders</H1>
-      {!presence?.areaId && (
-        <P style={{ color: C.warn }}>You are outside every approved area. Move into one to receive field orders.</P>
-      )}
+      <Kicker color={C.amber}>
+        On duty in {presence?.areaName ?? "no approved area"}, {fmtCountdown(presence!.expiresAt, now)} left
+      </Kicker>
+      <Display>Orders</Display>
+      {!presence?.areaId && <Body style={{ color: C.amber }}>You are outside every approved area. Walk into one to receive orders.</Body>}
       {offers.length === 0 && presence?.areaId && (
-        <Card>
-          <P dim>{notice ?? "Waiting for your chief. Offers arrive within seconds when the area has open targets."}</P>
-        </Card>
+        <Panel>
+          <Body dim>{notice ?? "Your chief is choosing. Orders land within seconds when the area has open targets."}</Body>
+        </Panel>
       )}
       {offers.map((o) => (
-        <Card key={o.offerId} style={{ borderColor: o.mission.contested ? C.warn : C.line }}>
-          <Label>
-            {o.mission.templateId.replace("_", " ")} · {o.mission.rewardXp} XP · accept in {fmtCountdown(o.acceptBy, now)}
-          </Label>
-          <Text style={{ color: C.text, fontSize: 17, fontWeight: "700", marginBottom: 4, ...mono }}>{o.mission.title}</Text>
-          <P dim>{o.mission.brief}</P>
-          <Text style={{ color: C.dim, fontSize: 13, ...mono }}>
-            {o.mission.targetName ?? "target undisclosed"}
-            {o.mission.walkM != null ? ` · ~${Math.round(o.mission.walkM)} m walk` : ""}
-            {o.mission.contested ? " · rival activity expected" : ""}
-            {o.mission.deskLink ? " · needs a desk agent" : ""}
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Button title="Accept" onPress={() => accept(o)} loading={busy} style={{ flex: 1 }} />
-            <Button title="Decline" kind="ghost" onPress={() => decline(o)} style={{ flex: 1 }} />
+        <Dossier key={o.offerId} tab={o.mission.contested ? C.stamp : C.amber}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: F.display, fontSize: 28, lineHeight: 28, color: C.onPaper }}>{TEMPLATE_NAME[o.mission.templateId] ?? o.mission.title}</Text>
+              <Text style={{ fontFamily: F.displayMed, fontSize: 15, color: C.onPaperDim, marginBottom: 6 }}>
+                {o.mission.targetName ?? "Target withheld"}{o.mission.walkM != null ? `, about ${Math.round(o.mission.walkM)} m` : ""}
+              </Text>
+            </View>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={{ fontFamily: F.display, fontSize: 24, lineHeight: 24, color: C.onPaper }}>{o.mission.rewardXp}</Text>
+              <Text style={{ fontFamily: F.displayMed, fontSize: 13, color: C.onPaperDim }}>XP</Text>
+            </View>
           </View>
-        </Card>
+          {o.mission.contested && <Stamp text="Contested" size={18} style={{ marginBottom: 8 }} />}
+          <Typed>{o.mission.brief}</Typed>
+          {o.mission.deskLink && <Typed style={{ color: C.onPaperDim }}>A desk agent will send you the code.</Typed>}
+          <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+            <Button title="Accept" kind="ink" onPress={() => accept(o)} loading={busy} style={{ flex: 1 }} />
+            <Button title="Pass" kind="paperGhost" onPress={() => decline(o)} style={{ flex: 1 }} />
+          </View>
+          <Text style={{ fontFamily: F.typed, fontSize: 12, color: C.onPaperDim, marginTop: 8 }}>Expires in {fmtCountdown(o.acceptBy, now)}</Text>
+        </Dossier>
       ))}
-      {err && <P style={{ color: C.danger }}>{err}</P>}
+      {err && <Body style={{ color: C.stamp }}>{err}</Body>}
       <Button title="Go off duty" kind="ghost" onPress={checkOut} disabled={busy} />
     </Screen>
   );

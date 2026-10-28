@@ -3,20 +3,12 @@ import { Text, View } from "react-native";
 import type { MissionSummary, NavigateResponse, ScanResponse } from "@ispy/shared";
 import { api } from "../api";
 import { bearingDeg, currentFix, distanceM, Fix, watchFix } from "../location";
-import { C, mono } from "../theme";
-import { Button, Card, H1, Input, Label, P, Screen, Spinner, fmtCountdown } from "../ui";
+import { C, F } from "../theme";
+import { Body, Button, Display, Dossier, Input, Kicker, Panel, Screen, Spinner, Stamp, Typed, fmtCountdown } from "../ui";
 import { Radar } from "./Radar";
 import { DevPanel } from "./DevPanel";
 
-export function Mission({
-  mission,
-  devSim,
-  onDone,
-}: {
-  mission: MissionSummary;
-  devSim: boolean;
-  onDone: () => void;
-}) {
+export function Mission({ mission, devSim, onDone }: { mission: MissionSummary; devSim: boolean; onDone: () => void }) {
   const [nav, setNav] = useState<NavigateResponse | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
   const [locErr, setLocErr] = useState<string | null>(null);
@@ -32,19 +24,13 @@ export function Mission({
     loadNav();
     const stop = watchFix(setFix, (e) => setLocErr(e.message));
     const t = setInterval(() => setNow(Date.now()), 1000);
-    // Re-check the lock while waiting on a desk agent.
-    const poll = setInterval(() => {
-      if (!nav || !nav.unlocked) loadNav();
-    }, 8000);
-    return () => {
-      stop();
-      clearInterval(t);
-      clearInterval(poll);
-    };
+    const poll = setInterval(() => { if (!nav || !nav.unlocked) loadNav(); }, 8000); // re-check the lock
+    return () => { stop(); clearInterval(t); clearInterval(poll); };
   }, [mission.id]);
 
   const dist = fix && nav ? distanceM(fix, nav) : null;
   const bearing = fix && nav ? bearingDeg(fix, nav) : null;
+  const onSite = dist != null && nav != null && dist <= nav.approachRadiusM;
 
   const doScan = async (onSiteCode?: string) => {
     setBusy(true);
@@ -53,9 +39,7 @@ export function Mission({
       const f = fix ?? (await currentFix());
       const r = await api.scan(mission.id, { ...f, onSiteCode });
       setScan(r);
-      if (r.result === "verified") {
-        // let the player read the debrief, then return to duty
-      }
+      if (r.result === "verified" && !r.reward) { setTimeout(loadNav, 400); setCode(""); } // extraction leg: keep going
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -65,30 +49,34 @@ export function Mission({
 
   const abandon = async () => {
     setBusy(true);
-    try {
-      await api.abandon(mission.id);
-      onDone();
-    } catch (e: any) {
-      setErr(e.message);
-      setBusy(false);
-    }
+    try { await api.abandon(mission.id); onDone(); }
+    catch (e: any) { setErr(e.message); setBusy(false); }
   };
 
-  if (scan?.result === "verified") {
+  if (scan?.result === "verified" && scan.reward) {
+    const r = scan.reward;
     return (
       <Screen>
-        <Label>Mission complete</Label>
-        <H1>Verified</H1>
-        <Card style={{ borderColor: C.accent }}>
-          {scan.reward && (
-            <Text style={{ color: C.accent, fontSize: 20, fontWeight: "700", ...mono }}>
-              +{scan.reward.xp} XP · trust {scan.reward.trust >= 0 ? "+" : ""}{scan.reward.trust}
-              {scan.reward.contestOutcome ? ` · contest ${scan.reward.contestOutcome}` : ""}
-            </Text>
-          )}
-          {scan.debrief && <P style={{ marginTop: 8 }}>{scan.debrief}</P>}
-        </Card>
-        <Button title="Back to duty" onPress={onDone} />
+        <View style={{ height: 24 }} />
+        <Dossier tab={r.contestOutcome === "lost" ? C.onPaperDim : C.ok}>
+          <Text style={{ fontFamily: F.display, fontSize: 30, lineHeight: 30, color: C.onPaper }}>{mission.title}</Text>
+          <Typed style={{ color: C.onPaperDim }}>{nav?.targetName}</Typed>
+          <View style={{ alignItems: "center", marginVertical: 14 }}>
+            <Stamp text={r.contestOutcome === "lost" ? "Outrun" : r.contestOutcome === "won" ? "First in" : "Verified"} size={44} color={r.contestOutcome === "lost" ? C.onPaperDim : C.stamp} />
+          </View>
+          <Typed>{scan.debrief}</Typed>
+          <View style={{ flexDirection: "row", gap: 24, marginTop: 6 }}>
+            <View>
+              <Text style={{ fontFamily: F.display, fontSize: 40, lineHeight: 40, color: C.onPaper }}>+{r.xp}</Text>
+              <Text style={{ fontFamily: F.displayMed, fontSize: 14, color: C.onPaperDim }}>XP</Text>
+            </View>
+            <View>
+              <Text style={{ fontFamily: F.display, fontSize: 40, lineHeight: 40, color: C.onPaper }}>{r.trust >= 0 ? "+" : ""}{r.trust}</Text>
+              <Text style={{ fontFamily: F.displayMed, fontSize: 14, color: C.onPaperDim }}>trust</Text>
+            </View>
+          </View>
+        </Dossier>
+        <Button title="Back on duty" onPress={onDone} />
       </Screen>
     );
   }
@@ -96,66 +84,51 @@ export function Mission({
   return (
     <Screen>
       {devSim && <DevPanel />}
-      <Label>
-        {mission.templateId.replace("_", " ")} · {mission.contested ? "contested · " : ""}expires in {fmtCountdown(mission.expiresAt, now)}
-      </Label>
-      <H1>{mission.title}</H1>
-      <P dim>{mission.brief}</P>
-      {!nav ? (
-        <Spinner />
-      ) : (
+      <Kicker color={C.amber}>{mission.contested ? "Contested. " : ""}Expires in {fmtCountdown(mission.expiresAt, now)}</Kicker>
+      <Display size={40}>{nav?.targetName ?? mission.title}</Display>
+      {!nav ? <Spinner /> : (
         <>
-          <Card>
-            <Label>Destination</Label>
-            <Text style={{ color: C.text, fontSize: 17, fontWeight: "700", marginBottom: 4, ...mono }}>{nav.targetName}</Text>
-            <P dim>{nav.hint}</P>
+          <Radar bearing={bearing} distanceM={dist} approachRadiusM={nav.approachRadiusM} locked={!nav.unlocked} />
+          {locErr && !fix && <Body style={{ color: C.stamp }}>{locErr}</Body>}
+
+          {scan?.result === "needs_code" ? (
+            <Dossier tab={C.stamp}>
+              <Text style={{ fontFamily: F.display, fontSize: 22, color: C.onPaper }}>On site</Text>
+              <Typed>{scan.puzzle?.prompt}</Typed>
+              {scan.reason && <Typed style={{ color: C.stamp }}>{scan.reason}</Typed>}
+              <Input onPaper value={code} onChangeText={setCode} placeholder="Answer" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={() => doScan(code)} />
+              <Button title="Confirm" kind="ink" onPress={() => doScan(code)} loading={busy} />
+            </Dossier>
+          ) : (
+            <Button title={onSite ? "Scan the site" : nav.unlocked ? "Scan when you arrive" : "Locked by the desk"} onPress={() => doScan()} loading={busy} disabled={!nav.unlocked || !onSite} />
+          )}
+          {scan?.result === "too_far" && <Body style={{ color: C.amber }}>Still {Math.round(scan.distanceM ?? 0)} m out. Get within {nav.approachRadiusM} m.</Body>}
+          {(scan?.result === "rejected" || scan?.result === "flagged") && (
+            <Body style={{ color: C.stamp }}>{scan.reason ?? "That scan could not be verified."}</Body>
+          )}
+          {scan?.result === "verified" && !scan.reward && <Body style={{ color: C.ok }}>{scan.debrief}</Body>}
+          {err && <Body style={{ color: C.stamp }}>{err}</Body>}
+
+          <Dossier tab={nav.unlocked ? C.amber : C.onPaperDim} style={{ marginTop: 14 }}>
+            <Text style={{ fontFamily: F.display, fontSize: 22, color: C.onPaper }}>{mission.title}</Text>
+            <Typed>{mission.brief}</Typed>
+            {nav.steps.map((st, i) => (
+              <Typed key={i} style={{ marginBottom: 2 }}>{i + 1}. {st}</Typed>
+            ))}
             {!nav.unlocked && (
-              <View style={{ borderColor: C.warn, borderWidth: 1, borderRadius: 8, padding: 10, marginTop: 6 }}>
-                <Text style={{ color: C.warn, fontWeight: "700", ...mono }}>LOCKED · waiting for desk agent</Text>
-                <Text style={{ color: C.dim, fontSize: 13, marginTop: 4 }}>
-                  Start walking. The marker unlocks when your analyst cracks the cipher
-                  {mission.deskLink ? `, or at ${new Date(mission.deskLink.fallbackAt).toLocaleTimeString()} you get a solo version` : ""}.
-                </Text>
+              <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.paper2, paddingTop: 8 }}>
+                <Typed bold>Locked. Start walking.</Typed>
+                <Typed style={{ color: C.onPaperDim }}>
+                  The site opens when your desk agent cracks the cipher
+                  {mission.deskLink?.fallbackAt ? `, or at ${new Date(mission.deskLink.fallbackAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} you get a solo version` : ""}.
+                </Typed>
               </View>
             )}
-          </Card>
-          <Radar bearing={bearing} distanceM={dist} approachRadiusM={nav.approachRadiusM} locked={!nav.unlocked} />
-          {locErr && !fix && <P style={{ color: C.danger }}>{locErr}</P>}
-          <Card>
-            <Label>Steps</Label>
-            {nav.steps.map((s, i) => (
-              <Text key={i} style={{ color: C.text, marginBottom: 4 }}>{i + 1}. {s}</Text>
-            ))}
-          </Card>
-
-          {scan?.result === "needs_code" && (
-            <Card style={{ borderColor: C.info }}>
-              <Label>On-site check</Label>
-              <P>{scan.puzzle?.prompt}</P>
-              <Input value={code} onChangeText={setCode} placeholder="Code" autoCapitalize="none" autoCorrect={false} />
-              <Button title="Submit code" onPress={() => doScan(code)} loading={busy} />
-            </Card>
-          )}
-          {scan?.result === "too_far" && (
-            <P style={{ color: C.warn }}>Too far: {Math.round(scan.distanceM ?? 0)} m from the target. Get within {nav.approachRadiusM} m.</P>
-          )}
-          {(scan?.result === "rejected" || scan?.result === "flagged") && (
-            <P style={{ color: scan.result === "rejected" ? C.danger : C.warn }}>
-              {scan.result === "rejected" ? "Scan rejected" : "Scan flagged"}{scan.reason ? `: ${scan.reason}` : "."}
-              {scan.trustScore != null ? ` (trust score ${scan.trustScore.toFixed(2)})` : ""}
-            </P>
-          )}
-          {err && <P style={{ color: C.danger }}>{err}</P>}
-
-          {scan?.result !== "needs_code" && (
-            <Button
-              title={dist != null && dist <= nav.approachRadiusM ? "Scan target" : "Scan (get closer)"}
-              onPress={() => doScan()}
-              loading={busy}
-              disabled={!nav.unlocked}
-            />
-          )}
-          <Button title="Abandon mission" kind="ghost" onPress={abandon} disabled={busy} />
+          </Dossier>
+          <Panel style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Body dim style={{ marginBottom: 0, flex: 1 }}>{nav.hint}</Body>
+            <Button title="Abandon" kind="ghost" onPress={abandon} disabled={busy} style={{ marginTop: 0, paddingVertical: 8 }} />
+          </Panel>
         </>
       )}
     </Screen>

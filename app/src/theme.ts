@@ -1,17 +1,25 @@
+// "Night Bureau": classified paper read under sodium streetlight.
 export const C = {
-  bg: "#0b0f14",
-  panel: "#131a22",
-  panel2: "#1a232e",
-  line: "#243040",
-  text: "#e6edf3",
-  dim: "#8b9bb0",
-  accent: "#3ddc97",
-  warn: "#f5b74f",
-  danger: "#ff5c5c",
-  info: "#5aa9ff",
+  ink: "#0F1726", // app background, deep navy
+  ink2: "#172238", // raised dark surfaces
+  line: "#2B3B58",
+  paper: "#F2EBDC", // dossier cards
+  paper2: "#E4D9C0", // paper edges, inputs on paper
+  onPaper: "#1A1D27",
+  onPaperDim: "#625E54",
+  amber: "#FFB347", // radar, primary action
+  stamp: "#D7263D", // decisions, contests, errors
+  ok: "#5BD0A1",
+  text: "#EFE8D8",
+  dim: "#8E99B0",
 };
 
 export const factionColor = (id?: string | null) =>
-  id === "raven" ? "#5aa9ff" : id === "phantom" ? "#b48cff" : id === "cipher" ? "#3ddc97" : C.dim;
+  id === "raven" ? "#3A6BFF" : id === "phantom" ? "#9B6BFF" : id === "cipher" ? "#19C6B0" : C.amber;
 
-export const mono = { fontFamily: "Menlo, Courier, monospace" } as const;
+export const F = {
+  display: "BarlowCondensed_800ExtraBold",
+  displayMed: "BarlowCondensed_600SemiBold",
+  typed: "CourierPrime_400Regular",
+  typedBold: "CourierPrime_700Bold",
+};

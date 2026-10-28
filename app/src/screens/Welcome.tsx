@@ -1,8 +1,8 @@
 import React, { useState } from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { api, setToken } from "../api";
-import { C } from "../theme";
-import { Button, Card, H1, Input, Label, P, Screen } from "../ui";
+import { C, F } from "../theme";
+import { Body, Button, Display, Input, Kicker, Panel, Screen, Typed } from "../ui";
 import type { Player } from "@ispy/shared";
 
 export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void }) {
@@ -12,7 +12,7 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
 
   const go = async () => {
     const c = codename.trim();
-    if (c.length < 3) return setErr("Codename needs at least 3 characters.");
+    if (c.length < 3) return setErr("A codename needs at least 3 characters.");
     setBusy(true);
     setErr(null);
     try {
@@ -20,7 +20,7 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
       await setToken(r.token);
       onRegistered(r.player);
     } catch (e: any) {
-      setErr(e.message ?? "Registration failed");
+      setErr(e.message ?? "Could not register. Try another codename.");
     } finally {
       setBusy(false);
     }
@@ -28,33 +28,33 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
 
   return (
     <Screen>
-      <View style={{ height: 32 }} />
-      <Label>Civilian clearance</Label>
-      <H1>iSpy a Spy</H1>
-      <P dim>
-        Three intelligence agencies are fighting a quiet war in this city. Their chiefs are not human. Their
-        operatives are.
-      </P>
-      <P dim>
-        Pass the aptitude test, take an offer, and your chief will send you to real places to pick up what was
-        left behind. Everything here is fiction. Nothing asks you to watch, follow or photograph anyone.
-      </P>
-      <Card>
-        <Label>Choose a codename</Label>
+      <View style={{ height: 36 }} />
+      <Kicker color={C.amber}>Bengaluru, after dark</Kicker>
+      <Display size={76}>iSpy{"\n"}a Spy</Display>
+      <Text style={{ color: C.text, fontFamily: F.displayMed, fontSize: 22, lineHeight: 26, marginBottom: 18 }}>
+        Three agencies. Three chiefs who are not human. The operatives are.
+      </Text>
+      <Body dim>
+        Pass the aptitude test, take an offer, and your chief sends you walking to real places to collect what was
+        left behind. It is all fiction. Nothing here asks you to watch, follow or photograph anyone.
+      </Body>
+      <Panel style={{ marginTop: 10 }}>
+        <Kicker>Pick a codename</Kicker>
         <Input
           value={codename}
           onChangeText={setCodename}
-          placeholder="e.g. KESTREL"
+          placeholder="KESTREL"
           autoCapitalize="characters"
           autoCorrect={false}
           onSubmitEditing={go}
+          style={{ fontFamily: F.typed, fontSize: 20 }}
         />
-        {err && <P style={{ color: C.danger }}>{err}</P>}
-        <Button title="Begin assessment" onPress={go} loading={busy} />
-      </Card>
-      <P dim style={{ fontSize: 12 }}>
-        Adults only. Pseudonymous. Foreground location is used only while you are on duty.
-      </P>
+        {err && <Typed onPaper={false} style={{ color: C.stamp }}>{err}</Typed>}
+        <Button title="Take the test" onPress={go} loading={busy} />
+      </Panel>
+      <Body dim style={{ fontSize: 12.5 }}>
+        Adults only. No real name needed. Your location is read only while you are on duty, and never shared.
+      </Body>
     </Screen>
   );
 }

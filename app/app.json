@@ -36,7 +36,8 @@
           "locationWhenInUsePermission": "iSpy a Spy uses your location while you are on field duty to find your area and verify you reached a target.",
           "isAndroidBackgroundLocationEnabled": false
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }
