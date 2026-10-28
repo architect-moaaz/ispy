@@ -5,7 +5,7 @@ import type { Briefing, ChatMessage } from "@ispy/shared";
 import { api } from "../api";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Dossier, Input, Screen, Spinner } from "../ui";
-import { ChiefAvatar, FactionEmblem } from "../graphics";
+import { ChiefBanner, FactionEmblem } from "../graphics";
 
 const SPECIALTY: Record<string, string> = {
   oracle: "Investigation, evidence and pattern recognition",
@@ -48,15 +48,15 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
       <Display color={color}>{briefing.chiefName} HQ ({briefing.factionName} faction)</Display>
       <Dossier tab={color} style={{ marginTop: 8 }}>
         <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-          <ChiefAvatar factionId={factionId} size={76} />
+          <FactionEmblem id={factionId} size={52} />
           <View style={{ flex: 1 }}>
             <Text style={s.eyebrow}>Intelligence chief</Text>
             <Text style={s.big}>Chief {briefing.chiefName}</Text>
             <Text style={s.sub}>{SPECIALTY[briefing.chief]}</Text>
           </View>
-          <FactionEmblem id={factionId} size={44} />
         </View>
       </Dossier>
+      <View style={{ marginBottom: 12 }}><ChiefBanner factionId={factionId} height={210} /></View>
 
       <Text style={s.section}>[ Encrypted link · active ]</Text>
       <Dossier tab={C.cyanDim} style={{ padding: 0 }}>

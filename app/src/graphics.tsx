@@ -1,58 +1,50 @@
 import React from "react";
-import { View } from "react-native";
-import Svg, { Circle, Defs, G, Line, Path, Polygon, RadialGradient, Rect, Stop } from "react-native-svg";
+import { Image, View } from "react-native";
+import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 import { C, factionColor } from "./theme";
+import { ART } from "./art";
 
-/**
- * Night Bureau marks. Everything is drawn on a 100×100 box, two stroke weights (3 and 6),
- * so the set reads as one hand. Faction colour comes from the theme.
- */
-
-// ---------- faction emblems ----------
-function RavenMark({ color }: { color: string }) {
-  // A raven in profile reduced to beak, skull and one unblinking eye.
-  return (
-    <G>
-      <Path d="M18 62 C18 36 38 22 60 24 L84 30 L66 36 C74 46 72 62 60 70 L44 72 L30 84 L34 68 C24 66 18 64 18 62 Z" fill={color} />
-      <Circle cx={56} cy={40} r={5} fill={C.ink} />
-      <Circle cx={57} cy={39} r={1.8} fill={color} />
-    </G>
-  );
-}
-function PhantomMark({ color }: { color: string }) {
-  // A hood with nothing inside it.
-  return (
-    <G>
-      <Path d="M50 14 C28 14 20 36 20 56 L20 84 L80 84 L80 56 C80 36 72 14 50 14 Z" fill={color} />
-      <Path d="M50 30 C36 30 32 44 32 58 L32 84 L68 84 L68 58 C68 44 64 30 50 30 Z" fill={C.ink} />
-      <Path d="M38 62 L46 56 M62 62 L54 56" stroke={color} strokeWidth={4} strokeLinecap="round" />
-    </G>
-  );
-}
-function CipherMark({ color }: { color: string }) {
-  // A hexagonal key with a broken grid: systems break.
-  return (
-    <G>
-      <Polygon points="50,10 84,30 84,70 50,90 16,70 16,30" fill="none" stroke={color} strokeWidth={6} strokeLinejoin="round" />
-      <Circle cx={50} cy={42} r={11} fill="none" stroke={color} strokeWidth={6} />
-      <Path d="M50 53 L50 76 M50 66 L60 66 M50 74 L58 74" stroke={color} strokeWidth={6} strokeLinecap="round" />
-    </G>
-  );
-}
-
-export function FactionEmblem({ id, size = 48, badge = true }: { id?: string | null; size?: number; badge?: boolean }) {
+/** Painted faction crest with a glow ring in the faction colour. */
+export function FactionEmblem({ id, size = 48 }: { id?: string | null; size?: number; badge?: boolean }) {
   const color = factionColor(id);
-  const Mark = id === "raven" ? RavenMark : id === "phantom" ? PhantomMark : id === "cipher" ? CipherMark : EyeMark;
+  const src = id ? ART.emblem[id] : undefined;
+  if (!src) return <View style={{ width: size, height: size }}><Svg width={size} height={size} viewBox="0 0 100 100"><EyeMark /></Svg></View>;
   return (
-    <Svg width={size} height={size} viewBox="0 0 100 100">
-      {badge && <Circle cx={50} cy={50} r={48} fill={C.ink} stroke={color} strokeWidth={3} />}
-      <Mark color={color} />
-    </Svg>
+    <View style={{ width: size, height: size, borderRadius: size / 2, overflow: "hidden", shadowColor: color, shadowOpacity: 0.8, shadowRadius: size / 5, elevation: 6, backgroundColor: C.ink }}>
+      <Image source={src} style={{ width: size, height: size }} resizeMode="cover" />
+    </View>
+  );
+}
+
+/** Painted chief portrait in a framed roundel with a faction-coloured ring and glow. */
+export function ChiefAvatar({ factionId, size = 120, square }: { factionId?: string | null; size?: number; square?: boolean }) {
+  const color = factionColor(factionId);
+  const src = factionId ? ART.portrait[factionId] : undefined;
+  const r = square ? 6 : size / 2;
+  return (
+    <View style={{ width: size, height: size, borderRadius: r, borderWidth: 2, borderColor: color, overflow: "hidden", shadowColor: color, shadowOpacity: 0.7, shadowRadius: size / 6, elevation: 8, backgroundColor: C.ink2 }}>
+      {src && <Image source={src} style={{ width: size - 4, height: size - 4 }} resizeMode="cover" />}
+    </View>
+  );
+}
+
+/** Full-bleed portrait banner for HQ: portrait left, crest right, fading into the panel. */
+export function ChiefBanner({ factionId, height = 220 }: { factionId?: string | null; height?: number }) {
+  const color = factionColor(factionId);
+  const src = factionId ? ART.portrait[factionId] : undefined;
+  const crest = factionId ? ART.emblem[factionId] : undefined;
+  return (
+    <View style={{ height, borderWidth: 1, borderColor: color + "88", overflow: "hidden", backgroundColor: C.ink2, flexDirection: "row" }}>
+      {src && <Image source={src} style={{ width: height, height }} resizeMode="cover" />}
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        {crest && <Image source={crest} style={{ width: height * 0.72, height: height * 0.72, borderRadius: height * 0.36 }} resizeMode="cover" />}
+      </View>
+    </View>
   );
 }
 
 // ---------- the game's own mark: an eye in a keyhole ----------
-export function EyeMark({ color = C.amber }: { color?: string }) {
+export function EyeMark({ color = C.cyan }: { color?: string }) {
   return (
     <G>
       <Path d="M14 50 C28 30 72 30 86 50 C72 70 28 70 14 50 Z" fill="none" stroke={color} strokeWidth={6} strokeLinejoin="round" />
@@ -64,42 +56,14 @@ export function EyeMark({ color = C.amber }: { color?: string }) {
 }
 export function AppMark({ size = 96 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 100 100">
-      <Defs>
-        <RadialGradient id="am" cx="50%" cy="45%" r="55%">
-          <Stop offset="0" stopColor={C.amber} stopOpacity={0.28} />
-          <Stop offset="1" stopColor={C.amber} stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Rect x={0} y={0} width={100} height={100} rx={22} fill={C.ink} />
-      <Rect x={0} y={0} width={100} height={100} rx={22} fill="url(#am)" />
-      <EyeMark />
-    </Svg>
-  );
-}
-
-// ---------- chief avatars: the faction mark inside a paper roundel with a sweep ----------
-export function ChiefAvatar({ factionId, size = 120 }: { factionId?: string | null; size?: number }) {
-  const color = factionColor(factionId);
-  const Mark = factionId === "raven" ? RavenMark : factionId === "phantom" ? PhantomMark : CipherMark;
-  return (
-    <View style={{ width: size, height: size }}>
-      <Svg width={size} height={size} viewBox="0 0 100 100">
-        <Circle cx={50} cy={50} r={48} fill={C.paper} />
-        <Circle cx={50} cy={50} r={48} fill="none" stroke={color} strokeWidth={4} />
-        <Circle cx={50} cy={50} r={40} fill={C.ink} />
-        {Array.from({ length: 24 }, (_, i) => {
-          const a = (i * 15 * Math.PI) / 180;
-          return <Line key={i} x1={50 + 42 * Math.cos(a)} y1={50 + 42 * Math.sin(a)} x2={50 + 46 * Math.cos(a)} y2={50 + 46 * Math.sin(a)} stroke={color} strokeWidth={1.5} />;
-        })}
-        <G transform="translate(14 14) scale(0.72)"><Mark color={color} /></G>
-      </Svg>
+    <View style={{ width: size, height: size, borderRadius: size * 0.22, overflow: "hidden", shadowColor: C.cyan, shadowOpacity: 0.7, shadowRadius: size / 5, elevation: 8 }}>
+      <Image source={ART.icon} style={{ width: size, height: size }} />
     </View>
   );
 }
 
 // ---------- mission marks ----------
-export function MissionMark({ template, size = 28, color = C.onPaper }: { template: string; size?: number; color?: string }) {
+export function MissionMark({ template, size = 28, color = C.text }: { template: string; size?: number; color?: string }) {
   const sw = 7;
   const body = {
     RECON: <G><Path d="M12 50 C26 28 74 28 88 50 C74 72 26 72 12 50 Z" fill="none" stroke={color} strokeWidth={sw} strokeLinejoin="round" /><Circle cx={50} cy={50} r={11} fill={color} /></G>,
@@ -111,10 +75,10 @@ export function MissionMark({ template, size = 28, color = C.onPaper }: { templa
   return <Svg width={size} height={size} viewBox="0 0 100 100">{body}</Svg>;
 }
 
-/** Three faction badges side by side, for the welcome screen. */
+/** Three faction crests side by side, for the welcome screen. */
 export function FactionRow({ size = 56 }: { size?: number }) {
   return (
-    <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
+    <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
       <FactionEmblem id="raven" size={size} />
       <FactionEmblem id="phantom" size={size} />
       <FactionEmblem id="cipher" size={size} />

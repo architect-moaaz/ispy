@@ -4,7 +4,7 @@
     "slug": "ispy-a-spy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/art/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
@@ -14,10 +14,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#07111A",
+        "foregroundImage": "./assets/art/icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -26,9 +24,9 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/art/icon.png"
     },
-    "backgroundColor": "#0b0f14",
+    "backgroundColor": "#07111A",
     "plugins": [
       [
         "expo-location",
@@ -37,7 +35,15 @@
           "isAndroidBackgroundLocationEnabled": false
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/art/splash.jpg",
+          "resizeMode": "cover",
+          "backgroundColor": "#07111A"
+        }
+      ]
     ]
   }
 }
