@@ -21,7 +21,11 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "package": "com.moaaz.ispyaspy",
       "versionCode": 1
@@ -63,8 +67,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "<set by `eas init`>"
+        "projectId": "c19e1679-5c03-48ee-8e4f-931a33cd8352"
       }
-    }
+    },
+    "owner": "moaazabir"
   }
 }
