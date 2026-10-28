@@ -150,6 +150,8 @@ export async function publishDispatches(force = false) {
       ];
   }
   for (const d of items) {
+    // Quiet windows produce the same words; do not repeat the last dispatch verbatim.
+    if (get("SELECT 1 FROM dispatches WHERE headline=? AND body=? ORDER BY at DESC LIMIT 1", d.headline, d.body)) continue;
     run("INSERT INTO dispatches(id,kind,headline,body,faction_id,source,at) VALUES(?,?,?,?,?,?,?)", uid(), "news", d.headline, d.body, d.faction === "all" ? null : d.faction, source, now());
   }
   logEvent("director.dispatch", "director", { count: items.length, source }, null);
