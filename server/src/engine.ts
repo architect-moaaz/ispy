@@ -78,7 +78,7 @@ export function checkIn(player: Player, body: { mode: Mode; lat?: number; lng?: 
   let areaId: string | null = null;
   let lat: number | null = null, lng: number | null = null;
   if (body.mode === "field") {
-    if (body.lat == null || body.lng == null) throw new ApiError(400, "field duty needs a location fix");
+    if (body.lat == null || body.lng == null) throw new ApiError(400, "field deployment needs a location fix");
     if (body.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
     if (body.mock && !body.sim) throw new ApiError(400, "mock location provider detected");
     const area = areaForPoint(body.lat, body.lng);
@@ -100,7 +100,7 @@ export function checkIn(player: Player, body: { mode: Mode; lat?: number; lng?: 
 
 export function heartbeat(player: Player, body: { lat?: number; lng?: number; sim?: boolean }): Presence {
   const r = get<PresenceRow>("SELECT * FROM presence WHERE player_id=?", player.id);
-  if (!r || r.expires_at <= now()) throw new ApiError(409, "not on duty");
+  if (!r || r.expires_at <= now()) throw new ApiError(409, "not deployed");
   if (body.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
   const exp = new Date(Date.now() + PRESENCE_TTL_MS).toISOString();
   if (r.mode === "field" && body.lat != null && body.lng != null) {
@@ -163,7 +163,7 @@ export function boardNotice(player: Player, pres: Presence | null): string | nul
   if (paused()) return "The world is paused by the owner.";
   if (!pres) return null;
   if (!pres.areaId) return "You are outside a play area.";
-  if (pres.mode === "field" && player.fieldToday >= player.dailyFieldCap) return "Daily field cap reached. Rest, or switch to desk duty.";
+  if (pres.mode === "field" && player.fieldToday >= player.dailyFieldCap) return "Daily field cap reached. Rest, or switch to the intel desk.";
   if (!openTargets(pres.areaId).length) return "Targets are closed for the night. Field play resumes at 06:00.";
   return null;
 }
@@ -388,7 +388,7 @@ export function navigate(player: Player, missionId: string): NavigateResponse {
   const steps = m.template_id === "EXTRACTION"
     ? [`Leg ${params.leg + 1} of 2: reach ${t.name}`, "Scan on arrival", "Continue to the next checkpoint"]
     : m.template_id === "DEAD_DROP"
-      ? ["Walk to the drop", unlocked ? "Scan and enter the pickup code" : "Wait for your desk agent to crack the code", "Leave quietly"]
+      ? ["Walk to the drop", unlocked ? "Scan and enter the pickup code" : "Wait for your analyst to crack the code", "Leave quietly"]
       : ["Walk to the site", "Scan on arrival", "Answer the observation question"];
   return {
     targetName: t.name, lat: t.lat, lng: t.lng, approachRadiusM: t.approach_radius_m,
@@ -434,9 +434,9 @@ export function scan(player: Player, missionId: string, body: ScanRequest): Scan
   let prompt: string | null = null;
   let expected: string | null = null;
   if (m.template_id === "DEAD_DROP") {
-    if (link?.state === "open") return { result: "needs_code", puzzle: { prompt: "The drop is locked. Your desk agent is still cracking the code. Wait, or enter it if they send it." } };
+    if (link?.state === "open") return { result: "needs_code", puzzle: { prompt: "The drop is locked. Your analyst is still cracking the code. Wait, or enter it if they send it." } };
     const solo = link?.state === "fallback";
-    prompt = solo ? `No word from the desk. Solo decode: ${makeCipherPrompt(params.pickupCode, m.id)}` : "Enter the pickup code from your desk agent.";
+    prompt = solo ? `No word from the desk. Solo decode: ${makeCipherPrompt(params.pickupCode, m.id)}` : "Enter the pickup code from your analyst.";
     expected = params.pickupCode;
   } else if (m.template_id === "RECON") {
     prompt = t.observation; expected = t.observation_answer;
@@ -541,9 +541,9 @@ function describe(type: string, p: any): string {
     case "mission.leg_complete": return `Checkpoint ${p.leg} confirmed`;
     case "reward": return `+${p.xp} XP, ${p.trust >= 0 ? "+" : ""}${p.trust} trust (${p.why})`;
     case "rank_up": return `Promoted to ${p.to}`;
-    case "presence.check_in": return `On duty (${p.mode})`;
-    case "presence.check_out": return "Off duty";
-    case "desk_link.fulfilled": return `Desk agent ${p.by} cracked your code`;
+    case "presence.check_in": return p.mode === "desk" ? "Deployed to the intel desk" : "Deployed to the field";
+    case "presence.check_out": return "Stood down";
+    case "desk_link.fulfilled": return `Analyst ${p.by} cracked your code`;
     case "location.flagged": return "A scan could not be verified";
     case "recruited": return `Joined ${p.faction}`;
     case "assessment.scored": return "Assessment scored";

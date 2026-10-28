@@ -73,7 +73,7 @@ export default function App() {
 
   const inGame = !!player?.factionId;
   const accent = factionColor(player?.factionId);
-  const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Duty"], ["profile", player?.codename ?? "You"]];
+  const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Missions"], ["profile", player?.codename ?? "You"]];
   return (
     <View style={s.root}>
       <StatusBar style="light" />

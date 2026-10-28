@@ -93,7 +93,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           </View>
         )}
       </Dossier>
-      <Button title="Go to the field" onPress={onDuty} style={{ paddingVertical: 16 }} />
+      <Button title="Go to missions" onPress={onDuty} style={{ paddingVertical: 16 }} />
       {err && <Body style={{ color: C.red }}>{err}</Body>}
     </Screen>
   );

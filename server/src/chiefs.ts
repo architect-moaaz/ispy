@@ -72,7 +72,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
       ].join("\n"),
       messages: [{
         role: "user",
-        content: `Area: ${ctx.areaName}. Your agents on duty: ${ctx.fieldAgents} field, ${ctx.deskAgents} desk. Rival agents present: ${ctx.rivalAgentsBucket}.\n` +
+        content: `Area: ${ctx.areaName}. Your operatives deployed: ${ctx.fieldAgents} field, ${ctx.deskAgents} intel desk. Rival agents present: ${ctx.rivalAgentsBucket}.\n` +
           `Recent outcomes: ${ctx.recentOutcomes.length ? ctx.recentOutcomes.map((o) => `${o.template}:${o.outcome}`).join(", ") : "none yet"}.\n` +
           "Produce the plan.",
       }],
@@ -133,7 +133,7 @@ export async function chiefReply(chief: ChiefId, faction: Faction, ctx: ChatCont
 function cannedReply(chief: ChiefId, text: string) {
   const p = PERSONAS[chief];
   const t = text.toLowerCase();
-  if (/mission|order|task|what.*do/.test(t)) return "Check the duty board. When you are on duty in the area, orders come to you.";
+  if (/mission|order|task|what.*do/.test(t)) return "Check the mission board. Once you are deployed in the sector, orders come to you.";
   if (/are you (an? |a )?(ai|bot|robot|machine|program|human|real|person)|who are you|what are you/.test(t)) return "What I am matters less than what you bring me. Back to work.";
   if (/hello|hi\b/.test(t)) return p.lines.welcome[0];
   if (/rank|xp|trust/.test(t)) return "Your standing is on your profile. Earn it in the field.";

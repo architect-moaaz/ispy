@@ -122,7 +122,7 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
         </View>
         <View style={{ flex: 1, gap: 6 }}>
           <Button title="HQ link" kind="ghost" onPress={onHQ} style={{ marginTop: 0, paddingVertical: 8 }} />
-          <Button title="Off duty" kind="ghost" onPress={onOffDuty} style={{ marginTop: 0, paddingVertical: 8 }} />
+          <Button title="Stand down" kind="ghost" onPress={onOffDuty} style={{ marginTop: 0, paddingVertical: 8 }} />
         </View>
       </View>
 
@@ -146,7 +146,7 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
           {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
           <Typed>{mission.brief}</Typed>
           {nav.steps.map((st, i) => <Typed key={i} style={{ color: C.dim, marginBottom: 2 }}>{i + 1}. {st}</Typed>)}
-          {!nav.unlocked && <Typed style={{ color: C.amber }}>Locked until your desk agent cracks the cipher{mission.deskLink?.fallbackAt ? `, or at ${new Date(mission.deskLink.fallbackAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} you get a solo version` : ""}.</Typed>}
+          {!nav.unlocked && <Typed style={{ color: C.amber }}>Locked until your analyst cracks the cipher{mission.deskLink?.fallbackAt ? `, or at ${new Date(mission.deskLink.fallbackAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} you get a solo version` : ""}.</Typed>}
           {scan?.result === "needs_code" && (
             <View style={{ marginTop: 6 }}>
               <Text style={[s.panelTitle, { color: C.cyan }]}>On-site check</Text>
@@ -165,7 +165,7 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
 
       {!mission && (
         <View style={{ marginTop: 12 }}>
-          <Text style={s.sectionTitle}>Active orders · {offers.length} available</Text>
+          <Text style={s.sectionTitle}>Mission board · {offers.length} available</Text>
           {offers.length === 0 && <Dossier tab={C.cyanDim}><Body dim style={{ marginBottom: 0 }}>{notice ?? "Your chief is choosing. Orders land within seconds when the sector has open targets."}</Body></Dossier>}
           {offers.map((o) => (
             <Dossier key={o.offerId} tab={o.mission.contested ? C.red : C.cyan}>
@@ -173,7 +173,7 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
                 <Text style={s.panelTitle}>{TEMPLATE_NAME[o.mission.templateId] ?? o.mission.title}</Text>
                 <Text style={[s.mono, { color: C.cyan }]}>{o.mission.rewardXp} XP</Text>
               </View>
-              <Text style={s.mono}>{o.mission.targetName?.toUpperCase()}{o.mission.walkM != null ? ` · ${Math.round(o.mission.walkM)}M` : ""}{o.mission.contested ? " · RIVAL ACTIVITY" : ""}{o.mission.deskLink ? " · DESK LINK" : ""}</Text>
+              <Text style={s.mono}>{o.mission.targetName?.toUpperCase()}{o.mission.walkM != null ? ` · ${Math.round(o.mission.walkM)}M` : ""}{o.mission.contested ? " · RIVAL ACTIVITY" : ""}{o.mission.deskLink ? " · ANALYST LINK" : ""}</Text>
               <Typed style={{ marginTop: 4 }}>{o.mission.brief}</Typed>
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <Button title="Accept mission" onPress={() => accept(o)} loading={busy} style={{ flex: 1.3 }} />

@@ -45,18 +45,18 @@ export function Duty({ presence, devSim, onPresence, onHQ }: { presence: Presenc
   return (
     <Screen>
       {devSim && <DevPanel />}
-      <Display>Report for duty</Display>
-      <Kicker>Operative standing by</Kicker>
-      <Body dim>Field agents walk to real targets on the satellite map. Desk agents crack the codes that unlock them. Both climb the same ladder.</Body>
+      <Display>Mission control</Display>
+      <Kicker>Awaiting deployment</Kicker>
+      <Body dim>Field operatives walk to real targets on the satellite map. Intel analysts crack the codes that unlock them. Both climb the same ladder.</Body>
       <Dossier>
-        <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1.5 }}>FIELD</Text>
+        <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1.5 }}>FIELD OPS</Text>
         <Body dim>Reads your location once to find your sector, then only while a mission is live. Daylight, public places.</Body>
-        <Button title="Go on duty · Field" onPress={() => checkIn("field")} loading={busy} />
+        <Button title="Deploy to the field" onPress={() => checkIn("field")} loading={busy} />
       </Dossier>
       <Dossier tab={C.cyanDim}>
-        <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1.5 }}>DESK</Text>
-        <Body dim>No location. Ciphers and analysis that a field agent is waiting on right now.</Body>
-        <Button title="Go on duty · Desk" kind="ghost" onPress={() => checkIn("desk")} loading={busy} />
+        <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1.5 }}>INTEL DESK</Text>
+        <Body dim>No location. Ciphers and analysis that a field operative is waiting on right now.</Body>
+        <Button title="Deploy to the intel desk" kind="ghost" onPress={() => checkIn("desk")} loading={busy} />
       </Dossier>
       {err && <Body style={{ color: C.red }}>{err}</Body>}
     </Screen>

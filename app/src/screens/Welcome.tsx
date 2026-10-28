@@ -48,7 +48,7 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
           {err && <Typed style={{ color: C.red }}>{err}</Typed>}
           <Button title="Begin clearance" onPress={go} loading={busy} style={{ paddingVertical: 16 }} />
         </Dossier>
-        <Body dim style={{ fontSize: 12.5, textAlign: "center" }}>Adults only. No real name needed. Your location is read only while you are on duty, and never shared.</Body>
+        <Body dim style={{ fontSize: 12.5, textAlign: "center" }}>Adults only. No real name needed. Your location is read only while you are deployed, and never shared.</Body>
       </View>
     </Screen>
   );

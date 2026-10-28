@@ -48,12 +48,12 @@ export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
 
   return (
     <Screen>
-      <Kicker color={C.amber}>On duty at the desk</Kicker>
+      <Kicker color={C.amber}>Intel desk · deployed</Kicker>
       <Display>Intercepts</Display>
       {detail === undefined && <Spinner />}
       {detail === null && (
         <Panel>
-          <Body dim>Nothing on the wire. Field agents in your area generate work; stay on duty and it will come.</Body>
+          <Body dim>Nothing on the wire. Field operatives in your sector generate work; stay deployed and it will come.</Body>
         </Panel>
       )}
       {detail && (
@@ -91,7 +91,7 @@ export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
         </Dossier>
       )}
       {err && <Body style={{ color: C.stamp }}>{err}</Body>}
-      <Button title="Go off duty" kind="ghost" onPress={onOffDuty} />
+      <Button title="Stand down" kind="ghost" onPress={onOffDuty} />
     </Screen>
   );
 }
