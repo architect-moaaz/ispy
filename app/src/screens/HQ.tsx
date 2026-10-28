@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from "rea
 import Svg, { Circle } from "react-native-svg";
 import type { Briefing, ChatMessage } from "@ispy/shared";
 import { api } from "../api";
+import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Dossier, Input, Screen, Spinner } from "../ui";
 import { ChiefBanner, FactionEmblem } from "../graphics";
@@ -27,7 +28,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
       setBriefing(b); setMessages(m.messages);
     } catch (e: any) { setErr(e.message); }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); return onLive((t) => { if (t === "chief.message" || t === "reward" || t === "rank_up") load(); }); }, []);
 
   const send = async () => {
     const t = text.trim();

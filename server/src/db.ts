@@ -108,7 +108,7 @@ CREATE INDEX IF NOT EXISTS events_player ON events(player_id, id);
 `;
 db.exec(SCHEMA);
 // Columns added after the first release; SQLite has no IF NOT EXISTS for columns.
-for (const col of ["credits INTEGER NOT NULL DEFAULT 0", "items TEXT NOT NULL DEFAULT '{}'", "chief_read_at TEXT"]) {
+for (const col of ["credits INTEGER NOT NULL DEFAULT 0", "items TEXT NOT NULL DEFAULT '{}'", "chief_read_at TEXT", "push_token TEXT"]) {
   try { db.exec(`ALTER TABLE players ADD COLUMN ${col}`); } catch { /* already there */ }
 }
 

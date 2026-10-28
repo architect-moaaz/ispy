@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import type { DeskMissionDetail, DeskSubmitResponse } from "@ispy/shared";
 import { api } from "../api";
+import { onLive } from "../live";
 import { C, F } from "../theme";
 import { Body, Button, Choice, Display, Dossier, Input, Kicker, Panel, Screen, Spinner, Stamp, Typed, fmtCountdown } from "../ui";
 
@@ -24,9 +25,10 @@ export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
 
   useEffect(() => {
     load();
-    const poll = setInterval(() => { if (!detail) load(); }, 5000);
+    const poll = setInterval(() => { if (!detail) load(); }, 20000);
     const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => { clearInterval(poll); clearInterval(t); };
+    const off = onLive((ty) => { if (ty === "mission.offered" || ty === "mission.accepted" || ty === "mission.expired") load(); });
+    return () => { clearInterval(poll); clearInterval(t); off(); };
   }, [detail?.mission.id]);
 
   const submit = async () => {

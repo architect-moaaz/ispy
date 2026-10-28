@@ -5,6 +5,8 @@ import { useFonts, BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold } f
 import { CourierPrime_400Regular, CourierPrime_700Bold } from "@expo-google-fonts/courier-prime";
 import type { Faction, Player, Presence } from "@ispy/shared";
 import { api, loadToken, setToken, setUnauthorizedHandler, type World } from "./src/api";
+import { connectLive, disconnectLive, onLive } from "./src/live";
+import { registerForPush } from "./src/push";
 import { C, F, factionColor } from "./src/theme";
 import { Banner, Spinner } from "./src/ui";
 import { Welcome } from "./src/screens/Welcome";
@@ -29,6 +31,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("duty");
 
   const signOut = useCallback(async () => {
+    disconnectLive();
     await setToken(null);
     setPlayer(null); setFaction(null); setPresence(null);
   }, []);
@@ -54,15 +57,21 @@ export default function App() {
     let alive = true;
     const poll = () => api.world().then((w) => { if (alive) { setWorld(w); setOffline(false); } }).catch(() => alive && setOffline(true));
     poll();
-    const id = setInterval(poll, 15_000);
+    const id = setInterval(poll, 60_000);
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  // Pick up rank/XP changes after missions.
+  // Live stream while signed in; the poll below is only a backstop.
   useEffect(() => {
     if (!player) return;
-    const id = setInterval(refreshMe, 10_000);
-    return () => clearInterval(id);
+    connectLive();
+    registerForPush();
+    const off = onLive((type) => {
+      if (["chief.message", "reward", "rank_up", "presence.check_in", "presence.check_out", "live.open"].includes(type)) refreshMe();
+      if (type === "admin.paused" || type === "admin.resumed") api.world().then(setWorld).catch(() => {});
+    });
+    const id = setInterval(refreshMe, 45_000);
+    return () => { off(); clearInterval(id); };
   }, [player?.id, refreshMe]);
 
   if (!booted || !fontsLoaded) return <View style={s.root}><Spinner /></View>;

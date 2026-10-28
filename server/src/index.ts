@@ -13,6 +13,8 @@ import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
 import { startChiefAgents } from "./chiefAgent.ts";
+import { openStream, streamClients } from "./stream.ts";
+import { registerPushToken, unregisterPushToken, startPush, pushStats } from "./push.ts";
 import { allParams } from "./params.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
@@ -38,8 +40,10 @@ app.decorateRequest("player", null);
 declare module "fastify" { interface FastifyRequest { player: ReturnType<typeof playerView> | null } }
 app.addHook("preHandler", async (req) => {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith("Bearer ")) return;
-  const s = get<{ player_id: string }>("SELECT player_id FROM sessions WHERE token=?", auth.slice(7));
+  const q = (req.query as any)?.token;
+  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : typeof q === "string" ? q : null;
+  if (!token) return;
+  const s = get<{ player_id: string }>("SELECT player_id FROM sessions WHERE token=?", token);
   if (s) req.player = playerView(s.player_id);
 });
 const need = (req: { player: ReturnType<typeof playerView> | null }) => {
@@ -188,6 +192,12 @@ app.get("/v1/admin/audit", async () => ({ audits: auditor.latestAudits() }));
 app.post("/v1/admin/audit", async () => auditor.runAudit(1));
 app.post("/v1/admin/dispatch", async () => { await director.publishDispatches(true); return { dispatches: director.recentDispatches(3) }; });
 
+// ---- live stream & push ----
+app.get("/v1/stream", async (req, reply) => { const p = need(req); openStream(p.id, reply); return reply; });
+app.post("/v1/push/register", async (req) => { registerPushToken(need(req).id, z.object({ token: z.string() }).parse(req.body).token); return { ok: true }; });
+app.post("/v1/push/unregister", async (req) => { unregisterPushToken(need(req).id); return { ok: true }; });
+app.get("/v1/admin/push", async () => ({ ...pushStats(), streamClients: streamClients() }));
+
 app.get("/v1/profile/history", async (req) => ({ events: history(need(req).id) }));
 
 // ---- dev & admin ----
@@ -222,6 +232,7 @@ async function tick(force = false) {
 }
 await tick();
 startChiefAgents();
+startPush();
 directorAgent.start();
 
 await app.listen({ port: PORT, host: "0.0.0.0" });

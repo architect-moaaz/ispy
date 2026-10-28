@@ -4,6 +4,7 @@ import Svg, { Circle, Line, Polygon } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import type { AccuseResponse, CaseDetail, CaseSummary, FactionId } from "@ispy/shared";
 import { api } from "../api";
+import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Dossier as Panel, Screen, Spinner, Stamp } from "../ui";
 import { FactionEmblem } from "../graphics";
@@ -28,7 +29,12 @@ export function DossierScreen() {
     try { const d = await api.caseDetail(id); setDetail(d); setAccused((a) => a ?? topFaction(d)); }
     catch (e: any) { setErr(e.message); }
   };
-  useEffect(() => { loadList(); const t = setInterval(loadList, 20000); return () => clearInterval(t); }, []);
+  useEffect(() => {
+    loadList();
+    const t = setInterval(loadList, 90000);
+    const off = onLive((ty) => { if (ty.startsWith("evidence.") || ty.startsWith("case.")) { loadList(); if (selected) loadDetail(selected); } });
+    return () => { clearInterval(t); off(); };
+  }, [selected]);
   useEffect(() => { if (selected) { setResult(null); setAccused(null); loadDetail(selected); } }, [selected]);
 
   const act = async (fn: () => Promise<unknown>) => {

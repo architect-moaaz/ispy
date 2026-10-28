@@ -3,6 +3,7 @@ import { Animated, Dimensions, Easing, StyleSheet, Text, View } from "react-nati
 import Svg, { Circle, G, Line, Path, Polygon, Rect } from "react-native-svg";
 import type { Contact, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse } from "@ispy/shared";
 import { api } from "../api";
+import { onLive } from "../live";
 import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix } from "../location";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Dossier, Input, Screen, Stamp, Typed, fmtCountdown } from "../ui";
@@ -53,11 +54,12 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   }, []);
   useEffect(() => {
     refresh();
-    const p = setInterval(refresh, mission ? 8000 : 5000);
+    const p = setInterval(refresh, mission ? 30000 : 20000);
+    const off = onLive((ty) => { if (["mission.offered", "mission.expired", "desk_link.fulfilled", "desk_link.fallback", "contest.formed", "presence.check_in", "presence.check_out", "live.open"].includes(ty)) refresh(); });
     const hb = setInterval(async () => {
       try { const f = getSimFix() ?? (await currentFix()); await api.heartbeat({ lat: f.lat, lng: f.lng, sim: f.sim }); } catch { /* server expires presence */ }
     }, 120000);
-    return () => { clearInterval(p); clearInterval(hb); };
+    return () => { clearInterval(p); clearInterval(hb); off(); };
   }, [mission?.id]);
 
   const target = nav ? { lat: nav.lat, lng: nav.lng } : null;

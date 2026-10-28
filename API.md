@@ -99,3 +99,11 @@ journal (chief_memory) it plans and chats from, refills its pool the moment an o
 checks every minute for deployed operatives with nothing to do. Dispatch is proximity-first: field
 missions are built on targets near the agency's deployed agents, extraction legs are neighbours, and
 the matcher weights walking distance above skill fit.
+
+Live stream and push: `GET /v1/stream?token=…` is a server-sent events feed of the operative's own
+events (chief messages, offers, verifications, desk unlocks, rewards, cases, contracts) plus public
+world events; payloads carry only safe fields and the app refetches what changed, with slow polling
+as a backstop. `POST /v1/push/register { token }` stores an Expo push token; the notifier sends a
+few event types (chief message, new orders, site unlocked, contract closed, cover burned, promotion,
+campaign start/end) through the Expo push service, never between 21:00 and 07:00 and at most six an
+hour per operative. `/v1/admin/push` shows registrations, sends and open stream clients.

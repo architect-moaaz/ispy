@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { BoardResponse, BountyCard as BountyT, Dispatch } from "@ispy/shared";
 import { api } from "../api";
+import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Dossier as Panel, Screen, Spinner, fmtCountdown } from "../ui";
 import { ART } from "../art";
@@ -15,7 +16,13 @@ export function Board() {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {})]).catch((e) => setErr(e.message));
-  useEffect(() => { load(); const t = setInterval(() => setNow(Date.now()), 1000); const p = setInterval(load, 20000); return () => { clearInterval(t); clearInterval(p); }; }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    const p = setInterval(load, 90000);
+    const off = onLive((ty) => { if (ty.startsWith("bounty.") || ty.startsWith("world_event.") || ty === "director.dispatch" || ty === "reward") load(); });
+    return () => { clearInterval(t); clearInterval(p); off(); };
+  }, []);
 
   const claim = async (id: string) => {
     setBusy(id); setErr(null);

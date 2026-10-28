@@ -43,6 +43,7 @@ export async function loadToken() {
   }
   return token;
 }
+export const getToken = () => token;
 export async function setToken(t: string | null) {
   token = t;
   try {
@@ -120,6 +121,7 @@ export const api = {
   clue: (id: string) => post<{ evidence: EvidenceItem }>(`/v1/investigations/${id}/clue`),
   wire: (id: string) => post<{ evidence: EvidenceItem; credits: number }>(`/v1/investigations/${id}/wire`),
   accuse: (id: string, factionId: FactionIdT) => post<AccuseResponse>(`/v1/investigations/${id}/accuse`, { factionId }),
+  registerPush: (token: string) => post<{ ok: true }>("/v1/push/register", { token }),
   dispatches: () => get<{ dispatches: Dispatch[] }>("/v1/world/dispatches"),
   board: () => get<BoardResponse>("/v1/bounties"),
   claimBounty: (id: string) => post<{ ok: true }>(`/v1/bounties/${id}/claim`),
