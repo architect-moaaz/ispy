@@ -41,3 +41,16 @@ Dev simulation: when `devSim` is true the app may send `sim: true` with any lat/
 (check-in, heartbeat, scan). Real devices send `expo-location` fixes with `mock` from
 `Location.LocationObject.mocked`.
 | GET | /v1/world/contacts | → `ContactsResponse` (coarse sightings of other field agents in your area) |
+| GET | /v1/investigations | → `{ cases: CaseSummary[] }` |
+| GET | /v1/investigations/:id | → `CaseDetail` (alignment, evidence, confidence, reveal after a confirmed accusation) |
+| POST | /v1/investigations/:id/clue | → `{ evidence }` (3/day, may be a decoy) |
+| POST | /v1/investigations/:id/wire | → `{ evidence, credits }` (costs 10 intel credits, never a decoy) |
+| POST | /v1/investigations/:id/accuse | `{ factionId }` → `AccuseResponse` (needs confidence ≥ 0.8; wrong = −5 trust + 1 h cooldown) |
+| GET | /v1/bounties | → `BoardResponse` (global event, contracts with your claim status, credits, inventory) |
+| POST | /v1/bounties/:id/claim | → `{ ok }` (max 3 active) |
+| GET | /v1/world/event | → `{ event: GlobalEvent \| null }` |
+
+Evidence is created by the authority when a field mission verifies while a rival is in the sector
+(the contested rival if any); analyst (desk) completions expose one decoy. Bounties progress on
+verified missions matching their criteria; the Director seeds OPERATION ECLIPSE (24 h, five
+fragments from dead drops and extractions) and the Arbiter resolves it on a fixed rule.

@@ -36,6 +36,7 @@ export interface Player {
   walkRadiusM: number;
   dailyFieldCap: number;
   fieldToday: number;
+  credits: number;
 }
 
 export interface Area {
@@ -216,4 +217,75 @@ export interface WorldEvent {
   actor: string;
   payload: unknown;
   at: string;
+}
+
+// ---- Investigations ----
+export type CaseState = "open" | "accused" | "confirmed" | "rejected" | "cooldown";
+export interface EvidenceItem {
+  id: string;
+  file: string; // e.g. CHIP_TRANS_09.LOG
+  kind: "intercept" | "geo" | "cipher" | "sighting";
+  weight: number; // 0..1
+  hintsFaction: FactionId;
+  decoyDetected: boolean; // true once an analyst has exposed it
+  at: string;
+  source: string; // where it came from (mission title, wire, clue)
+}
+export interface CaseSummary {
+  id: string;
+  subject: string; // anonymised subject code, e.g. APEX_SHADOW
+  state: CaseState;
+  confidence: number;
+  evidenceCount: number;
+  updatedAt: string;
+}
+export interface CaseDetail extends CaseSummary {
+  alignment: { factionId: FactionId; label: string; chief: string; value: number }[];
+  evidence: EvidenceItem[];
+  accuseThreshold: number;
+  decoyDetected: boolean;
+  cluesLeftToday: number;
+  wireCostCredits: number;
+  reveal?: { codename: string; factionId: FactionId } | null; // after a confirmed accusation
+  cooldownUntil?: string | null;
+}
+export interface AccuseResponse {
+  correct: boolean;
+  reveal?: { codename: string; factionId: FactionId };
+  reward: { xp: number; trust: number };
+  debrief: string;
+}
+
+// ---- Bounties and global events ----
+export type BountyStatus = "ELIGIBLE" | "ACTIVE" | "COMPLETED" | "LOCKED" | "EXPIRED";
+export interface BountyCard {
+  id: string;
+  issuer: ChiefId;
+  factionId: FactionId | null; // null = open to every agency
+  title: string;
+  type: string; // e.g. INFILTRATE SECTOR
+  brief: string;
+  reward: { xp: number; credits: number };
+  squad: boolean;
+  minRank: Rank;
+  status: BountyStatus;
+  progress: { done: number; of: number };
+  expiresAt: string;
+}
+export interface GlobalEvent {
+  id: string;
+  name: string;
+  brief: string;
+  state: "active" | "resolved";
+  endsAt: string;
+  progress: { factionId: FactionId; label: string; value: number; fragments: number; of: number }[];
+  epilogue?: string | null;
+  winner?: FactionId | null;
+}
+export interface InventoryItem { id: string; name: string; qty: number; note: string }
+export interface BoardResponse {
+  event: GlobalEvent | null;
+  bounties: BountyCard[];
+  credits: number;
+  inventory: InventoryItem[];
 }

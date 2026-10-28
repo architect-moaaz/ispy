@@ -7,6 +7,8 @@ import { seed } from "./seed.ts";
 import { ASSESSMENT, FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { norm } from "./puzzles.ts";
 import { chiefReply, llmEnabled } from "./chiefs.ts";
+import * as investigations from "./investigations.ts";
+import * as bounties from "./bounties.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
@@ -20,7 +22,7 @@ const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
 await app.register(cors, { origin: true });
 
 app.setErrorHandler((err, _req, reply) => {
-  if (err instanceof ApiError) return reply.status(err.status).send({ error: err.message });
+  if (err instanceof ApiError || (typeof (err as any).status === "number" && (err as any).status < 500)) return reply.status((err as any).status).send({ error: (err as Error).message });
   if (err instanceof z.ZodError) return reply.status(400).send({ error: err.issues.map((i) => i.message).join("; ") });
   app.log.error(err);
   return reply.status(500).send({ error: "internal error" });
@@ -164,6 +166,19 @@ const chatHistory = (playerId: string): ChatMessage[] =>
   all<ChatMessage>("SELECT id, role, text, at FROM chat WHERE player_id=? ORDER BY at DESC LIMIT 40", playerId).reverse();
 
 app.get("/v1/world/contacts", async (req) => ({ contacts: contactsFor(need(req)) }));
+// ---- investigations ----
+app.get("/v1/investigations", async (req) => ({ cases: investigations.listCases(need(req).id) }));
+app.get<{ Params: { id: string } }>("/v1/investigations/:id", async (req) => investigations.caseDetail(need(req).id, req.params.id));
+app.post<{ Params: { id: string } }>("/v1/investigations/:id/clue", async (req) => ({ evidence: investigations.requestClue(need(req).id, req.params.id) }));
+app.post<{ Params: { id: string } }>("/v1/investigations/:id/wire", async (req) => investigations.requestWire(need(req).id, req.params.id));
+app.post<{ Params: { id: string } }>("/v1/investigations/:id/accuse", async (req) =>
+  investigations.accuse(need(req).id, req.params.id, z.object({ factionId: z.enum(["raven", "phantom", "cipher"]) }).parse(req.body).factionId));
+
+// ---- bounties & global event ----
+app.get("/v1/bounties", async (req) => bounties.board(need(req).id));
+app.post<{ Params: { id: string } }>("/v1/bounties/:id/claim", async (req) => { bounties.claimBounty(need(req).id, req.params.id); return { ok: true }; });
+app.get("/v1/world/event", async () => ({ event: bounties.currentEvent() }));
+
 app.get("/v1/profile/history", async (req) => ({ events: history(need(req).id) }));
 
 // ---- dev & admin ----
@@ -185,7 +200,7 @@ app.post("/v1/admin/tick", async () => { await tick(true); return { ok: true }; 
 
 // ---- loops: hourly strategy, 5-minute pool ----
 async function tick(force = false) {
-  try { await refreshPlans(force); refreshPool(); } catch (e) { app.log.error(e, "tick failed"); }
+  try { await refreshPlans(force); refreshPool(); bounties.refreshBounties(); bounties.refreshEvent(); } catch (e) { app.log.error(e, "tick failed"); }
 }
 await tick();
 setInterval(() => void tick(), 5 * 60_000);

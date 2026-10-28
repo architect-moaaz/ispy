@@ -67,11 +67,38 @@ CREATE TABLE IF NOT EXISTS scans (
   lat REAL, lng REAL, trust REAL NOT NULL, reasons TEXT NOT NULL, at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS world (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS cases (
+  id TEXT PRIMARY KEY, investigator_id TEXT NOT NULL, target_id TEXT NOT NULL, subject TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'open', verdict TEXT, cooldown_until TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  UNIQUE(investigator_id, target_id)
+);
+CREATE TABLE IF NOT EXISTS evidence (
+  id TEXT PRIMARY KEY, case_id TEXT NOT NULL, file TEXT NOT NULL, kind TEXT NOT NULL, weight REAL NOT NULL,
+  hints_faction TEXT NOT NULL, decoy INTEGER NOT NULL DEFAULT 0, detected INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL, at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bounties (
+  id TEXT PRIMARY KEY, issuer TEXT NOT NULL, faction_id TEXT, title TEXT NOT NULL, type TEXT NOT NULL, brief TEXT NOT NULL,
+  reward_xp INTEGER NOT NULL, reward_credits INTEGER NOT NULL, squad INTEGER NOT NULL DEFAULT 0, min_rank TEXT NOT NULL DEFAULT 'recruit',
+  criteria TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'open', expires_at TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS bounty_claims (
+  id TEXT PRIMARY KEY, bounty_id TEXT NOT NULL, player_id TEXT NOT NULL, progress INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'active', claimed_at TEXT NOT NULL, completed_at TEXT, UNIQUE(bounty_id, player_id)
+);
+CREATE TABLE IF NOT EXISTS world_events (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, brief TEXT NOT NULL, state TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL,
+  ruleset TEXT NOT NULL, progress TEXT NOT NULL, resolved TEXT
+);
 CREATE INDEX IF NOT EXISTS missions_state ON missions(state, faction_id, area_id);
 CREATE INDEX IF NOT EXISTS offers_player ON offers(player_id, state);
 CREATE INDEX IF NOT EXISTS events_player ON events(player_id, id);
 `;
 db.exec(SCHEMA);
+// Columns added after the first release; SQLite has no IF NOT EXISTS for columns.
+for (const col of ["credits INTEGER NOT NULL DEFAULT 0", "items TEXT NOT NULL DEFAULT '{}'"]) {
+  try { db.exec(`ALTER TABLE players ADD COLUMN ${col}`); } catch { /* already there */ }
+}
 
 type Row = Record<string, any>;
 

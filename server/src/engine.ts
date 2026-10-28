@@ -8,6 +8,9 @@ import { areaForPoint, bearingDeg, distanceM, type AreaRow } from "./geo.ts";
 import { FACTIONS, PERSONAS, RANKS, factionById } from "./content.ts";
 import { makeAnalysis, makeCipher, norm, pick, rand } from "./puzzles.ts";
 import { planArea, type AreaPlan } from "./chiefs.ts";
+import { award, rankFor } from "./rewards.ts";
+import * as investigations from "./investigations.ts";
+import * as bounties from "./bounties.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 const PRESENCE_TTL_MS = 15 * 60_000;
@@ -19,7 +22,7 @@ const CONTEST_WINDOW_MS = 30 * 60_000;
 const WALK_SPEED_MAX_MPS = 25_000 / 3600;
 
 // ---------- rows ----------
-interface PlayerRow { id: string; codename: string; faction_id: FactionId | null; rank: Rank; xp: number; trust: number; skills: string }
+interface PlayerRow { id: string; codename: string; faction_id: FactionId | null; rank: Rank; xp: number; trust: number; skills: string; credits: number }
 interface PresenceRow { player_id: string; area_id: string | null; mode: Mode; checked_in_at: string; expires_at: string; last_lat: number | null; last_lng: number | null; last_fix_at: string | null }
 interface TargetRow { id: string; area_id: string; name: string; kind: string; lat: number; lng: number; approach_radius_m: number; safe_start: number; safe_end: number; capacity: number; state: string; observation: string; observation_answer: string }
 interface MissionRow {
@@ -35,11 +38,7 @@ export class ApiError extends Error { constructor(public status: number, msg: st
 export const paused = () => worldGet("paused", "0") === "1";
 
 // ---------- players ----------
-export function rankFor(xp: number) {
-  let r: (typeof RANKS)[number] = RANKS[1];
-  for (const x of RANKS) if (x.rank !== "civilian" && xp >= x.at) r = x;
-  return r;
-}
+export { rankFor };
 export function playerView(id: string): Player {
   const p = get<PlayerRow>("SELECT * FROM players WHERE id=?", id);
   if (!p) throw new ApiError(401, "unknown player");
@@ -51,18 +50,11 @@ export function playerView(id: string): Player {
   return {
     id: p.id, codename: p.codename, factionId: p.faction_id, rank: r.rank, xp: p.xp, trust: p.trust,
     skills: { observation: 0.5, reasoning: 0.5, cipher: 0.5, cooperation: 0.5, ...parse<Partial<Skills>>(p.skills, {}) },
-    walkRadiusM: r.walkM, dailyFieldCap: r.cap, fieldToday,
+    walkRadiusM: r.walkM, dailyFieldCap: r.cap, fieldToday, credits: p.credits ?? 0,
   };
 }
 export const playerFaction = (p: Player): Faction | null => (p.factionId ? factionById(p.factionId) : null);
 
-function award(playerId: string, xp: number, trust: number, why: string) {
-  const before = playerView(playerId);
-  run("UPDATE players SET xp = xp + ?, trust = MIN(100, MAX(0, trust + ?)) WHERE id=?", xp, trust, playerId);
-  const after = playerView(playerId);
-  logEvent("reward", "authority", { xp, trust, why }, playerId);
-  if (after.rank !== before.rank) logEvent("rank_up", "authority", { from: before.rank, to: after.rank }, playerId);
-}
 
 // ---------- presence ----------
 export function getPresence(playerId: string): Presence | null {
@@ -475,6 +467,8 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
   if (m.desk_link_id) run("UPDATE desk_links SET state='closed' WHERE id=? AND state<>'fulfilled'", m.desk_link_id);
   logEvent("mission.verified", "authority", { missionId: m.id, title: m.title, template: m.template_id, trust, distance, contestOutcome, flagged }, player.id);
   award(player.id, xp, flagged ? 0 : 2, m.title);
+  investigations.onMissionVerified(player.id, m);
+  bounties.onMissionVerified(player.id, { template_id: m.template_id, mode: m.mode, outcome: contestOutcome ?? "ok" });
   const seed = m.id + ":debrief";
   const debrief = contestOutcome === "lost"
     ? "A rival got there first. You brought back a decoy, and the knowledge that they were here."
@@ -521,6 +515,8 @@ export function deskSubmit(player: Player, missionId: string, answer: string): D
     }
     logEvent("mission.verified", "authority", { missionId: m.id, title: m.title, template: m.template_id, unlockedFor }, player.id);
     award(player.id, m.reward_xp, 1, m.title);
+    investigations.onMissionVerified(player.id, m);
+    bounties.onMissionVerified(player.id, { template_id: m.template_id, mode: m.mode, outcome: "ok" });
     return { correct: true, reward: { xp: m.reward_xp, trust: 1 }, debrief: pick(PERSONAS[f.chief].lines.debrief_ok, m.id), unlockedFor };
   });
 }
@@ -539,13 +535,24 @@ function describe(type: string, p: any): string {
     case "mission.expired": return `Expired: ${p.title}`;
     case "mission.abandoned": return `Abandoned ${p.title}`;
     case "mission.leg_complete": return `Checkpoint ${p.leg} confirmed`;
-    case "reward": return `+${p.xp} XP, ${p.trust >= 0 ? "+" : ""}${p.trust} trust (${p.why})`;
+    case "reward": return `+${p.xp} XP, ${p.trust >= 0 ? "+" : ""}${p.trust} trust${p.credits ? `, +${p.credits} credits` : ""} (${p.why})`;
     case "rank_up": return `Promoted to ${p.to}`;
     case "presence.check_in": return p.mode === "desk" ? "Deployed to the intel desk" : "Deployed to the field";
     case "presence.check_out": return "Stood down";
     case "desk_link.fulfilled": return `Analyst ${p.by} cracked your code`;
     case "location.flagged": return "A scan could not be verified";
     case "recruited": return `Joined ${p.faction}`;
+    case "evidence.found": return `Evidence on ${p.subject}: ${p.file}`;
+    case "evidence.decoy_detected": return `Decoy exposed: ${p.file}`;
+    case "case.opened": return "New investigation opened";
+    case "case.clue": return `Clue from your chief: ${p.file}`;
+    case "case.wire": return `Paid wire (${p.credits} credits)`;
+    case "case.confirmed": return `Accusation confirmed: ${p.subject} is ${p.faction.toUpperCase()}`;
+    case "case.rejected": return `Accusation rejected (${p.subject})`;
+    case "case.exposed": return `Your cover was burned by ${p.by}`;
+    case "bounty.claimed": return `Contract claimed: ${p.title}`;
+    case "bounty.completed": return `Contract complete: ${p.title} (+${p.credits} credits)`;
+    case "world_event.fragment": return `Fragment ${p.fragments} recovered for ${p.faction.toUpperCase()}`;
     case "assessment.scored": return "Assessment scored";
     case "player.registered": return "Clearance granted";
     default: return type;
