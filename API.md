@@ -82,3 +82,12 @@ agency) and plays the meta-game: counter-contracts against a runaway leader for 
 intelligence briefings to rival chiefs about the leader's pattern, more encounters when a campaign is
 tight, sweeter rewards when it runs away, and a rally for a trailing agency. Moves are randomised so
 chiefs cannot learn the rule. `/v1/admin/director` shows the latest assessment under `balance`.
+
+Director brain (brain.ts): when a model is configured (and `ISPY_DIRECTOR` is not `rules`), the
+Director's judgment is the model's. Signals of note wake it (debounced 4 s) and it also reviews the
+world every 2 min while anyone is deployed, 15 min otherwise. It receives the balance of power, every
+deployed operative's state, each chief's state, the campaign, the parameters and bounds, what just
+happened and its own recent decisions, and returns an assessment plus up to six actions from a fixed
+set: message an operative in their chief's voice, brief a chief, publish a contract, set a parameter
+(bounded), publish a dispatch, refill the pool, or wait. Each thought is a `director.thought` ledger
+event. Without a model, the rule-based reactions, tuning and strategy room run instead.

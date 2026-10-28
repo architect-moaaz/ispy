@@ -9,6 +9,7 @@ import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { param, setParam, PARAM_SPEC } from "./params.ts";
 import * as strategy from "./strategy.ts";
+import * as brain from "./brain.ts";
 
 /**
  * The World Director as a resident agent. It does not wait for a clock: every ledger
@@ -23,6 +24,8 @@ interface OperativeModel {
 interface ChiefModel { factionId: FactionId; lastReplan: number; idleAgents: number; emptyPoolSince: number | null }
 
 const FAST_MS = 20_000, SLOW_MS = 5 * 60_000;
+/** Events worth waking the brain for; the rest it sees on the next periodic review. */
+const THINK_ON = new Set(["presence.check_in", "mission.expired", "mission.abandoned", "contest.formed", "case.confirmed", "case.rejected", "world_event.fragment", "world_event.resolved", "bounty.completed", "location.flagged", "presence.check_out"]);
 const IDLE_NUDGE_MS = 4 * 60_000, STALE_PLAN_MS = 60 * 60_000;
 
 class DirectorAgent {
@@ -35,11 +38,20 @@ class DirectorAgent {
   private lastTuning = 0;
   private lastStrategy = 0;
   private lastAssessment: strategy.Assessment | null = null;
+  // Brain: signals queue up and the model thinks once, shortly after, instead of once per event.
+  private pending: Signal[] = [];
+  private thinkTimer: NodeJS.Timeout | null = null;
+  private thinking = false;
+  private lastThought = 0;
+  private lastThoughtText: string | null = null;
   private log: { at: string; what: string; detail?: unknown }[] = [];
 
   start() {
     for (const f of FACTIONS) this.chiefs.set(f.id, { factionId: f.id, lastReplan: 0, idleAgents: 0, emptyPoolSince: null });
-    bus.onSignal((s) => this.react(s).catch((e) => console.warn("[director] reaction failed:", (e as Error).message)));
+    bus.onSignal((s) => {
+      this.react(s).catch((e) => console.warn("[director] reaction failed:", (e as Error).message));
+      if (brain.brainEnabled() && THINK_ON.has(s.type)) { this.pending.push(s); this.scheduleThink(`event ${s.type}`); }
+    });
     this.note("awake");
     void this.heartbeat();
   }
@@ -191,12 +203,17 @@ class DirectorAgent {
           await director.publishDispatches(false);
           this.lastHousekeeping = t;
         }
+        if (brain.brainEnabled()) {
+          const cadence = this.operatives.size > 0 ? 2 * 60_000 : 15 * 60_000;
+          if (t - this.lastThought > cadence && !this.thinkTimer) this.scheduleThink("periodic review");
+        } else {
         if (t - this.lastTuning > 10 * 60_000) { this.tune(); this.lastTuning = t; }
         if (t - this.lastStrategy > 10 * 60_000) {
           const { assessment, moves } = await strategy.play(now().slice(0, 15));
           this.lastAssessment = assessment;
           for (const m of moves) this.note(`strategic move: ${m.kind}`, m.detail);
           this.lastStrategy = t;
+        }
         }
         if (t - this.lastAudit > 3600_000) { const a = auditor.runAudit(1); this.lastAudit = t; if (a.flags.some((f) => f.severity === "critical")) this.note("audit raised critical flags", a.flags); }
       }
@@ -251,11 +268,57 @@ class DirectorAgent {
     }
   }
 
+  private scheduleThink(trigger: string) {
+    if (this.thinkTimer) return;
+    this.thinkTimer = setTimeout(() => { this.thinkTimer = null; void this.think(trigger); }, 4000);
+  }
+
+  /** Hand the whole situation to the model and apply what it decides. */
+  private async think(trigger: string) {
+    if (this.thinking || worldGet("paused", "0") === "1") return;
+    this.thinking = true;
+    const signals = this.pending.splice(0);
+    try {
+      this.observe();
+      const t = Date.now();
+      const ops: brain.OperativeView[] = [...this.operatives.values()].map((o) => {
+        const area = o.areaId ? get<{ name: string }>("SELECT name FROM areas WHERE id=?", o.areaId)?.name ?? null : null;
+        const lastLine = get<{ at: string }>("SELECT at FROM chat WHERE player_id=? AND role='chief' ORDER BY at DESC LIMIT 1", o.playerId);
+        return {
+          codename: o.codename, faction: factionById(o.factionId).name, mode: o.mode, areaName: area,
+          minutesDeployed: Math.round((t - o.deployedAt) / 60_000), minutesIdle: Math.round((t - o.lastActivity) / 60_000),
+          offersSeen: o.offersSeen, declines: o.declines, verified: o.verified, failedScans: o.failedScans,
+          hasWork: !!(get("SELECT 1 FROM missions WHERE assignee_id=? AND state='active'", o.playerId) || get("SELECT 1 FROM offers WHERE player_id=? AND state='open'", o.playerId)),
+          lastChiefLineMinutesAgo: lastLine ? Math.round((t - Date.parse(lastLine.at)) / 60_000) : null,
+        };
+      });
+      const chiefs: brain.ChiefView[] = [...this.chiefs.values()].map((c) => {
+        const plan = get<{ created_at: string; plan: string }>("SELECT created_at, plan FROM area_plans WHERE faction_id=? ORDER BY created_at DESC LIMIT 1", c.factionId);
+        return {
+          chief: factionById(c.factionId).chiefName, faction: factionById(c.factionId).name,
+          planAgeMin: plan ? Math.round((t - Date.parse(plan.created_at)) / 60_000) : 999, idleAgents: c.idleAgents,
+          poolField: get<{ n: number }>("SELECT COUNT(*) n FROM missions WHERE faction_id=? AND mode='field' AND state='pool'", c.factionId)!.n,
+          poolDesk: get<{ n: number }>("SELECT COUNT(*) n FROM missions WHERE faction_id=? AND mode='desk' AND state='pool'", c.factionId)!.n,
+          lastPlanHeadline: plan ? parse<{ headline?: string }>(plan.plan, {}).headline ?? null : null,
+        };
+      });
+      const out = await brain.think(ops, chiefs, signals, this.recent(10).reverse(), trigger);
+      this.lastThought = Date.now();
+      if (out) { this.lastThoughtText = out.assessment; this.note(`thought (${trigger})`, { assessment: out.assessment, applied: out.applied }); }
+    } catch (e) {
+      console.warn("[director] thinking failed, rules continue:", (e as Error).message);
+      this.note("thinking failed; rules continue", (e as Error).message);
+    } finally {
+      this.thinking = false;
+    }
+  }
+
   status() {
     return {
       operativesWatched: this.operatives.size,
       chiefs: [...this.chiefs.values()].map((c) => ({ chief: factionById(c.factionId).chief, idleAgents: c.idleAgents, emptyPool: !!c.emptyPoolSince })),
       cadenceMs: this.operatives.size > 0 ? FAST_MS : SLOW_MS,
+      brain: brain.brainEnabled() ? { mode: "model", lastThought: this.lastThoughtText } : { mode: "rules" },
       balance: this.lastAssessment ? { leader: this.lastAssessment.leader.name, gap: this.lastAssessment.gap, factions: this.lastAssessment.factions.map((f) => ({ name: f.name, power: f.power, fragments: f.fragments, verifiedHour: f.verifiedHour, dominant: f.dominantTemplate })), campaignTight: this.lastAssessment.campaignTight, campaignRunaway: this.lastAssessment.campaignRunaway } : null,
       recent: this.recent(20),
     };
