@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { bus } from "./bus.ts";
 
 export const DB_PATH = process.env.ISPY_DB ?? new URL("../ispy.db", import.meta.url).pathname;
 
@@ -104,7 +105,7 @@ CREATE INDEX IF NOT EXISTS events_player ON events(player_id, id);
 `;
 db.exec(SCHEMA);
 // Columns added after the first release; SQLite has no IF NOT EXISTS for columns.
-for (const col of ["credits INTEGER NOT NULL DEFAULT 0", "items TEXT NOT NULL DEFAULT '{}'"]) {
+for (const col of ["credits INTEGER NOT NULL DEFAULT 0", "items TEXT NOT NULL DEFAULT '{}'", "chief_read_at TEXT"]) {
   try { db.exec(`ALTER TABLE players ADD COLUMN ${col}`); } catch { /* already there */ }
 }
 
@@ -138,10 +139,12 @@ export const parse = <T = any>(s: string | null | undefined, fallback: T): T =>
   s ? (JSON.parse(s) as T) : fallback;
 
 export function logEvent(type: string, actor: string, payload: unknown, playerId?: string | null) {
+  const at = now();
   run(
     "INSERT INTO events(type, actor, player_id, payload, at) VALUES (?,?,?,?,?)",
-    type, actor, playerId ?? null, json(payload), now(),
+    type, actor, playerId ?? null, json(payload), at,
   );
+  bus.emitSignal({ type, actor, playerId: playerId ?? null, payload, at });
 }
 
 export function worldGet(key: string, fallback = ""): string {

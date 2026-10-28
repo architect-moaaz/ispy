@@ -59,7 +59,13 @@ fragments from dead drops and extractions) and the Arbiter resolves it on a fixe
 | POST | /v1/admin/audit | → run an audit now |
 | POST | /v1/admin/dispatch | → force a dispatch now |
 
-World Director loop (every 5 min): chief plans (hourly) → mission pool → bounties → campaign lifecycle
+| GET | /v1/admin/director | → the Director agent's status: operatives watched, chief models, cadence, recent decisions |
+
+World Director agent: a resident process, not a cron. Every ledger event wakes it (deployment,
+offers, accepts, verifications, declines, flagged scans, contests, accusations, fragments, bounties)
+and it reacts at once through the chiefs: welcome and debrief lines, nudges after declines or idling,
+replans with a stated reason, dispatches on exposures and resolutions. Between events it watches on a
+heartbeat of 20 s while anyone is deployed and 5 min when the sector is empty. Housekeeping below: chief plans (hourly) → mission pool → bounties → campaign lifecycle
 (Narrator proposes the fiction and parameters, Arbiter holds the win rule and resolves) → dispatches
 (6 h) → audit (1 h). The Narrator uses Claude when configured and scripted text otherwise; it only
 narrates facts already committed to the ledger. The Auditor never changes state; it raises flags.

@@ -90,7 +90,7 @@ const get = <T,>(p: string) => request<T>("GET", p);
 const post = <T,>(p: string, b?: unknown) => request<T>("POST", p, b ?? {});
 
 export type World = WorldStatus & { devSim: boolean };
-export type Me = { player: Player; faction: Faction | null; presence: Presence | null };
+export type Me = { player: Player; faction: Faction | null; presence: Presence | null; unreadChief?: number };
 export type DevTarget = { id: string; name: string; lat: number; lng: number };
 
 export const api = {

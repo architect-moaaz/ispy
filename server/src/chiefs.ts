@@ -26,6 +26,7 @@ export interface PlanContext {
   deskAgents: number;
   rivalAgentsBucket: string;
   recentOutcomes: { template: TemplateId; outcome: string }[];
+  reason?: string; // why the Director asked for a replan now, if it did
 }
 
 let client: Anthropic | null | undefined;
@@ -75,7 +76,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
         role: "user",
         content: `Area: ${ctx.areaName}. Your operatives deployed: ${ctx.fieldAgents} field, ${ctx.deskAgents} intel desk. Rival agents present: ${ctx.rivalAgentsBucket}.\n` +
           `Recent outcomes: ${ctx.recentOutcomes.length ? ctx.recentOutcomes.map((o) => `${o.template}:${o.outcome}`).join(", ") : "none yet"}.\n` +
-          "Produce the plan.",
+          (ctx.reason ? `The World Director asked you to replan now because: ${ctx.reason}.\n` : "") + "Produce the plan.",
       }],
     });
     if (!res.parsed_output) throw new Error("no parsed output");

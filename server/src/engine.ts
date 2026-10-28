@@ -118,10 +118,10 @@ function latestPlan(factionId: FactionId, areaId: string): { plan: AreaPlan; cre
   return r ? { plan: parse<AreaPlan>(r.plan, null as any), created_at: r.created_at } : null;
 }
 
-export async function refreshPlans(force = false) {
-  const areas = all<AreaRow>("SELECT * FROM areas");
+export async function refreshPlans(force = false, only?: { factionId?: FactionId; areaId?: string; reason?: string }) {
+  const areas = all<AreaRow>("SELECT * FROM areas").filter((a) => !only?.areaId || a.id === only.areaId);
   for (const area of areas) {
-    for (const f of FACTIONS) {
+    for (const f of FACTIONS.filter((x) => !only?.factionId || x.id === only.factionId)) {
       const cur = latestPlan(f.id, area.id);
       if (!force && cur && Date.parse(cur.created_at) > Date.now() - PLAN_TTL_MS) continue;
       const fieldAgents = get<{ n: number }>(
@@ -136,7 +136,7 @@ export async function refreshPlans(force = false) {
       const rivalAgentsBucket = rivals === 0 ? "0" : rivals <= 3 ? "1-3" : rivals <= 10 ? "4-10" : "10+";
       const recentOutcomes = all<{ template: TemplateId; outcome: string }>(
         "SELECT template_id template, outcome FROM missions WHERE faction_id=? AND area_id=? AND outcome IS NOT NULL ORDER BY completed_at DESC LIMIT 10", f.id, area.id);
-      const { plan, source } = await planArea(f.chief, f, { areaName: area.name, fieldAgents, deskAgents, rivalAgentsBucket, recentOutcomes });
+      const { plan, source } = await planArea(f.chief, f, { areaName: area.name, fieldAgents, deskAgents, rivalAgentsBucket, recentOutcomes, reason: only?.reason });
       run("INSERT INTO area_plans(id,faction_id,area_id,plan,source,created_at) VALUES(?,?,?,?,?,?)", uid(), f.id, area.id, json(plan), source, now());
       logEvent("area_plan.published", `chief:${f.chief}`, { areaId: area.id, source, headline: plan.headline, contestAppetite: plan.contestAppetite }, null);
     }
@@ -593,6 +593,22 @@ export function contactsFor(player: Player): Contact[] {
     };
   });
 }
+
+/** A chief speaks to one operative, unprompted. The Director's main engagement channel. */
+export function chiefSay(playerId: string, text: string, why: string) {
+  const p = get<{ faction_id: FactionId | null }>("SELECT faction_id FROM players WHERE id=?", playerId);
+  if (!p?.faction_id) return;
+  // Never pile up: at most one unprompted line every 3 minutes per operative.
+  const last = get<{ at: string }>("SELECT at FROM chat WHERE player_id=? AND role='chief' ORDER BY at DESC LIMIT 1", playerId);
+  if (last && Date.parse(last.at) > Date.now() - 3 * 60_000) return;
+  run("INSERT INTO chat(id,player_id,role,text,at) VALUES(?,?,?,?,?)", uid(), playerId, "chief", text, now());
+  logEvent("chief.message", `chief:${factionById(p.faction_id).chief}`, { why }, playerId);
+}
+export function unreadChief(playerId: string): number {
+  const p = get<{ chief_read_at: string | null }>("SELECT chief_read_at FROM players WHERE id=?", playerId);
+  return get<{ n: number }>("SELECT COUNT(*) n FROM chat WHERE player_id=? AND role='chief' AND at>?", playerId, p?.chief_read_at ?? "")!.n;
+}
+export function markChiefRead(playerId: string) { run("UPDATE players SET chief_read_at=? WHERE id=?", now(), playerId); }
 
 export function worldStatus() {
   const areas = all<AreaRow>("SELECT * FROM areas").map<Area>((a) => ({ id: a.id, name: a.name, city: a.city, lat: a.lat, lng: a.lng, radiusM: a.radius_m }));

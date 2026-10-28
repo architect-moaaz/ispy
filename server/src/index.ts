@@ -11,10 +11,11 @@ import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
+import { directorAgent } from "./directorAgent.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
-  scan, worldStatus,
+  scan, worldStatus, unreadChief, markChiefRead,
 } from "./engine.ts";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -60,7 +61,7 @@ app.post("/v1/auth/register", async (req) => {
 
 app.get("/v1/me", async (req) => {
   const p = need(req);
-  return { player: p, faction: playerFaction(p), presence: getPresence(p.id) };
+  return { player: p, faction: playerFaction(p), presence: getPresence(p.id), unreadChief: unreadChief(p.id) };
 });
 
 // ---- onboarding ----
@@ -146,7 +147,7 @@ app.post<{ Params: { id: string } }>("/v1/desk/:id/submit", async (req) =>
 
 // ---- chief ----
 app.get("/v1/chief/briefing", async (req) => briefing(need(req)));
-app.get("/v1/chief/messages", async (req) => ({ messages: chatHistory(need(req).id) }));
+app.get("/v1/chief/messages", async (req) => { const p = need(req); markChiefRead(p.id); return { messages: chatHistory(p.id) }; });
 app.post("/v1/chief/messages", async (req) => {
   const p = need(req);
   const f = playerFaction(p);
@@ -203,8 +204,9 @@ app.post("/v1/admin/pause", async (req) => {
   return { paused };
 });
 app.post("/v1/admin/tick", async () => { await tick(true); return { ok: true }; });
+app.get("/v1/admin/director", async () => directorAgent.status());
 
-// ---- loops: hourly strategy, 5-minute pool ----
+// ---- the World Director lives here; the forced tick remains for tests ----
 let lastAudit = 0;
 async function tick(force = false) {
   try {
@@ -217,7 +219,7 @@ async function tick(force = false) {
   } catch (e) { app.log.error(e, "tick failed"); }
 }
 await tick();
-setInterval(() => void tick(), 5 * 60_000);
+directorAgent.start();
 
 await app.listen({ port: PORT, host: "0.0.0.0" });
 app.log.info(`iSpy server on :${PORT} devSim=${DEV_SIM} llm=${llmEnabled()}`);

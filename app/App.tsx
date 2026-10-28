@@ -25,6 +25,7 @@ export default function App() {
   const [presence, setPresence] = useState<Presence | null>(null);
   const [world, setWorld] = useState<World | null>(null);
   const [offline, setOffline] = useState(false);
+  const [unread, setUnread] = useState(0);
   const [tab, setTab] = useState<Tab>("duty");
 
   const signOut = useCallback(async () => {
@@ -35,7 +36,7 @@ export default function App() {
   const refreshMe = useCallback(async () => {
     try {
       const me = await api.me();
-      setPlayer(me.player); setFaction(me.faction); setPresence(me.presence);
+      setPlayer(me.player); setFaction(me.faction); setPresence(me.presence); setUnread(me.unreadChief ?? 0);
     } catch { /* handled by the 401 handler or the offline banner */ }
   }, []);
 
@@ -60,7 +61,7 @@ export default function App() {
   // Pick up rank/XP changes after missions.
   useEffect(() => {
     if (!player) return;
-    const id = setInterval(refreshMe, 20_000);
+    const id = setInterval(refreshMe, 10_000);
     return () => clearInterval(id);
   }, [player?.id, refreshMe]);
 
@@ -88,7 +89,10 @@ export default function App() {
         <View style={s.tabs}>
           {tabs.map(([t, label]) => (
             <Pressable key={t} onPress={() => { setTab(t); refreshMe(); }} style={s.tab} accessibilityRole="button" testID={`tab-${t}`}>
-              <Text style={[s.tabText, tab === t && { color: C.text }]} numberOfLines={1}>{label}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <Text style={[s.tabText, tab === t && { color: C.text }]} numberOfLines={1}>{label}</Text>
+                {t === "hq" && unread > 0 && tab !== "hq" && <View style={s.badge}><Text style={s.badgeText}>{unread}</Text></View>}
+              </View>
               <View style={[s.tabLine, tab === t && { backgroundColor: accent }]} />
             </Pressable>
           ))}
@@ -104,5 +108,7 @@ const s = StyleSheet.create({
   tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.ink, paddingBottom: 16 },
   tab: { flex: 1, alignItems: "center", paddingTop: 12, gap: 6 },
   tabText: { color: C.dim, fontFamily: F.displayMed, fontSize: 14, letterSpacing: 1.4, textTransform: "uppercase" },
+  badge: { minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.red, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  badgeText: { color: C.text, fontFamily: F.displayMed, fontSize: 11 },
   tabLine: { height: 3, width: 36, borderRadius: 2, backgroundColor: "transparent" },
 });
