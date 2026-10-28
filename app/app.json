@@ -10,7 +10,8 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "iSpy a Spy uses your location while you are on field duty to find your area and verify you reached a target."
-      }
+      },
+      "bundleIdentifier": "com.moaaz.ispyaspy"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +22,9 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "package": "com.moaaz.ispyaspy",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/art/icon.png"
@@ -43,7 +46,25 @@
           "resizeMode": "cover",
           "backgroundColor": "#07111A"
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#00F0FF",
+          "defaultChannel": "orders"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "iSpy a Spy uses the camera only as a live backdrop for the AR view. Nothing is recorded or uploaded."
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "<set by `eas init`>"
+      }
+    }
   }
 }

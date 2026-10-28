@@ -1,0 +1,40 @@
+# Fly.io app for the iSpy a Spy server. Create once with: fly launch --no-deploy --copy-config
+app = "ispy-server"
+primary_region = "bom"
+
+[build]
+  dockerfile = "server/Dockerfile"
+
+[env]
+  PORT = "4000"
+  ISPY_DB = "/data/ispy.db"
+  # Playtest settings. Set DEV_SIM to "0" before any public release; it lets clients fake positions.
+  DEV_SIM = "1"
+  LOG_LEVEL = "info"
+  TZ = "Asia/Kolkata"
+
+[mounts]
+  source = "ispy_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = "off"   # the World Director must keep running between requests
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 400
+    hard_limit = 500
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/v1/world"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
