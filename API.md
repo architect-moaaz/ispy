@@ -75,3 +75,10 @@ signals (reward multiplier, walk scale, contests per hour, contest appetite boos
 TTL, decoy rate, desk-link fallback). Each change is a `world_param.changed` ledger event; untouched
 knobs drift back to default; the Auditor flags churn. Chiefs and operatives never see the Director:
 chief replans arrive as "situation updates from your analysts", and no player copy names an arbiter.
+
+Strategy room (strategy.ts): every 10 minutes the Director assesses the balance of power (tempo,
+campaign standing, contest record, deployed agents; dominant mission type and busiest area per
+agency) and plays the meta-game: counter-contracts against a runaway leader for the other agencies,
+intelligence briefings to rival chiefs about the leader's pattern, more encounters when a campaign is
+tight, sweeter rewards when it runs away, and a rally for a trailing agency. Moves are randomised so
+chiefs cannot learn the rule. `/v1/admin/director` shows the latest assessment under `balance`.

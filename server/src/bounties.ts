@@ -12,7 +12,7 @@ import { proposeCampaign, writeEpilogue } from "./director.ts";
 interface BountyRow { id: string; issuer: string; faction_id: FactionId | null; title: string; type: string; brief: string; reward_xp: number; reward_credits: number; squad: number; min_rank: Rank; criteria: string; state: string; expires_at: string; created_at: string }
 interface ClaimRow { id: string; bounty_id: string; player_id: string; progress: number; state: string; claimed_at: string; completed_at: string | null }
 interface EventRow { id: string; name: string; brief: string; state: string; starts_at: string; ends_at: string; ruleset: string; progress: string; resolved: string | null }
-type Criteria = { template?: string; mode?: string; contestWon?: boolean; count: number };
+type Criteria = { template?: string; mode?: string; contestWon?: boolean; against?: FactionId; count: number };
 
 class ApiError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 
@@ -88,12 +88,13 @@ export function claimBounty(playerId: string, bountyId: string) {
 }
 
 /** Progress every active claim this mission satisfies; pay out on completion. */
-export function onMissionVerified(playerId: string, m: { template_id: string; mode: string; outcome: string | null }) {
+export function onMissionVerified(playerId: string, m: { template_id: string; mode: string; outcome: string | null; contested_group_id?: string | null; id?: string }) {
   const claims = all<ClaimRow & { criteria: string; title: string; reward_xp: number; reward_credits: number }>(
     "SELECT c.*, b.criteria, b.title, b.reward_xp, b.reward_credits FROM bounty_claims c JOIN bounties b ON b.id=c.bounty_id WHERE c.player_id=? AND c.state='active' AND b.expires_at>?", playerId, now());
   for (const c of claims) {
     const crit = parse<Criteria>(c.criteria, { count: 1 });
-    const hit = (crit.template ? crit.template === m.template_id : true) && (crit.mode ? crit.mode === m.mode : true) && (crit.contestWon ? m.outcome === "won" : true);
+    const rivalFaction = crit.against && m.contested_group_id ? get<{ faction_id: FactionId }>("SELECT faction_id FROM missions WHERE contested_group_id=? AND id<>?", m.contested_group_id, m.id ?? "")?.faction_id : undefined;
+    const hit = (crit.template ? crit.template === m.template_id : true) && (crit.mode ? crit.mode === m.mode : true) && (crit.contestWon ? m.outcome === "won" : true) && (crit.against ? rivalFaction === crit.against : true);
     if (!hit) continue;
     const progress = c.progress + 1;
     if (progress >= crit.count) {

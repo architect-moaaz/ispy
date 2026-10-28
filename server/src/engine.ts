@@ -469,7 +469,7 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
   logEvent("mission.verified", "authority", { missionId: m.id, title: m.title, template: m.template_id, trust, distance, contestOutcome, flagged }, player.id);
   award(player.id, xp, flagged ? 0 : 2, m.title);
   investigations.onMissionVerified(player.id, m);
-  bounties.onMissionVerified(player.id, { template_id: m.template_id, mode: m.mode, outcome: contestOutcome ?? "ok" });
+  bounties.onMissionVerified(player.id, { template_id: m.template_id, mode: m.mode, outcome: contestOutcome ?? "ok", contested_group_id: m.contested_group_id, id: m.id });
   const seed = m.id + ":debrief";
   const debrief = contestOutcome === "lost"
     ? "A rival got there first. You brought back a decoy, and the knowledge that they were here."

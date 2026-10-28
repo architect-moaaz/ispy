@@ -8,6 +8,7 @@ import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { param, setParam, PARAM_SPEC } from "./params.ts";
+import * as strategy from "./strategy.ts";
 
 /**
  * The World Director as a resident agent. It does not wait for a clock: every ledger
@@ -32,6 +33,8 @@ class DirectorAgent {
   private lastAudit = 0;
   private lastHousekeeping = 0;
   private lastTuning = 0;
+  private lastStrategy = 0;
+  private lastAssessment: strategy.Assessment | null = null;
   private log: { at: string; what: string; detail?: unknown }[] = [];
 
   start() {
@@ -189,6 +192,12 @@ class DirectorAgent {
           this.lastHousekeeping = t;
         }
         if (t - this.lastTuning > 10 * 60_000) { this.tune(); this.lastTuning = t; }
+        if (t - this.lastStrategy > 10 * 60_000) {
+          const { assessment, moves } = await strategy.play(now().slice(0, 15));
+          this.lastAssessment = assessment;
+          for (const m of moves) this.note(`strategic move: ${m.kind}`, m.detail);
+          this.lastStrategy = t;
+        }
         if (t - this.lastAudit > 3600_000) { const a = auditor.runAudit(1); this.lastAudit = t; if (a.flags.some((f) => f.severity === "critical")) this.note("audit raised critical flags", a.flags); }
       }
     } catch (e) {
@@ -247,6 +256,7 @@ class DirectorAgent {
       operativesWatched: this.operatives.size,
       chiefs: [...this.chiefs.values()].map((c) => ({ chief: factionById(c.factionId).chief, idleAgents: c.idleAgents, emptyPool: !!c.emptyPoolSince })),
       cadenceMs: this.operatives.size > 0 ? FAST_MS : SLOW_MS,
+      balance: this.lastAssessment ? { leader: this.lastAssessment.leader.name, gap: this.lastAssessment.gap, factions: this.lastAssessment.factions.map((f) => ({ name: f.name, power: f.power, fragments: f.fragments, verifiedHour: f.verifiedHour, dominant: f.dominantTemplate })), campaignTight: this.lastAssessment.campaignTight, campaignRunaway: this.lastAssessment.campaignRunaway } : null,
       recent: this.recent(20),
     };
   }
