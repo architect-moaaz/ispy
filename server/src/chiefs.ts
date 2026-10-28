@@ -34,7 +34,9 @@ let client: Anthropic | null | undefined;
 function llm(): Anthropic | null {
   if (client !== undefined) return client;
   if (process.env.ISPY_LLM === "off") return (client = null);
-  // The SDK resolves ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or an `ant auth login` profile.
+  // Model mode only with a credential actually present; the SDK constructs fine without one and
+  // would fail on every call, leaving the Director in model mode with no working brain.
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return (client = null);
   try { client = new Anthropic(); } catch { client = null; }
   return client;
 }

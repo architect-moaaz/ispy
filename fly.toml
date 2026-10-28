@@ -1,40 +1,44 @@
-# Fly.io app for the iSpy a Spy server. Create once with: fly launch --no-deploy --copy-config
-app = "ispy-server"
-primary_region = "sin"
+# fly.toml app configuration file generated for ispy-server on 2026-10-29T01:05:05+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'ispy-server'
+primary_region = 'sin'
 
 [build]
-  dockerfile = "server/Dockerfile"
+  dockerfile = 'server/Dockerfile'
 
 [env]
-  PORT = "4000"
-  ISPY_DB = "/data/ispy.db"
-  # Playtest settings. Set DEV_SIM to "0" before any public release; it lets clients fake positions.
-  DEV_SIM = "1"
-  LOG_LEVEL = "info"
-  TZ = "Asia/Kolkata"
+  DEV_SIM = '1'
+  ISPY_DB = '/data/ispy.db'
+  LOG_LEVEL = 'info'
+  PORT = '4000'
+  TZ = 'Asia/Kolkata'
 
-[mounts]
-  source = "ispy_data"
-  destination = "/data"
+[[mounts]]
+  source = 'ispy_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 4000
   force_https = true
-  auto_stop_machines = "off"   # the World Director must keep running between requests
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
-  [http_service.concurrency]
-    type = "connections"
-    soft_limit = 400
-    hard_limit = 500
 
-[[http_service.checks]]
-  interval = "30s"
-  timeout = "5s"
-  grace_period = "20s"
-  method = "GET"
-  path = "/v1/world"
+  [http_service.concurrency]
+    type = 'connections'
+    hard_limit = 500
+    soft_limit = 400
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/v1/world'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  size = 'shared-cpu-1x'
+  memory = '512mb'
