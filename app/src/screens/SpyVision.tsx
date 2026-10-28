@@ -8,10 +8,12 @@ import { C, F, factionColor } from "../theme";
 import { Body, Button, Dossier, Input, Screen, Stamp, Typed, fmtCountdown } from "../ui";
 import { Projector, SatMap } from "../SatMap";
 import { DevPanel } from "./DevPanel";
+import { ARScan } from "./ARScan";
 
 const TEMPLATE_NAME: Record<string, string> = { RECON: "RECON", DEAD_DROP: "VIRTUAL DEAD DROP", EXTRACTION: "EXTRACTION", ANALYSIS: "ANALYSIS", CIPHER: "CIPHER" };
 
-export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Presence; devSim: boolean; onHQ: () => void; onOffDuty: () => void }) {
+export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename, factionId, rank }: { presence: Presence; devSim: boolean; onHQ: () => void; onBoard: () => void; onOffDuty: () => void; codename: string; factionId: string | null; rank: string }) {
+  const [ar, setAr] = useState(false);
   const width = Math.min(Dimensions.get("window").width, 560) - 28;
   const height = 460;
   const [fix, setFix] = useState<Fix | null>(getSimFix());
@@ -26,6 +28,7 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
   const [err, setErr] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [targets, setTargets] = useState<{ id: string; name: string; lat: number; lng: number }[]>([]);
+  const [sector, setSector] = useState<{ lat: number; lng: number; radiusM: number } | null>(null);
 
   const refresh = async () => {
     try {
@@ -45,6 +48,7 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
     const stop = watchFix(setFix, (e) => setErr(e.message));
     const t = setInterval(() => setNow(Date.now()), 1000);
     if (devSim) api.devTargets().then((r) => setTargets(r.targets)).catch(() => {});
+    api.world().then((w) => { const a = w.areas.find((x) => x.id === presence.areaId) ?? w.areas[0]; if (a) setSector({ lat: a.lat, lng: a.lng, radiusM: a.radiusM }); }).catch(() => {});
     return () => { stop(); clearInterval(t); };
   }, []);
   useEffect(() => {
@@ -93,6 +97,16 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
 
   const completed = scan?.result === "verified" && scan.reward;
 
+  if (ar && mission && nav && !completed) {
+    return (
+      <ARScan codename={codename} factionId={factionId} rank={rank} targetName={nav.targetName}
+        prompt={scan?.result === "needs_code" ? scan.puzzle?.prompt ?? null : null}
+        bearing={bearing} distanceM={dist} busy={busy}
+        error={scan?.result === "needs_code" ? scan.reason ?? null : scan?.result === "too_far" ? `Still ${Math.round(scan.distanceM ?? 0)} m out.` : scan?.result === "rejected" ? scan.reason ?? "Scan could not be verified." : err}
+        onSubmit={(c) => doScan(c || undefined)} onDisengage={() => setAr(false)} />
+    );
+  }
+
   return (
     <Screen>
       {devSim && <DevPanel />}
@@ -112,7 +126,7 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
       <SatMap center={center} zoom={zoom} width={width} height={height}>
         {(project) => (
           <MapOverlay project={project} width={width} height={height} fix={fix} offers={offers} target={target ? { ...target, name: nav!.targetName, locked: !nav!.unlocked } : null}
-            contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} />
+            contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} />
         )}
       </SatMap>
 
@@ -121,10 +135,12 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
           <Button title={mission ? (onSite ? "Scan region" : nav?.unlocked ? "Scan on arrival" : "Site locked") : "Scan region"} onPress={() => doScan()} loading={busy} disabled={!!mission && (!nav?.unlocked || !onSite)} style={{ marginTop: 0, paddingVertical: 16 }} />
         </View>
         <View style={{ flex: 1, gap: 6 }}>
+          <Button title="Inventory" kind="ghost" onPress={onBoard} style={{ marginTop: 0, paddingVertical: 8 }} />
           <Button title="HQ link" kind="ghost" onPress={onHQ} style={{ marginTop: 0, paddingVertical: 8 }} />
-          <Button title="Stand down" kind="ghost" onPress={onOffDuty} style={{ marginTop: 0, paddingVertical: 8 }} />
         </View>
       </View>
+      {mission && onSite && nav?.unlocked && !completed && <Button title="AR scan · camera view" kind="ghost" onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
+      <Text onPress={onOffDuty} style={[s.mono, { textAlign: "right", marginTop: 8, color: C.cyanDim, letterSpacing: 1.4 }]}>STAND DOWN</Text>
 
       {completed && (
         <Dossier tab={scan.reward!.contestOutcome === "lost" ? C.dim : C.ok} style={{ marginTop: 12 }}>
@@ -190,11 +206,20 @@ export function SpyVision({ presence, devSim, onHQ, onOffDuty }: { presence: Pre
 }
 
 // ---------- overlay ----------
-function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius }: {
+function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector }: {
   project: Projector; width: number; height: number; fix: Fix | null; offers: OfferCard[];
   target: { lat: number; lng: number; name: string; locked: boolean } | null; contacts: Contact[];
   bearing: number | null; dist: number | null; nearest: number | null; radius: number;
+  sector: { lat: number; lng: number; radiusM: number } | null;
 }) {
+  // Controlled sector as a glowing octagon around the area centre.
+  const sectorPts = sector ? Array.from({ length: 8 }, (_, i) => {
+    const a = (i * 45 + 22.5) * (Math.PI / 180);
+    const dLat = (sector.radiusM / 111_320) * Math.cos(a);
+    const dLng = (sector.radiusM / (111_320 * Math.cos((sector.lat * Math.PI) / 180))) * Math.sin(a);
+    const p = project({ lat: sector.lat + dLat, lng: sector.lng + dLng });
+    return `${p.x},${p.y}`;
+  }).join(" ") : null;
   const sweep = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -216,8 +241,7 @@ function MapOverlay({ project, width, height, fix, offers, target, contacts, bea
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-        {/* targets offered but not accepted */}
-        {!target && offers.map((o) => null)}
+        {sectorPts && <Polygon points={sectorPts} fill={C.cyan} fillOpacity={0.05} stroke={C.cyan} strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="10 6" />}
         {/* approach radius + reticle on the live target */}
         {tgt && (
           <G>

@@ -132,7 +132,9 @@ export function fmtCountdown(iso: string, now: number) {
   if (ms <= 0) return "EXPIRED";
   const sec = Math.floor(ms / 1000);
   if (sec < 90) return `${sec}S`;
-  const m = Math.floor(sec / 60);
+  const m = Math.floor(sec / 60) % 60;
+  const h = Math.floor(sec / 3600);
+  if (h >= 1) return `${h}H ${m.toString().padStart(2, "0")}M`;
   return `${m}M ${(sec % 60).toString().padStart(2, "0")}S`;
 }
 

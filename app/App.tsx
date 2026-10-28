@@ -12,8 +12,10 @@ import { Assessment } from "./src/screens/Assessment";
 import { HQ } from "./src/screens/HQ";
 import { Duty } from "./src/screens/Duty";
 import { Profile } from "./src/screens/Profile";
+import { DossierScreen } from "./src/screens/Dossier";
+import { Board } from "./src/screens/Board";
 
-type Tab = "hq" | "duty" | "profile";
+type Tab = "hq" | "duty" | "dossier" | "board" | "profile";
 
 export default function App() {
   const [fontsLoaded] = useFonts({ BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold, CourierPrime_400Regular, CourierPrime_700Bold });
@@ -69,11 +71,13 @@ export default function App() {
   else if (!player.factionId) body = <Assessment onRecruited={(p) => { setPlayer(p); refreshMe(); setTab("duty"); }} />;
   else if (tab === "hq") body = <HQ factionId={player.factionId} onDuty={() => setTab("duty")} />;
   else if (tab === "profile") body = <Profile player={player} faction={faction} onSignOut={signOut} />;
-  else body = <Duty presence={presence} devSim={!!world?.devSim} onPresence={(p) => { setPresence(p); refreshMe(); }} onHQ={() => setTab("hq")} />;
+  else if (tab === "dossier") body = <DossierScreen />;
+  else if (tab === "board") body = <Board />;
+  else body = <Duty presence={presence} devSim={!!world?.devSim} onPresence={(p) => { setPresence(p); refreshMe(); }} onHQ={() => setTab("hq")} onBoard={() => setTab("board")} codename={player.codename} factionId={player.factionId} rank={player.rank} />;
 
   const inGame = !!player?.factionId;
   const accent = factionColor(player?.factionId);
-  const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Missions"], ["profile", player?.codename ?? "You"]];
+  const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Missions"], ["dossier", "Dossier"], ["board", "Board"], ["profile", "Me"]];
   return (
     <View style={s.root}>
       <StatusBar style="light" />
@@ -99,6 +103,6 @@ const s = StyleSheet.create({
   body: { flex: 1 },
   tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.ink, paddingBottom: 16 },
   tab: { flex: 1, alignItems: "center", paddingTop: 12, gap: 6 },
-  tabText: { color: C.dim, fontFamily: F.displayMed, fontSize: 16, letterSpacing: 2, textTransform: "uppercase" },
+  tabText: { color: C.dim, fontFamily: F.displayMed, fontSize: 14, letterSpacing: 1.4, textTransform: "uppercase" },
   tabLine: { height: 3, width: 36, borderRadius: 2, backgroundColor: "transparent" },
 });

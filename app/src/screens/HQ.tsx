@@ -80,7 +80,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
       <Dossier tab={color}>
         <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
           <Gauge label="Trust score" value={briefing.standing.trust / 100} text={`${briefing.standing.trust}%`} color={color} />
-          <Gauge label="Next rank" value={pct} text={`${Math.round(pct * 100)}%`} color={C.cyan} sub={`${briefing.standing.xp} / ${briefing.standing.nextRankAt} XP`} />
+          <Gauge label="Cover integrity" value={0.94} text="94%" color={C.cyan} sub={`rank ${briefing.standing.rank.replace("_", " ")} · ${briefing.standing.xp}/${briefing.standing.nextRankAt} XP`} />
         </View>
       </Dossier>
 
@@ -93,7 +93,13 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           </View>
         )}
       </Dossier>
-      <Button title="Go to missions" onPress={onDuty} style={{ paddingVertical: 16 }} />
+      <View style={s.drawer}>
+        <Button title="Accept mission" onPress={onDuty} style={{ paddingVertical: 16, marginTop: 0 }} />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Button title="Talk to chief" kind="ghost" onPress={() => scrollRef.current?.scrollToEnd({ animated: true })} style={{ flex: 1 }} />
+          <Button title="Decline / defer" kind="ghost" onPress={() => {}} style={{ flex: 1 }} />
+        </View>
+      </View>
       {err && <Body style={{ color: C.red }}>{err}</Body>}
     </Screen>
   );
@@ -120,5 +126,6 @@ const s = StyleSheet.create({
   eyebrow: { color: C.dim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" },
   big: { color: C.text, fontFamily: F.displayMed, fontSize: 24, lineHeight: 26, letterSpacing: 1, textTransform: "uppercase" },
   sub: { color: C.dim, fontSize: 13 },
+  drawer: { borderWidth: 1, borderColor: C.cyan + "66", backgroundColor: C.glass, padding: 10, marginTop: 4 },
   section: { color: C.cyan, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 6, marginTop: 4, textAlign: "center" },
 });

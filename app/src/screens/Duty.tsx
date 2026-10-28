@@ -9,7 +9,7 @@ import { DevPanel } from "./DevPanel";
 import { Desk } from "./Desk";
 import { SpyVision } from "./SpyVision";
 
-export function Duty({ presence, devSim, onPresence, onHQ }: { presence: Presence | null; devSim: boolean; onPresence: (p: Presence | null) => void; onHQ: () => void }) {
+export function Duty({ presence, devSim, onPresence, onHQ, onBoard, codename, factionId, rank }: { presence: Presence | null; devSim: boolean; onPresence: (p: Presence | null) => void; onHQ: () => void; onBoard: () => void; codename: string; factionId: string | null; rank: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -39,7 +39,7 @@ export function Duty({ presence, devSim, onPresence, onHQ }: { presence: Presenc
     try { await api.checkOut(); onPresence(null); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
-  if (onDuty && presence!.mode === "field") return <SpyVision presence={presence!} devSim={devSim} onHQ={onHQ} onOffDuty={checkOut} />;
+  if (onDuty && presence!.mode === "field") return <SpyVision presence={presence!} devSim={devSim} onHQ={onHQ} onBoard={onBoard} onOffDuty={checkOut} codename={codename} factionId={factionId} rank={rank} />;
   if (onDuty && presence!.mode === "desk") return <Desk onOffDuty={checkOut} />;
 
   return (
