@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, Dimensions, Easing, StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, G, Line, Path, Polygon, Rect } from "react-native-svg";
+import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-native-svg";
 import type { Contact, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
@@ -8,6 +8,7 @@ import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix } from "../
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Dossier, Input, Screen, Stamp, Typed, fmtCountdown } from "../ui";
 import { Projector, SatMap } from "../SatMap";
+import { walkingRoute, openTurnByTurn, fmtWalk, type WalkingRoute } from "../route";
 import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
 
@@ -30,6 +31,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [now, setNow] = useState(Date.now());
   const [targets, setTargets] = useState<{ id: string; name: string; lat: number; lng: number }[]>([]);
   const [sector, setSector] = useState<{ lat: number; lng: number; radiusM: number } | null>(null);
+  const [route, setRoute] = useState<WalkingRoute | null>(null);
 
   const refresh = async () => {
     try {
@@ -66,9 +68,16 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const dist = fix && target ? distanceM(fix, target) : null;
   // With a live target, frame both ends of the walk; otherwise centre on the agent.
   const center = fix && target ? { lat: (fix.lat + target.lat) / 2, lng: (fix.lng + target.lng) / 2 } : fix ?? nav ?? { lat: 12.9763, lng: 77.5929 };
-  const zoom = dist == null ? 17 : dist > 1400 ? 15 : dist > 650 ? 16 : 17;
+  const span = route ? Math.max(...route.coords.map((c) => distanceM(c, center)), dist ?? 0) * 2 : dist;
+  const zoom = span == null ? 17 : span > 1400 ? 15 : span > 650 ? 16 : 17;
   const bearing = fix && target ? bearingDeg(fix, target) : null;
   const onSite = dist != null && nav != null && dist <= nav.approachRadiusM;
+  useEffect(() => {
+    if (!fix || !target || onSite) { if (!target) setRoute(null); return; }
+    let alive = true;
+    walkingRoute(fix, target).then((r) => { if (alive) setRoute(r); });
+    return () => { alive = false; };
+  }, [fix ? Math.round(fix.lat * 2000) : 0, fix ? Math.round(fix.lng * 2000) : 0, target?.lat, target?.lng, onSite]);
   const nearest = mission ? dist : offers.reduce<number | null>((m, o) => (o.mission.walkM != null && (m == null || o.mission.walkM < m) ? o.mission.walkM : m), null);
 
   const accept = async (o: OfferCard) => {
@@ -128,10 +137,16 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       <SatMap center={center} zoom={zoom} width={width} height={height}>
         {(project) => (
           <MapOverlay project={project} width={width} height={height} fix={fix} offers={offers} target={target ? { ...target, name: nav!.targetName, locked: !nav!.unlocked } : null}
-            contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} />
+            contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} />
         )}
       </SatMap>
 
+      {mission && nav && !completed && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
+          <Text style={[s.mono, { color: C.cyan, flex: 1 }]}>{onSite ? "ON SITE" : route ? fmtWalk(route.distanceM, route.durationS).toUpperCase() : dist != null ? `${Math.round(dist)} M STRAIGHT LINE` : "LOCATING…"}</Text>
+          {!onSite && <Button title="Navigate" kind="ghost" onPress={() => openTurnByTurn({ lat: nav.lat, lng: nav.lng }, nav.targetName)} style={{ marginTop: 0, paddingVertical: 6, paddingHorizontal: 12 }} />}
+        </View>
+      )}
       <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
         <View style={{ flex: 1.4 }}>
           <Button title={mission ? (onSite ? "Scan region" : nav?.unlocked ? "Scan on arrival" : "Site locked") : "Scan region"} onPress={() => doScan()} loading={busy} disabled={!!mission && (!nav?.unlocked || !onSite)} style={{ marginTop: 0, paddingVertical: 16 }} />
@@ -208,12 +223,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
 }
 
 // ---------- overlay ----------
-function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector }: {
+function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector, route }: {
   project: Projector; width: number; height: number; fix: Fix | null; offers: OfferCard[];
   target: { lat: number; lng: number; name: string; locked: boolean } | null; contacts: Contact[];
   bearing: number | null; dist: number | null; nearest: number | null; radius: number;
   sector: { lat: number; lng: number; radiusM: number } | null;
+  route: WalkingRoute | null;
 }) {
+  const routePts = route ? route.coords.map((c) => { const p = project(c); return `${p.x},${p.y}`; }).join(" ") : null;
   // Controlled sector as a glowing octagon around the area centre.
   const sectorPts = sector ? Array.from({ length: 8 }, (_, i) => {
     const a = (i * 45 + 22.5) * (Math.PI / 180);
@@ -251,8 +268,14 @@ function MapOverlay({ project, width, height, fix, offers, target, contacts, bea
             <Reticle x={tgt.x} y={tgt.y} color={inRange ? C.ok : target!.locked ? C.amber : C.cyan} />
           </G>
         )}
-        {/* line of bearing */}
-        {tgt && fix && <Line x1={me.x} y1={me.y} x2={tgt.x} y2={tgt.y} stroke={C.cyan} strokeOpacity={0.55} strokeWidth={1} strokeDasharray="3 5" />}
+        {/* walking route, or a straight bearing line until the route arrives */}
+        {routePts ? (
+          <G>
+            <Polyline points={routePts} fill="none" stroke={C.ink} strokeOpacity={0.6} strokeWidth={6} strokeLinejoin="round" strokeLinecap="round" />
+            <Polyline points={routePts} fill="none" stroke={C.cyan} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+            <Polyline points={routePts} fill="none" stroke={C.text} strokeOpacity={0.9} strokeWidth={1} strokeDasharray="2 10" strokeLinecap="round" />
+          </G>
+        ) : tgt && fix ? <Line x1={me.x} y1={me.y} x2={tgt.x} y2={tgt.y} stroke={C.cyan} strokeOpacity={0.55} strokeWidth={1} strokeDasharray="3 5" /> : null}
         {/* contacts */}
         {contacts.map((c) => { const p = project(c); return <ContactGlyph key={c.id} x={p.x} y={p.y} color={c.faction === "unknown" ? C.cyan : factionColor(c.faction)} />; })}
         {/* player */}
