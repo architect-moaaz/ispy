@@ -55,6 +55,29 @@ class ChiefAgent {
         await this.say(op.id, op.codename, `${op.codename} just completed ${p.title ?? "a mission"} (${p.template}) and ${outcome}${p.unlockedFor ? `, which unlocked ${p.unlockedFor}'s drop` : ""}. Debrief them in one line.`, fallback, "debrief", true);
         return;
       }
+      case "crisis.brewed": {
+        // The chief tells every deployed operative where the agency stands, in its own words.
+        const line: string = s.payload?.lines?.[this.factionId] ?? `${s.payload?.name}. Orders are on the board.`;
+        const allies: string[] = (s.payload?.pacts ?? []).filter((p: string[]) => p.includes(this.factionId)).flat().filter((x: string) => x !== this.factionId);
+        const text = allies.length ? `${line} We are working this one with ${allies.map((a) => factionById(a as FactionId).name).join(" and ")}; their sites are yours to take as well.` : line;
+        for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", this.factionId, now())) chiefSay(o.player_id, text, "crisis", true);
+        remember(this.chief, "crisis", null, `${s.payload?.name}: told the operatives to ${s.payload?.stances?.[this.factionId]}`);
+        return;
+      }
+      case "crisis.site_claimed": {
+        const mine = s.payload?.faction === this.factionId;
+        for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>? AND p.player_id<>?", this.factionId, now(), s.playerId ?? "")) {
+          chiefSay(o.player_id, mine ? `${s.payload?.site} is ours. ${s.payload?.claimed} of ${s.payload?.of} sites decided. Keep moving.` : `${factionById(s.payload?.faction).name} took ${s.payload?.site}. ${s.payload?.of - s.payload?.claimed} site${s.payload?.of - s.payload?.claimed === 1 ? "" : "s"} left. Move.`, "crisis update");
+        }
+        return;
+      }
+      case "crisis.resolved": {
+        const held = s.payload?.sitesBy?.[this.factionId] ?? 0;
+        const won = (s.payload?.leaders ?? []).includes(this.factionId);
+        const text = `${s.payload?.name} is ${s.payload?.verdict}. We held ${held} of 3 sites.${won ? " That is a result." : held ? " Not enough." : " We were not in it."}`;
+        for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", this.factionId, now())) chiefSay(o.player_id, text, "crisis outcome", true);
+        return;
+      }
       case "mission.expired": case "mission.abandoned": {
         if (!op) return;
         remember(this.chief, "dropped", op.codename, `${op.codename} ${s.type === "mission.abandoned" ? "abandoned" : "let expire"} ${s.payload?.title ?? "a mission"}`);

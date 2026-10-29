@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import type { BoardResponse, BountyCard as BountyT, Dispatch } from "@ispy/shared";
+import type { BoardResponse, BountyCard as BountyT, CrisisView, Dispatch } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
@@ -12,15 +12,16 @@ import { ART } from "../art";
 export function Board() {
   const [data, setData] = useState<BoardResponse | null>(null);
   const [news, setNews] = useState<Dispatch[]>([]);
+  const [crisis, setCrisis] = useState<CrisisView | null>(null);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {})]).catch((e) => setErr(e.message));
+  const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {}), api.crisis().then((r) => setCrisis(r.crisis)).catch(() => {})]).catch((e) => setErr(e.message));
   useEffect(() => {
     load();
     const t = setInterval(() => setNow(Date.now()), 1000);
     const p = setInterval(load, 90000);
-    const off = onLive((ty) => { if (ty.startsWith("bounty.") || ty.startsWith("world_event.") || ty === "director.dispatch" || ty === "reward") load(); });
+    const off = onLive((ty) => { if (ty.startsWith("bounty.") || ty.startsWith("world_event.") || ty.startsWith("crisis.") || ty === "director.dispatch" || ty === "reward") load(); });
     return () => { clearInterval(t); clearInterval(p); off(); };
   }, []);
 
@@ -58,6 +59,30 @@ export function Board() {
               ))}
             </View>
           </View>
+        </View>
+      )}
+
+      {crisis && (
+        <View style={[s.crisis, crisis.state !== "active" && { borderColor: C.dim }]}>
+          <Text style={[s.eyebrow, { color: C.amber }]}>Chaos · {crisis.areaName} · {crisis.state === "active" ? `ends in ${fmtCountdown(crisis.endsAt, now)}` : crisis.outcome?.verdict ?? crisis.state}</Text>
+          <Text style={s.eventTitle}>{crisis.name}</Text>
+          <Text style={[s.sub, { marginTop: 4 }]}>{crisis.state !== "active" && crisis.outcome ? crisis.outcome.epilogue : crisis.premise}</Text>
+          {crisis.yourStance && crisis.state === "active" && (
+            <Text style={[s.stance]}>YOUR ORDERS: {crisis.yourStance.toUpperCase()}{crisis.allies.length ? ` · PACT WITH ${crisis.allies.join(" + ").toUpperCase()}` : ""}</Text>
+          )}
+          {crisis.pacts.length > 0 && <Text style={[s.sub, { marginTop: 6, color: C.amber }]}>PACT: {crisis.pacts.join(" · ").toUpperCase()}</Text>}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+            {crisis.stances.map((st) => <Text key={st.factionId} style={[s.factionLabel, { color: factionColor(st.factionId) }]}>{st.label} · {st.stance}</Text>)}
+          </View>
+          <View style={{ marginTop: 8 }}>
+            {crisis.sites.map((site) => (
+              <View key={site.name} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 3 }}>
+                <Text style={s.site}>{site.name.toUpperCase()}</Text>
+                <Text style={[s.site, { color: site.claimedByFaction ? factionColor(site.claimedByFaction) : C.dim }]}>{site.claimedBy ? `${site.claimedBy} · ${site.stance}` : "open"}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={[s.sub, { marginTop: 6, color: C.dim }]}>Sector chaos {crisis.chaos}/10 · crisis missions are on your board; pact allies can run each other's.</Text>
         </View>
       )}
 
@@ -126,6 +151,9 @@ function BountyCard({ b, now, busy, onClaim }: { b: BountyT; now: number; busy: 
 }
 
 const s = StyleSheet.create({
+  crisis: { borderWidth: 1, borderColor: C.amber, backgroundColor: C.ink2, padding: 14, marginBottom: 14 },
+  stance: { color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, marginTop: 8 },
+  site: { color: C.text, fontFamily: F.typed, fontSize: 11.5 },
   sub2: { color: C.dim, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1.4, textTransform: "uppercase", textAlign: "center", marginBottom: 12 },
   banner: { minHeight: 250, borderWidth: 1, borderColor: C.cyan + "88", overflow: "hidden", marginBottom: 14, justifyContent: "flex-end" },
   eyebrow: { color: C.cyanDim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" },

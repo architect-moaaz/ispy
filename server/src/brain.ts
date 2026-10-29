@@ -4,11 +4,12 @@ import type { FactionId } from "@ispy/shared";
 import { all, get, run, now, uid, json, logEvent } from "./db.ts";
 import type { Signal } from "./bus.ts";
 import { FACTIONS, factionById } from "./content.ts";
-import { chiefSay, refreshPlans, refreshPool, startOperation } from "./engine.ts";
+import { chiefSay, refreshPlans, refreshPool, startOperation, brewCrisis } from "./engine.ts";
 import { llmClient } from "./chiefs.ts";
 import { PARAM_SPEC, allParams, setParam, type ParamKey } from "./params.ts";
 import { assess, type Assessment } from "./strategy.ts";
 import * as director from "./director.ts";
+import * as crises from "./crises.ts";
 import { currentEvent } from "./bounties.ts";
 
 /**
@@ -26,6 +27,7 @@ const Action = z.discriminatedUnion("type", [
   z.object({ type: z.literal("set_param"), key: z.enum(paramKeys), value: z.number(), why: z.string().describe("at most 100 characters") }),
   z.object({ type: z.literal("dispatch"), headline: z.string().describe("at most 60 characters"), body: z.string().describe("at most 240 characters"), factionId: z.enum(["raven", "phantom", "cipher", "all"]) }),
   z.object({ type: z.literal("start_operation"), codename: z.string(), theme: z.string().describe("One line of story direction for the chain of linked missions; at most 120 characters") }),
+  z.object({ type: z.literal("create_crisis"), kind: z.enum(["courier", "jammer", "auction", "leak"]), theme: z.string().describe("One sentence of extra fiction for the crisis premise; at most 160 characters"), minutes: z.number().int().min(30).max(240) }),
   z.object({ type: z.literal("refill_pool") }),
   z.object({ type: z.literal("wait"), why: z.string().describe("at most 100 characters") }),
 ]);
@@ -54,6 +56,7 @@ function buildContext(operatives: OperativeView[], chiefs: ChiefView[], signals:
     justHappened: signals.slice(-12).map((s) => ({ type: s.type, actor: s.actor, payload: s.payload, who: s.playerId ? operatives.find((o) => o.codename === (s.payload?.codename ?? ""))?.codename ?? "an operative" : null })),
     yourRecentDecisions: recentDecisions.slice(-10),
     recentDispatches: dispatches,
+    crisis: crises.view(null) ? { name: crises.view(null)!.name, state: crises.view(null)!.state, endsAt: crises.view(null)!.endsAt, sites: crises.view(null)!.sites, chaos: crises.view(null)!.chaos } : null,
   };
 }
 
@@ -62,6 +65,7 @@ const SYSTEM = [
   "You are invisible: operatives and chiefs do not know you exist. You act only through chiefs' voices, contracts, world news and bounded parameters. Never reveal yourself, never mention a director, an arbiter or an auditor.",
   "Your purpose: keep the game alive, tense and fair. Keep deployed operatives engaged, keep the three agencies in genuine competition, make dominance costly and comebacks possible, create moments where rivals meet, and reward good play without favouring anyone.",
   "Think like a game designer and an intelligence officer at once: read patterns, anticipate, apply game theory (counter-pressure on leaders, information asymmetry, mixed strategies so nobody can predict you), and keep your interventions proportionate and varied.",
+  "Chaos: you can brew a crisis (create_crisis) in the busiest sector: a courier, jammers, an auction or a leak across three sites for a limited time. Each chief then chooses, in character, to intercept, sabotage or mitigate it, and may strike a pact with another agency; sites go to whoever verifies first. Brew one when operatives are deployed and nothing is at stake, never while one is live. Vary the kinds.",
   "Operations: you can give a deployed field operative who has no operation a chain of two to four linked missions (start_operation); their chief voices it as one story across real sites. Prefer this for engaged operatives over single throwaway missions; one operation per operative at a time.",
   "Hard limits: you cannot change outcomes, scores or verifications; you cannot see or reveal player identities beyond codenames; you must never direct anyone toward real people, private property or unsafe places; everything stays fiction; parameters must stay inside their bounds; do not message the same operative more than once per cycle; prefer doing nothing over doing something pointless.",
   "Voice for operative messages: write as that operative's chief would. ORACLE (RAVEN): calm, precise, analytical. GHOST (PHANTOM): dry, playful, theatrical. NEXUS (CIPHER): technical, fast, curious. Under 40 words each.",
@@ -122,6 +126,14 @@ export async function think(operatives: OperativeView[], chiefs: ChiefView[], si
           if (!p) break;
           const chain = await startOperation(p.id, act.theme.slice(0, 160));
           applied.push(chain ? `operation ${chain.name} for ${act.codename}` : `operation for ${act.codename} not possible now`);
+          break;
+        }
+        case "create_crisis": {
+          const busiest = get<{ area_id: string }>("SELECT area_id FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL GROUP BY area_id ORDER BY COUNT(*) DESC LIMIT 1", now())
+            ?? get<{ area_id: string }>("SELECT id area_id FROM areas ORDER BY id LIMIT 1");
+          if (!busiest) break;
+          const c = await brewCrisis(busiest.area_id, { kind: act.kind, theme: act.theme.slice(0, 200), minutes: act.minutes });
+          applied.push(c ? `crisis ${c.name} (${act.kind}) brewed` : "crisis not brewed (one is live or too few sites)");
           break;
         }
         case "refill_pool": refreshPool(); applied.push("pool refilled"); break;

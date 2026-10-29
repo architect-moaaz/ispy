@@ -10,6 +10,7 @@ import { chiefReply, llmEnabled } from "./chiefs.ts";
 import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
 import * as chains from "./chains.ts";
+import * as crises from "./crises.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -22,7 +23,7 @@ import { openSector, settleSector, sectorSummary } from "./sectors.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
-  scan, worldStatus, unreadChief, markChiefRead, createTestArea,
+  scan, worldStatus, unreadChief, markChiefRead, createTestArea, brewCrisis,
 } from "./engine.ts";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -198,6 +199,18 @@ app.get("/v1/bounties", async (req) => bounties.board(need(req).id));
 app.post<{ Params: { id: string } }>("/v1/bounties/:id/claim", async (req) => { bounties.claimBounty(need(req).id, req.params.id); return { ok: true }; });
 app.get("/v1/world/event", async () => ({ event: bounties.currentEvent() }));
 app.get("/v1/world/dispatches", async () => ({ dispatches: director.recentDispatches() }));
+app.get("/v1/world/crisis", async (req) => {
+  const p = req.player;
+  const pres = p ? getPresence(p.id) : null;
+  return { crisis: crises.view(p?.factionId ?? null, pres?.areaId) };
+});
+app.post("/v1/admin/crisis", async (req) => {
+  const b = z.object({ areaId: z.string().optional(), kind: z.enum(["courier", "jammer", "auction", "leak"]).optional(), minutes: z.number().int().min(30).max(240).optional(), theme: z.string().max(200).optional() }).parse(req.body ?? {});
+  const areaId = b.areaId ?? get<{ area_id: string }>("SELECT area_id FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL GROUP BY area_id ORDER BY COUNT(*) DESC LIMIT 1", now())?.area_id ?? get<{ id: string }>("SELECT id FROM areas ORDER BY id LIMIT 1")!.id;
+  const c = await brewCrisis(areaId, b);
+  return { crisis: c ? crises.view(null, areaId) : null };
+});
+app.post("/v1/admin/crisis/resolve", async () => { const c = crises.activeCrisis(); if (c) await crises.resolve(c.id); return { ok: true }; });
 app.get("/v1/admin/audit", async () => ({ audits: auditor.latestAudits() }));
 app.post("/v1/admin/audit", async () => auditor.runAudit(1));
 app.post("/v1/admin/dispatch", async () => { await director.publishDispatches(true); return { dispatches: director.recentDispatches(3) }; });
@@ -270,7 +283,7 @@ app.get("/v1/admin/overview", async () => {
     world: { ...worldStatus(), devSim: DEV_SIM, llm: llmEnabled() },
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
-    sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(),
+    sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
   };
 });
 app.get("/console", async (_req, reply) => reply.type("text/html; charset=utf-8").send(CONSOLE_HTML));

@@ -131,6 +131,16 @@ export interface MissionSummary {
   walkM?: number; // field: straight-line distance at offer time
   deskLink?: { state: DeskLinkState; fallbackAt: string } | null;
   chain?: { name: string; step: number; of: number } | null; // link of an operation composed by the Director
+  crisis?: { name: string; stance: "intercept" | "sabotage" | "mitigate"; joint: string | null } | null; // crisis mission; joint = allied agency it belongs to
+}
+
+// ---- Chaos: crises brewed by the Director ----
+export type CrisisStance = "intercept" | "sabotage" | "mitigate";
+export interface CrisisView {
+  id: string; name: string; kind: string; premise: string; areaName: string; state: string; endsAt: string;
+  yourStance: CrisisStance | null; stances: { factionId: FactionId; label: string; stance: CrisisStance }[]; pacts: string[]; allies: string[];
+  sites: { name: string; claimedBy: string | null; claimedByFaction: FactionId | null; stance: CrisisStance | null }[];
+  outcome: { verdict: string; epilogue: string; leaders: string[] } | null; chaos: number;
 }
 
 export interface OffersResponse {

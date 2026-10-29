@@ -212,6 +212,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={s.panelTitle}>{TEMPLATE_NAME[mission.templateId] ?? mission.title} · {nav.targetName}</Text>
             {mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{mission.chain.name.toUpperCase()} · LINK {mission.chain.step} OF {mission.chain.of}</Text>}
+            {mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {mission.crisis.name.toUpperCase()} · {mission.crisis.stance.toUpperCase()}{mission.crisis.joint ? ` · JOINT OP WITH ${mission.crisis.joint.toUpperCase()}` : ""}</Text>}
             <Text style={s.mono}>{fmtCountdown(mission.expiresAt, now)}</Text>
           </View>
           {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
@@ -245,6 +246,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
                 <Text style={[s.mono, { color: C.cyan }]}>{o.mission.rewardXp} XP</Text>
               </View>
               {o.mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{o.mission.chain.name.toUpperCase()} · LINK {o.mission.chain.step} OF {o.mission.chain.of}</Text>}
+              {o.mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {o.mission.crisis.name.toUpperCase()} · {o.mission.crisis.stance.toUpperCase()}{o.mission.crisis.joint ? ` · JOINT OP WITH ${o.mission.crisis.joint.toUpperCase()}` : ""}</Text>}
               <Text style={s.mono}>{o.mission.targetName?.toUpperCase()}{o.mission.walkM != null ? ` · ${Math.round(o.mission.walkM)}M` : ""}{o.mission.contested ? " · RIVAL ACTIVITY" : ""}{o.mission.deskLink ? " · ANALYST LINK" : ""}</Text>
               <Typed style={{ marginTop: 4 }}>{o.mission.brief}</Typed>
               <View style={{ flexDirection: "row", gap: 8 }}>

@@ -3,8 +3,9 @@ import { all, get, run, now, uid, parse, logEvent, worldGet } from "./db.ts";
 import { bus, type Signal } from "./bus.ts";
 import { FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { pick } from "./puzzles.ts";
-import { chiefSay, refreshPlans, refreshPool, startOperation } from "./engine.ts";
+import { chiefSay, refreshPlans, refreshPool, startOperation, brewCrisis } from "./engine.ts";
 import * as chains from "./chains.ts";
+import * as crises from "./crises.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
@@ -201,6 +202,14 @@ class DirectorAgent {
           bounties.refreshBounties();
           await bounties.refreshEvent();
           await director.publishDispatches(false);
+          await crises.sweep();
+          // Chaos on the rules path: with operatives in the field and nothing live, brew something in the busiest sector.
+          const field = all<{ area_id: string; n: number }>("SELECT area_id, COUNT(*) n FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL GROUP BY area_id ORDER BY n DESC", now());
+          const last = crises.lastCrisisEndedAt();
+          if (!brain.brainEnabled() && field.length && !crises.activeCrisis() && (!last || Date.now() - Date.parse(last) > crises.CRISIS_MIN_GAP_MS)) {
+            const c = await brewCrisis(field[0].area_id);
+            if (c) this.note("crisis brewed", { name: c.name, kind: c.kind });
+          }
           this.lastHousekeeping = t;
         }
         if (brain.brainEnabled()) {

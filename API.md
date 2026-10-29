@@ -127,3 +127,25 @@ expires folds the operation. The last link pays a bonus (150 + 50 per link XP).
 
 `MissionSummary.chain` = `{ name, step, of }` on every link. Events: `chain.started`, `chain.advanced`,
 `chain.completed`, `chain.abandoned`. The console's overview lists recent operations under `operations`.
+
+## Chaos (crises)
+
+The World Director brews a crisis in a sector: a courier, jammers, an auction or a leak across three
+real sites for 30 to 240 minutes (rules path: when operatives are in the field, nothing is live and
+45 min have passed; brain action `create_crisis { kind, theme, minutes }`; owner: `POST /v1/admin/crisis`).
+Each chief, in character (model or scripted), picks a stance and may propose a pact:
+
+| Stance | Meaning | Payoff when it carries the crisis |
+|---|---|---|
+| intercept | take the asset for the agency | fragment for the leading agency, XP for claimers |
+| sabotage | burn it so nobody has it | fragment for the leading agency, XP for claimers |
+| mitigate | contain it, keep the city quiet | trust and XP for claimers; sector chaos drops |
+
+A pact forms when proposals are mutual, or one-sided with the same stance. Allies share credit for
+every site and their operatives are offered each other's crisis missions (`MissionSummary.crisis.joint`).
+One mission per agency per site; the first verified scan claims the site (`crisis.site_claimed`), the
+others' unclaimed missions at that site vanish and active ones finish "late" at 40% XP. When all sites
+are claimed or the clock runs out the Arbiter resolves it (`crisis.resolved`: intercepted, burned,
+contained or fizzled) and the Director writes the epilogue. `GET /v1/world/crisis` returns the current
+or latest crisis for the caller's agency: stances, pacts, sites, outcome and the sector chaos level.
+`POST /v1/admin/crisis/resolve` ends the live one. Chiefs brief their operatives on brew, claims and outcome.

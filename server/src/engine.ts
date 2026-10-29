@@ -14,6 +14,7 @@ import { param } from "./params.ts";
 import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
 import * as chains from "./chains.ts";
+import * as crises from "./crises.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 const PRESENCE_TTL_MS = 15 * 60_000;
@@ -273,6 +274,16 @@ const spawnLink: chains.SpawnStep = (chain, step, index) => {
 };
 export const startOperation = (playerId: string, theme?: string) => chains.startChain(playerId, spawnLink, theme);
 
+/** A crisis mission: presence-verified at the site, in the agency's chosen stance, open to pact allies. */
+const spawnCrisisMission: crises.SpawnCrisisMission = (crisis, factionId, site, stance, title, brief, jointWith) => {
+  const f = factionById(factionId);
+  const target = get<TargetRow>("SELECT * FROM targets WHERE id=?", site.targetId)!;
+  const id = createMission(f, crisis.area_id, "RECON", "field", target, { crisisId: crisis.id, siteId: site.targetId, stance, jointWith, needsObservation: false }, `${crisis.id}:${factionId}:${site.targetId}`, { title, brief });
+  run("UPDATE missions SET expires_at=? WHERE id=?", crisis.ends_at, id);
+  return id;
+};
+export const brewCrisis = (areaId: string, opts?: { kind?: string; theme?: string; minutes?: number }) => crises.brew(areaId, spawnCrisisMission, opts);
+
 function buildMission(f: Faction, area: AreaRow, template: TemplateId, mode: Mode, targets: TargetRow[], plan: AreaPlan, seed: string,
   fixed?: { target: TargetRow; over: { title?: string; brief?: string; reservedFor?: string }; extraParams: Record<string, unknown> }): string | undefined {
   const target = fixed?.target ?? (mode === "field" ? nearbyTarget(f, area.id, targets, seed) : pick(targets, seed + ":t"));
@@ -339,6 +350,12 @@ function summary(m: MissionRow, p?: Player, pres?: PresenceRow | null): MissionS
     areaName: area.name, targetName: target?.name, walkM,
     deskLink: link ? { state: link.state as any, fallbackAt: link.started_at ? new Date(Date.parse(link.started_at) + link.fallback_after_s * 1000).toISOString() : "" } : null,
     chain: (() => { const c = chains.chainOf(m.params); return c ? chains.chainSummary(c.chainId) : null; })(),
+    crisis: (() => {
+      const pr = parse<any>(m.params, {});
+      if (!pr?.crisisId) return null;
+      const c = get<{ name: string }>("SELECT name FROM crises WHERE id=?", pr.crisisId);
+      return c ? { name: c.name, stance: pr.stance, joint: p?.factionId && p.factionId !== m.faction_id ? factionById(m.faction_id).name : null } : null;
+    })(),
   };
 }
 
@@ -356,8 +373,11 @@ export function offersFor(player: Player): OfferCard[] {
     const recentTargets = new Set(all<{ target_id: string }>(
       "SELECT target_id FROM missions WHERE assignee_id=? AND completed_at > ?", player.id, new Date(Date.now() - 86_400_000).toISOString()).map((r) => r.target_id));
     const offeredIds = new Set(open.map((o) => o.mission_id));
-    const poolQuery = () => all<MissionRow>("SELECT * FROM missions WHERE faction_id=? AND area_id=? AND mode=? AND state='pool' AND (reserved_for IS NULL OR reserved_for=?)", player.factionId, pres.area_id, pres.mode, player.id)
-      .filter((m) => !offeredIds.has(m.id));
+    const poolQuery = () => [
+      ...all<MissionRow>("SELECT * FROM missions WHERE faction_id=? AND area_id=? AND mode=? AND state='pool' AND (reserved_for IS NULL OR reserved_for=?)", player.factionId, pres.area_id, pres.mode, player.id),
+      // Joint operations: an allied agency's crisis missions in this sector, when a pact names us.
+      ...(pres.mode === "field" ? all<MissionRow>("SELECT * FROM missions WHERE faction_id<>? AND area_id=? AND mode='field' AND state='pool' AND json_extract(params,'$.crisisId') IS NOT NULL AND EXISTS (SELECT 1 FROM json_each(json_extract(params,'$.jointWith')) WHERE value=?)", player.factionId, pres.area_id, player.factionId) : []),
+    ].filter((m) => !offeredIds.has(m.id));
     let pool = poolQuery();
     if (!pool.length) { refreshPool(); pool = poolQuery(); }
     const scored = pool.map((m) => {
@@ -373,10 +393,14 @@ export function offersFor(player: Player): OfferCard[] {
         "SELECT 1 FROM desk_links l JOIN missions f ON f.id=l.field_mission_id WHERE l.id=? AND l.state='open' AND f.state='active'", m.desk_link_id) ? 1 : 0;
       // The next link of the operative's own operation goes to the front of the line.
       const link = m.reserved_for === player.id ? 2 : 0;
-      const score = link + waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
+      const urgent = parse<any>(m.params, {})?.crisisId ? 1 : 0;
+      const score = link + urgent + waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
       return { m, score };
     }).filter((x): x is { m: MissionRow; score: number } => !!x).sort((a, b) => b.score - a.score);
-    for (const { m } of scored.slice(0, 2 - open.length)) {
+    // Two offers to the same site are one choice, not two: keep the best per target.
+    const seenTarget = new Set<string>(open.map((o) => get<{ target_id: string | null }>("SELECT target_id FROM missions WHERE id=?", o.mission_id)?.target_id ?? "").filter(Boolean));
+    const distinct = scored.filter(({ m }) => { if (!m.target_id) return true; if (seenTarget.has(m.target_id)) return false; seenTarget.add(m.target_id); return true; });
+    for (const { m } of distinct.slice(0, 2 - open.length)) {
       const id = uid();
       run("INSERT INTO offers(id,mission_id,player_id,state,expires_at,created_at) VALUES(?,?,?,?,?,?)",
         id, m.id, player.id, "open", new Date(Date.now() + OFFER_TTL_MS()).toISOString(), now());
@@ -533,6 +557,14 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
   let debrief = contestOutcome === "lost"
     ? "A rival got there first. You brought back a decoy, and the knowledge that they were here."
     : pick(PERSONAS[f.chief].lines.debrief_ok, seed) + (contestOutcome === "won" ? " And you beat a rival to it." : "");
+  // Chaos: first verified at a crisis site claims it for the mission's agency (and its pact).
+  const pr = parse<any>(m.params, {});
+  if (pr?.crisisId) {
+    const r = crises.onSiteVerified(pr.crisisId, pr.siteId, m.faction_id, player.id);
+    if (r.late) { xp = Math.round(xp * 0.4); debrief = "Too late. Somebody was here before you; the site is gone. Still, you were seen to try."; }
+    else debrief = `Site secured. ${pr.stance === "intercept" ? "It is ours." : pr.stance === "sabotage" ? "Nobody gets it now." : "The sector stays quiet."} ${get<{ n: number }>("SELECT COUNT(*) n FROM json_each((SELECT sites FROM crises WHERE id=?)) WHERE json_extract(value,'$.claimedBy') IS NOT NULL", pr.crisisId)?.n ?? 1} of 3 sites claimed.`;
+    if (m.faction_id !== player.factionId) debrief += ` Joint operation credit to ${f.name}.`;
+  }
   // Operations: a verified link opens the next one, or closes the chain with a bonus.
   const link = chains.chainOf(m.params);
   if (link) {

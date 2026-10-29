@@ -26,8 +26,7 @@ import type {
   Presence,
   ScanRequest,
   ScanResponse,
-  WorldStatus,
-} from "@ispy/shared";
+  WorldStatus, CrisisView } from "@ispy/shared";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
 const TOKEN_KEY = "ispy.token";
@@ -123,6 +122,7 @@ export const api = {
   accuse: (id: string, factionId: FactionIdT) => post<AccuseResponse>(`/v1/investigations/${id}/accuse`, { factionId }),
   registerPush: (token: string) => post<{ ok: true }>("/v1/push/register", { token }),
   dispatches: () => get<{ dispatches: Dispatch[] }>("/v1/world/dispatches"),
+  crisis: () => get<{ crisis: CrisisView | null }>("/v1/world/crisis"),
   board: () => get<BoardResponse>("/v1/bounties"),
   claimBounty: (id: string) => post<{ ok: true }>(`/v1/bounties/${id}/claim`),
   contacts: () => get<ContactsResponse>("/v1/world/contacts"),

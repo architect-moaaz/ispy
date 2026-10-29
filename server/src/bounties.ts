@@ -125,6 +125,21 @@ export async function refreshEvent() {
   logEvent("world_event.published", "director", { name: spec.name, source, fragments: spec.fragments, counts: spec.counts }, null);
 }
 
+/** XP, trust and credits for a player, by name of the reason. */
+export function reward(playerId: string, xp: number, trust: number, why: string, credits = 0) { award(playerId, xp, trust, why, credits); }
+
+/** One fragment for an agency in the live campaign, however it was earned (crises, operations). */
+export function grantFragment(factionId: FactionId, playerId: string | null) {
+  const ev = get<EventRow>("SELECT * FROM world_events WHERE state='active' AND ends_at>?", now());
+  if (!ev) return;
+  const rules = parse<{ fragments: number; counts: string[] }>(ev.ruleset, { fragments: FRAGMENTS, counts: [] });
+  const progress = parse<Record<string, number>>(ev.progress, {});
+  progress[factionId] = Math.min(rules.fragments, (progress[factionId] ?? 0) + 1);
+  run("UPDATE world_events SET progress=? WHERE id=?", json(progress), ev.id);
+  logEvent("world_event.fragment", "authority", { event: ev.name, faction: factionId, fragments: progress[factionId] }, playerId);
+  if (progress[factionId] >= rules.fragments) void resolveEvent(get<EventRow>("SELECT * FROM world_events WHERE id=?", ev.id)!);
+}
+
 function eventProgress(playerId: string, m: { template_id: string }) {
   const ev = get<EventRow>("SELECT * FROM world_events WHERE state='active' AND ends_at>?", now());
   if (!ev) return;
