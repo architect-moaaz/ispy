@@ -8,11 +8,12 @@ import { areaForPoint, bearingDeg, distanceM, offsetM, type AreaRow } from "./ge
 import { openSector, settleSector } from "./sectors.ts";
 import { FACTIONS, PERSONAS, RANKS, factionById } from "./content.ts";
 import { makeAnalysis, makeCipher, norm, pick, rand } from "./puzzles.ts";
-import { planArea, type AreaPlan } from "./chiefs.ts";
+import { planArea, fallbackPlan, type AreaPlan } from "./chiefs.ts";
 import { award, rankFor } from "./rewards.ts";
 import { param } from "./params.ts";
 import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
+import * as chains from "./chains.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 const PRESENCE_TTL_MS = 15 * 60_000;
@@ -31,7 +32,7 @@ interface MissionRow {
   id: string; faction_id: FactionId; area_id: string; template_id: TemplateId; mode: Mode; target_id: string | null;
   assignee_id: string | null; state: string; title: string; brief: string; params: string; reward_xp: number;
   contested_group_id: string | null; desk_link_id: string | null; version: number; expires_at: string; created_at: string;
-  accepted_at: string | null; completed_at: string | null; outcome: string | null;
+  accepted_at: string | null; completed_at: string | null; outcome: string | null; reserved_for: string | null;
 }
 interface DeskLinkRow { id: string; desk_mission_id: string; field_mission_id: string; state: string; fallback_after_s: number; started_at: string | null; fulfilled_at: string | null }
 interface OfferRow { id: string; mission_id: string; player_id: string; state: string; expires_at: string; created_at: string }
@@ -192,13 +193,13 @@ const TITLES: Record<TemplateId, string> = {
 };
 const XP: Record<TemplateId, number> = { RECON: 120, DEAD_DROP: 180, EXTRACTION: 240, ANALYSIS: 100, CIPHER: 110 };
 
-function createMission(f: Faction, areaId: string, template: TemplateId, mode: Mode, target: TargetRow | null, params: Record<string, unknown>, seed: string) {
+function createMission(f: Faction, areaId: string, template: TemplateId, mode: Mode, target: TargetRow | null, params: Record<string, unknown>, seed: string, over?: { title?: string; brief?: string; reservedFor?: string }) {
   const id = uid();
-  const brief = flavour(f, template, target?.name ?? "the area", seed);
-  run(`INSERT INTO missions(id,faction_id,area_id,template_id,mode,target_id,state,title,brief,params,reward_xp,expires_at,created_at)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    id, f.id, areaId, template, mode, target?.id ?? null, "pool", TITLES[template], brief, json(params), XP[template],
-    new Date(Date.now() + MISSION_TTL_MS).toISOString(), now());
+  const brief = over?.brief ?? flavour(f, template, target?.name ?? "the area", seed);
+  run(`INSERT INTO missions(id,faction_id,area_id,template_id,mode,target_id,state,title,brief,params,reward_xp,expires_at,created_at,reserved_for)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    id, f.id, areaId, template, mode, target?.id ?? null, "pool", over?.title ?? TITLES[template], brief, json(params), XP[template],
+    new Date(Date.now() + MISSION_TTL_MS).toISOString(), now(), over?.reservedFor ?? null);
   return id;
 }
 
@@ -260,36 +261,50 @@ function nearbyTarget(f: Faction, areaId: string, targets: TargetRow[], seed: st
   return scored[scored.length - 1].t;
 }
 
-function buildMission(f: Faction, area: AreaRow, template: TemplateId, mode: Mode, targets: TargetRow[], plan: AreaPlan, seed: string) {
-  const target = mode === "field" ? nearbyTarget(f, area.id, targets, seed) : pick(targets, seed + ":t");
+/** A link of an operation: a real field mission at the chosen site, reserved for one operative, with the Director's brief. */
+const spawnLink: chains.SpawnStep = (chain, step, index) => {
+  const f = factionById(chain.faction_id);
+  const area = get<AreaRow>("SELECT * FROM areas WHERE id=?", chain.area_id)!;
+  const target = get<TargetRow>("SELECT * FROM targets WHERE id=?", step.targetId)!;
+  const targets = all<TargetRow>("SELECT * FROM targets WHERE area_id=? AND state='ACTIVE'", chain.area_id);
+  const plan = latestPlan(f.id, area.id)?.plan ?? fallbackPlan(f.chief, { areaName: area.name, fieldAgents: 1, deskAgents: 0, rivalAgentsBucket: "0", recentOutcomes: [] });
+  const id = buildMission(f, area, step.template, "field", targets, plan, `${chain.id}:${index}`, { target, over: { title: step.title, brief: step.brief, reservedFor: chain.player_id }, extraParams: { chainId: chain.id, chainStep: index } })!;
+  return id;
+};
+export const startOperation = (playerId: string, theme?: string) => chains.startChain(playerId, spawnLink, theme);
+
+function buildMission(f: Faction, area: AreaRow, template: TemplateId, mode: Mode, targets: TargetRow[], plan: AreaPlan, seed: string,
+  fixed?: { target: TargetRow; over: { title?: string; brief?: string; reservedFor?: string }; extraParams: Record<string, unknown> }): string | undefined {
+  const target = fixed?.target ?? (mode === "field" ? nearbyTarget(f, area.id, targets, seed) : pick(targets, seed + ":t"));
+  const over = fixed?.over; const extra = fixed?.extraParams ?? {};
   if (mode === "field") {
     if (template === "EXTRACTION") {
       // Second leg: the nearest other target to the first, so an extraction is a walk, not a trek.
       const second = targets.filter((t) => t.id !== target.id).sort((a, b) => distanceM(target.lat, target.lng, a.lat, a.lng) - distanceM(target.lat, target.lng, b.lat, b.lng))[0] ?? target;
-      const id = createMission(f, area.id, template, mode, target, { route: [target.id, second.id], leg: 0 }, seed);
-      maybeContest(id, f.id, target.id, plan.contestAppetite);
-      return;
+      const id = createMission(f, area.id, template, mode, target, { ...extra, route: [target.id, second.id], leg: 0 }, seed, over);
+      if (!fixed) maybeContest(id, f.id, target.id, plan.contestAppetite);
+      return id;
     }
-    const id = createMission(f, area.id, template, mode, target, { needsObservation: template === "RECON" }, seed);
-    maybeContest(id, f.id, target.id, plan.contestAppetite);
+    const id = createMission(f, area.id, template, mode, target, { ...extra, needsObservation: template === "RECON" }, seed, over);
+    if (!fixed) maybeContest(id, f.id, target.id, plan.contestAppetite);
     if (template === "DEAD_DROP") {
       // Pair with a desk cipher whose answer is the pickup code.
       const cipher = makeCipher(seed + ":c");
       const deskId = createMission(f, area.id, "CIPHER", "desk", null, { puzzle: cipher, forField: id }, seed + ":d");
       const linkId = uid();
       run("INSERT INTO desk_links(id,desk_mission_id,field_mission_id,state,fallback_after_s) VALUES(?,?,?,?,?)", linkId, deskId, id, "open", Math.round(param("deskLinkFallbackMin") * 60));
-      run("UPDATE missions SET desk_link_id=?, params=? WHERE id=?", linkId, json({ pickupCode: cipher.answer }), id);
+      run("UPDATE missions SET desk_link_id=?, params=? WHERE id=?", linkId, json({ ...extra, pickupCode: cipher.answer }), id);
       run("UPDATE missions SET desk_link_id=? WHERE id=?", linkId, deskId);
     }
-    return;
+    return id;
   }
   // desk
   if (template === "ANALYSIS") {
     const decoys = targets.filter((t) => t.id !== target.id).slice(0, 2).map((t) => t.name);
     const puzzle = makeAnalysis(seed, target.name, decoys);
-    createMission(f, area.id, template, mode, null, { puzzle }, seed);
+    return createMission(f, area.id, template, mode, null, { puzzle }, seed);
   } else {
-    createMission(f, area.id, "CIPHER", mode, null, { puzzle: makeCipher(seed + ":c") }, seed);
+    return createMission(f, area.id, "CIPHER", mode, null, { puzzle: makeCipher(seed + ":c") }, seed);
   }
 }
 
@@ -299,6 +314,8 @@ function sweepExpiry() {
   for (const m of all<MissionRow>("SELECT * FROM missions WHERE state IN ('pool','offered','accepted','active') AND expires_at<=?", t)) {
     run("UPDATE missions SET state='expired', outcome='expired' WHERE id=?", m.id);
     if (m.assignee_id) logEvent("mission.expired", "authority", { missionId: m.id, title: m.title }, m.assignee_id);
+    const link = chains.chainOf(m.params);
+    if (link && m.reserved_for) chains.onLinkLost(m.reserved_for, link.chainId, "link expired");
   }
   run("UPDATE missions SET state='pool', assignee_id=NULL WHERE state='offered' AND id NOT IN (SELECT mission_id FROM offers WHERE state='open')");
   // Desk-link fallbacks: field agent gets a solo puzzle once the window passes.
@@ -321,6 +338,7 @@ function summary(m: MissionRow, p?: Player, pres?: PresenceRow | null): MissionS
     expiresAt: m.expires_at, state: m.state as MissionSummary["state"], contested: !!m.contested_group_id,
     areaName: area.name, targetName: target?.name, walkM,
     deskLink: link ? { state: link.state as any, fallbackAt: link.started_at ? new Date(Date.parse(link.started_at) + link.fallback_after_s * 1000).toISOString() : "" } : null,
+    chain: (() => { const c = chains.chainOf(m.params); return c ? chains.chainSummary(c.chainId) : null; })(),
   };
 }
 
@@ -338,22 +356,24 @@ export function offersFor(player: Player): OfferCard[] {
     const recentTargets = new Set(all<{ target_id: string }>(
       "SELECT target_id FROM missions WHERE assignee_id=? AND completed_at > ?", player.id, new Date(Date.now() - 86_400_000).toISOString()).map((r) => r.target_id));
     const offeredIds = new Set(open.map((o) => o.mission_id));
-    const poolQuery = () => all<MissionRow>("SELECT * FROM missions WHERE faction_id=? AND area_id=? AND mode=? AND state='pool'", player.factionId, pres.area_id, pres.mode)
+    const poolQuery = () => all<MissionRow>("SELECT * FROM missions WHERE faction_id=? AND area_id=? AND mode=? AND state='pool' AND (reserved_for IS NULL OR reserved_for=?)", player.factionId, pres.area_id, pres.mode, player.id)
       .filter((m) => !offeredIds.has(m.id));
     let pool = poolQuery();
     if (!pool.length) { refreshPool(); pool = poolQuery(); }
     const scored = pool.map((m) => {
       const s = summary(m, player, pres);
       if (pres.mode === "field") {
-        if (s.walkM == null || s.walkM > player.walkRadiusM) return null;
-        if (m.target_id && recentTargets.has(m.target_id)) return null;
+        if (s.walkM == null || (s.walkM > player.walkRadiusM && m.reserved_for !== player.id)) return null;
+        if (m.target_id && recentTargets.has(m.target_id) && m.reserved_for !== player.id) return null;
       }
       // Proximity first: a 150 m walk scores near 1, the edge of the radius near 0.
       const dist = pres.mode === "field" ? 1 - Math.min(1, Math.max(0, (s.walkM ?? 0) - 100) / Math.max(1, player.walkRadiusM - 100)) : 0.5;
       // A desk mission with a field agent already waiting on it outranks everything else.
       const waiting = pres.mode === "desk" && m.desk_link_id && get(
         "SELECT 1 FROM desk_links l JOIN missions f ON f.id=l.field_mission_id WHERE l.id=? AND l.state='open' AND f.state='active'", m.desk_link_id) ? 1 : 0;
-      const score = waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
+      // The next link of the operative's own operation goes to the front of the line.
+      const link = m.reserved_for === player.id ? 2 : 0;
+      const score = link + waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
       return { m, score };
     }).filter((x): x is { m: MissionRow; score: number } => !!x).sort((a, b) => b.score - a.score);
     for (const { m } of scored.slice(0, 2 - open.length)) {
@@ -399,6 +419,8 @@ export function abandon(player: Player, missionId: string) {
   if (!m) throw new ApiError(404, "no such active mission");
   run("UPDATE missions SET state='cancelled', outcome='abandoned' WHERE id=?", m.id);
   logEvent("mission.abandoned", "player", { missionId: m.id, title: m.title }, player.id);
+  const link = chains.chainOf(m.params);
+  if (link) chains.onLinkLost(player.id, link.chainId, "link abandoned");
 }
 
 // ---------- navigation & verification ----------
@@ -508,9 +530,19 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
   investigations.onMissionVerified(player.id, m);
   bounties.onMissionVerified(player.id, { template_id: m.template_id, mode: m.mode, outcome: contestOutcome ?? "ok", contested_group_id: m.contested_group_id, id: m.id });
   const seed = m.id + ":debrief";
-  const debrief = contestOutcome === "lost"
+  let debrief = contestOutcome === "lost"
     ? "A rival got there first. You brought back a decoy, and the knowledge that they were here."
     : pick(PERSONAS[f.chief].lines.debrief_ok, seed) + (contestOutcome === "won" ? " And you beat a rival to it." : "");
+  // Operations: a verified link opens the next one, or closes the chain with a bonus.
+  const link = chains.chainOf(m.params);
+  if (link) {
+    const r = chains.onLinkVerified(player.id, link.chainId, link.step, spawnLink);
+    if (r) {
+      if (r.done) { award(player.id, r.bonusXp, 1, `${r.name} complete`); xp += r.bonusXp; }
+      debrief = r.say;
+      chiefSay(player.id, r.say, r.done ? `operation ${r.name} complete` : `operation ${r.name}: next link`, true);
+    }
+  }
   return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: flagged ? 0 : 2, contestOutcome }, debrief };
 }
 

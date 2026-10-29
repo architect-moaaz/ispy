@@ -45,6 +45,11 @@ the first launch asks for notification and location permissions.
 For the AI chiefs' voices and the Director's brain, the server needs the `ANTHROPIC_API_KEY`
 secret; otherwise everything runs on the scripted fallback.
 
+## 2b. Over-the-air updates
+`eas update --branch preview --environment preview --message "..."` publishes the JS bundle; Expo Go
+opens it from the QR on the dashboard, and APKs built after expo-updates was added pick it up on launch.
+A change to native modules (a new library) still needs a new `eas build`.
+
 ## 3. Checklist before handing the APK to testers
 - `fly.toml` region `sin`; app reachable over HTTPS.
 - Decide `DEV_SIM`: on for office testing, off for walking tests in Cubbon Park.

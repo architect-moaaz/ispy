@@ -9,6 +9,7 @@ import { norm } from "./puzzles.ts";
 import { chiefReply, llmEnabled } from "./chiefs.ts";
 import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
+import * as chains from "./chains.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -269,7 +270,7 @@ app.get("/v1/admin/overview", async () => {
     world: { ...worldStatus(), devSim: DEV_SIM, llm: llmEnabled() },
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
-    sectors, targets, operatives, missions, chat, events,
+    sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(),
   };
 });
 app.get("/console", async (_req, reply) => reply.type("text/html; charset=utf-8").send(CONSOLE_HTML));

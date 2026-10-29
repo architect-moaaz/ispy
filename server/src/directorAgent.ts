@@ -3,7 +3,8 @@ import { all, get, run, now, uid, parse, logEvent, worldGet } from "./db.ts";
 import { bus, type Signal } from "./bus.ts";
 import { FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { pick } from "./puzzles.ts";
-import { chiefSay, refreshPlans, refreshPool } from "./engine.ts";
+import { chiefSay, refreshPlans, refreshPool, startOperation } from "./engine.ts";
+import * as chains from "./chains.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
@@ -118,6 +119,11 @@ class DirectorAgent {
       case "mission.accepted": if (o) { o.accepted++; o.lastActivity = Date.now(); } return;
       case "mission.verified": {
         if (o) { o.verified++; o.lastActivity = Date.now(); }
+        // Rules path: once an operative has proven themselves, hand them a chain of linked missions.
+        if (o && o.mode === "field" && !s.payload?.chainId && !chains.activeChain(o.playerId) && o.verified >= 1) {
+          const chain = await startOperation(o.playerId);
+          if (chain) this.note("operation started", { for: o.codename, name: chain.name, source: chain.source });
+        }
         return;
       }
       case "mission.expired": case "mission.abandoned": {

@@ -19,6 +19,8 @@ import { Board } from "./src/screens/Board";
 
 type Tab = "hq" | "duty" | "dossier" | "board" | "profile";
 
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+
 export default function App() {
   const [fontsLoaded] = useFonts({ BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold, CourierPrime_400Regular, CourierPrime_700Bold });
   const [booted, setBooted] = useState(false);
@@ -89,7 +91,7 @@ export default function App() {
   const accent = factionColor(player?.factionId);
   const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Missions"], ["dossier", "Dossier"], ["board", "Board"], ["profile", "Me"]];
   return (
-    <View style={s.root}>
+    <GestureHandlerRootView style={s.root}>
       <StatusBar style="light" />
       {offline && <Banner text="Can't reach the bureau. Retrying." color={C.stamp} />}
       {world?.paused && <Banner text="The world is paused." />}
@@ -107,7 +109,7 @@ export default function App() {
           ))}
         </View>
       )}
-    </View>
+    </GestureHandlerRootView>
   );
 }
 

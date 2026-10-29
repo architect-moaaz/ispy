@@ -4,10 +4,10 @@ import {
 } from "react-native";
 import { C, F } from "./theme";
 
-export function Screen({ children, scroll = true, pad = true }: { children: React.ReactNode; scroll?: boolean; pad?: boolean }) {
+export function Screen({ children, scroll = true, pad = true, scrollEnabled = true }: { children: React.ReactNode; scroll?: boolean; pad?: boolean; scrollEnabled?: boolean }) {
   if (!scroll) return <View style={s.screen}>{children}</View>;
   return (
-    <ScrollView style={s.screen} contentContainerStyle={[s.content, !pad && { padding: 0 }]} keyboardShouldPersistTaps="handled">
+    <ScrollView style={s.screen} contentContainerStyle={[s.content, !pad && { padding: 0 }]} keyboardShouldPersistTaps="handled" scrollEnabled={scrollEnabled}>
       {children}
     </ScrollView>
   );

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Animated, Dimensions, Easing, PanResponder, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Dimensions, Easing, StyleSheet, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-native-svg";
 import type { Contact, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse } from "@ispy/shared";
 import { api } from "../api";
@@ -73,32 +74,28 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   // Operative's own framing: pinch or +/- for zoom, drag to pan, ⌖ to go back to auto framing.
   const [userZoom, setUserZoom] = useState<number | null>(null);
   const [pan, setPan] = useState({ dLat: 0, dLng: 0 });
+  const [touching, setTouching] = useState(false);
   const zoom = Math.max(13, Math.min(19, userZoom ?? autoZoom));
   const center = { lat: autoCenter.lat + pan.dLat, lng: autoCenter.lng + pan.dLng };
-  const gesture = useRef({ zoom, centerLat: center.lat, pinchStart: 0, pinchBase: 0, pan, panStart: pan });
+  const gesture = useRef({ zoom, centerLat: center.lat, pan, panStart: pan, zoomStart: zoom });
   gesture.current.zoom = zoom; gesture.current.centerLat = center.lat; gesture.current.pan = pan;
-  const zoomBy = (d: number) => setUserZoom((z) => Math.max(13, Math.min(19, (z ?? autoZoom) + d)));
-  const pager = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4 || g.numberActiveTouches === 2,
-    onPanResponderTerminationRequest: () => false,
-    onPanResponderGrant: () => { gesture.current.panStart = gesture.current.pan; gesture.current.pinchStart = 0; },
-    onPanResponderMove: (e, g) => {
-      const t = e.nativeEvent.touches;
-      if (t.length >= 2) {
-        const d = Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
-        if (!gesture.current.pinchStart) { gesture.current.pinchStart = d; gesture.current.pinchBase = gesture.current.zoom; return; }
-        const steps = Math.round(Math.log2(d / gesture.current.pinchStart));
-        const z = Math.max(13, Math.min(19, gesture.current.pinchBase + steps));
-        if (z !== gesture.current.zoom) setUserZoom(z);
-        return;
-      }
-      if (gesture.current.pinchStart) return; // finishing a pinch: do not jump
-      const mpp = (156543.03 * Math.cos((gesture.current.centerLat * Math.PI) / 180)) / 2 ** gesture.current.zoom;
-      const base = gesture.current.panStart;
-      setPan({ dLat: base.dLat + (g.dy * mpp) / 111_320, dLng: base.dLng - (g.dx * mpp) / (111_320 * Math.cos((gesture.current.centerLat * Math.PI) / 180)) });
-    },
-  })).current;
+  const zoomBy = (d: number) => setUserZoom((z) => Math.max(13, Math.min(19, Math.round((z ?? autoZoom) + d))));
+  const gestures = useMemo(() => {
+    const clampZ = (z: number) => Math.max(13, Math.min(19, z));
+    const pinch = Gesture.Pinch()
+      .onBegin(() => { setTouching(true); gesture.current.zoomStart = gesture.current.zoom; })
+      .onUpdate((e) => { setUserZoom(clampZ(gesture.current.zoomStart + Math.log2(Math.max(0.05, e.scale)))); })
+      .onFinalize(() => setTouching(false));
+    const drag = Gesture.Pan().minPointers(1).maxPointers(1).activeOffsetX([-6, 6]).activeOffsetY([-6, 6])
+      .onBegin(() => { setTouching(true); gesture.current.panStart = gesture.current.pan; })
+      .onUpdate((e) => {
+        const mpp = (156543.03 * Math.cos((gesture.current.centerLat * Math.PI) / 180)) / 2 ** gesture.current.zoom;
+        const base = gesture.current.panStart;
+        setPan({ dLat: base.dLat + (e.translationY * mpp) / 111_320, dLng: base.dLng - (e.translationX * mpp) / (111_320 * Math.cos((gesture.current.centerLat * Math.PI) / 180)) });
+      })
+      .onFinalize(() => setTouching(false));
+    return Gesture.Simultaneous(pinch, drag);
+  }, []);
 
   const bearing = fix && target ? bearingDeg(fix, target) : null;
   const onSite = dist != null && nav != null && dist <= nav.approachRadiusM;
@@ -149,7 +146,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   }
 
   return (
-    <Screen>
+    <Screen scrollEnabled={!touching}>
       {devSim && <DevPanel />}
       <View style={s.titleBar}>
         <View style={s.titleTick} />
@@ -164,7 +161,8 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         <Text style={s.sector}>{presence.areaName?.toUpperCase() ?? "NO SECTOR"}</Text>
       </View>
 
-      <View {...pager.panHandlers} style={{ width, height }}>
+      <GestureDetector gesture={gestures}>
+      <View style={{ width, height }} collapsable={false}>
         <SatMap center={center} zoom={zoom} width={width} height={height}>
           {(project) => (
             <MapOverlay project={project} width={width} height={height} fix={fix} offers={offers} target={target ? { ...target, name: nav!.targetName, locked: !nav!.unlocked } : null}
@@ -176,8 +174,9 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           <Text style={s.zoomBtn} onPress={() => zoomBy(-1)}>−</Text>
           <Text style={[s.zoomBtn, (userZoom != null || pan.dLat || pan.dLng) ? { color: C.cyan } : { color: C.dim }]} onPress={() => { setUserZoom(null); setPan({ dLat: 0, dLng: 0 }); }}>⌖</Text>
         </View>
-        <Text style={s.zoomLevel}>Z{zoom}</Text>
+        <Text style={s.zoomLevel}>Z{zoom.toFixed(1)}</Text>
       </View>
+      </GestureDetector>
 
       {mission && nav && !completed && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
@@ -212,6 +211,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         <Dossier tab={mission.contested ? C.red : C.cyan} style={{ marginTop: 12 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={s.panelTitle}>{TEMPLATE_NAME[mission.templateId] ?? mission.title} · {nav.targetName}</Text>
+            {mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{mission.chain.name.toUpperCase()} · LINK {mission.chain.step} OF {mission.chain.of}</Text>}
             <Text style={s.mono}>{fmtCountdown(mission.expiresAt, now)}</Text>
           </View>
           {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
@@ -244,6 +244,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
                 <Text style={s.panelTitle}>{TEMPLATE_NAME[o.mission.templateId] ?? o.mission.title}</Text>
                 <Text style={[s.mono, { color: C.cyan }]}>{o.mission.rewardXp} XP</Text>
               </View>
+              {o.mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{o.mission.chain.name.toUpperCase()} · LINK {o.mission.chain.step} OF {o.mission.chain.of}</Text>}
               <Text style={s.mono}>{o.mission.targetName?.toUpperCase()}{o.mission.walkM != null ? ` · ${Math.round(o.mission.walkM)}M` : ""}{o.mission.contested ? " · RIVAL ACTIVITY" : ""}{o.mission.deskLink ? " · ANALYST LINK" : ""}</Text>
               <Typed style={{ marginTop: 4 }}>{o.mission.brief}</Typed>
               <View style={{ flexDirection: "row", gap: 8 }}>

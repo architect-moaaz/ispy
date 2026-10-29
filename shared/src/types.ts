@@ -130,6 +130,7 @@ export interface MissionSummary {
   targetName?: string; // field: destination name (not coordinates)
   walkM?: number; // field: straight-line distance at offer time
   deskLink?: { state: DeskLinkState; fallbackAt: string } | null;
+  chain?: { name: string; step: number; of: number } | null; // link of an operation composed by the Director
 }
 
 export interface OffersResponse {

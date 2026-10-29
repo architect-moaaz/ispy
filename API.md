@@ -115,3 +115,15 @@ as a backstop. `POST /v1/push/register { token }` stores an Expo push token; the
 few event types (chief message, new orders, site unlocked, contract closed, cover burned, promotion,
 campaign start/end) through the Expo push service, never between 21:00 and 07:00 and at most six an
 hour per operative. `/v1/admin/push` shows registrations, sends and open stream clients.
+
+## Operations (chains of linked missions)
+
+The World Director composes an *operation* for a deployed field operative: two to four linked field
+missions at real sites, each reserved for that operative and offered the moment the previous link
+verifies, with briefs that carry one story across the sites (model-written when a key is set, scripted
+continuity otherwise). The rules path starts one after an operative's first verified field mission;
+the brain can also start one with `start_operation { codename, theme }`. A link that is abandoned or
+expires folds the operation. The last link pays a bonus (150 + 50 per link XP).
+
+`MissionSummary.chain` = `{ name, step, of }` on every link. Events: `chain.started`, `chain.advanced`,
+`chain.completed`, `chain.abandoned`. The console's overview lists recent operations under `operations`.

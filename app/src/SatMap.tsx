@@ -27,27 +27,31 @@ export interface Projector { (p: LatLng): { x: number; y: number }; metersPerPx:
 export function SatMap({
   center, zoom = 17, width, height, children,
 }: { center: LatLng; zoom?: number; width: number; height: number; children?: (project: Projector) => React.ReactNode }) {
-  const { tiles, project } = useMemo(() => {
+  const { tiles, project, tileSize } = useMemo(() => {
+    // Fractional zoom: tiles come from the nearest integer level and are scaled to fit.
+    const tz = Math.max(1, Math.min(19, Math.round(zoom)));
+    const scale = 2 ** (zoom - tz);
+    const tileSize = TILE * scale;
     const c = worldPx(center, zoom);
     const originX = c.x - width / 2;
     const originY = c.y - height / 2;
-    const x0 = Math.floor(originX / TILE), x1 = Math.floor((originX + width) / TILE);
-    const y0 = Math.floor(originY / TILE), y1 = Math.floor((originY + height) / TILE);
-    const max = 2 ** zoom;
+    const x0 = Math.floor(originX / tileSize), x1 = Math.floor((originX + width) / tileSize);
+    const y0 = Math.floor(originY / tileSize), y1 = Math.floor((originY + height) / tileSize);
+    const max = 2 ** tz;
     const tiles: { key: string; url: string; left: number; top: number }[] = [];
     for (let tx = x0; tx <= x1; tx++) for (let ty = y0; ty <= y1; ty++) {
       if (ty < 0 || ty >= max) continue;
       const wx = ((tx % max) + max) % max;
-      tiles.push({ key: `${tx}:${ty}`, url: TILE_URL(zoom, wx, ty), left: tx * TILE - originX, top: ty * TILE - originY });
+      tiles.push({ key: `${tz}:${tx}:${ty}`, url: TILE_URL(tz, wx, ty), left: tx * tileSize - originX, top: ty * tileSize - originY });
     }
     const metersPerPx = (156543.03 * Math.cos((center.lat * Math.PI) / 180)) / 2 ** zoom;
     const project = Object.assign((p: LatLng) => { const w = worldPx(p, zoom); return { x: w.x - originX, y: w.y - originY }; }, { metersPerPx });
-    return { tiles, project };
+    return { tiles, project, tileSize };
   }, [center.lat, center.lng, zoom, width, height]);
 
   return (
     <View style={{ width, height, overflow: "hidden", backgroundColor: "#0a1a24" }}>
-      {tiles.map((t) => <Image key={t.key} source={{ uri: t.url }} style={{ position: "absolute", left: t.left, top: t.top, width: TILE, height: TILE }} />)}
+      {tiles.map((t) => <Image key={t.key} source={{ uri: t.url }} style={{ position: "absolute", left: t.left, top: t.top, width: tileSize + 0.5, height: tileSize + 0.5 }} />)}
       {/* Dark cyan wash so the HUD reads over daylight imagery. */}
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(6, 20, 30, 0.52)" }]} />
       <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={width} height={height}>

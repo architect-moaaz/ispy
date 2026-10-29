@@ -4,7 +4,7 @@ import type { FactionId } from "@ispy/shared";
 import { all, get, run, now, uid, json, logEvent } from "./db.ts";
 import type { Signal } from "./bus.ts";
 import { FACTIONS, factionById } from "./content.ts";
-import { chiefSay, refreshPlans, refreshPool } from "./engine.ts";
+import { chiefSay, refreshPlans, refreshPool, startOperation } from "./engine.ts";
 import { llmClient } from "./chiefs.ts";
 import { PARAM_SPEC, allParams, setParam, type ParamKey } from "./params.ts";
 import { assess, type Assessment } from "./strategy.ts";
@@ -25,6 +25,7 @@ const Action = z.discriminatedUnion("type", [
   z.object({ type: z.literal("publish_contract"), factionId: z.enum(["raven", "phantom", "cipher", "all"]), title: z.string().describe("at most 40 characters"), contractType: z.string().describe("at most 24 characters"), brief: z.string().describe("at most 200 characters"), xp: z.number().int().min(100).max(800), credits: z.number().int().min(0).max(250), criteria: z.object({ template: z.enum(["RECON", "DEAD_DROP", "EXTRACTION", "CIPHER", "ANALYSIS"]).optional(), mode: z.enum(["field", "desk"]).optional(), contestWon: z.boolean().optional(), against: z.enum(["raven", "phantom", "cipher"]).optional(), count: z.number().int().min(1).max(6) }), hours: z.number().int().min(1).max(48) }),
   z.object({ type: z.literal("set_param"), key: z.enum(paramKeys), value: z.number(), why: z.string().describe("at most 100 characters") }),
   z.object({ type: z.literal("dispatch"), headline: z.string().describe("at most 60 characters"), body: z.string().describe("at most 240 characters"), factionId: z.enum(["raven", "phantom", "cipher", "all"]) }),
+  z.object({ type: z.literal("start_operation"), codename: z.string(), theme: z.string().describe("One line of story direction for the chain of linked missions; at most 120 characters") }),
   z.object({ type: z.literal("refill_pool") }),
   z.object({ type: z.literal("wait"), why: z.string().describe("at most 100 characters") }),
 ]);
@@ -61,6 +62,7 @@ const SYSTEM = [
   "You are invisible: operatives and chiefs do not know you exist. You act only through chiefs' voices, contracts, world news and bounded parameters. Never reveal yourself, never mention a director, an arbiter or an auditor.",
   "Your purpose: keep the game alive, tense and fair. Keep deployed operatives engaged, keep the three agencies in genuine competition, make dominance costly and comebacks possible, create moments where rivals meet, and reward good play without favouring anyone.",
   "Think like a game designer and an intelligence officer at once: read patterns, anticipate, apply game theory (counter-pressure on leaders, information asymmetry, mixed strategies so nobody can predict you), and keep your interventions proportionate and varied.",
+  "Operations: you can give a deployed field operative who has no operation a chain of two to four linked missions (start_operation); their chief voices it as one story across real sites. Prefer this for engaged operatives over single throwaway missions; one operation per operative at a time.",
   "Hard limits: you cannot change outcomes, scores or verifications; you cannot see or reveal player identities beyond codenames; you must never direct anyone toward real people, private property or unsafe places; everything stays fiction; parameters must stay inside their bounds; do not message the same operative more than once per cycle; prefer doing nothing over doing something pointless.",
   "Voice for operative messages: write as that operative's chief would. ORACLE (RAVEN): calm, precise, analytical. GHOST (PHANTOM): dry, playful, theatrical. NEXUS (CIPHER): technical, fast, curious. Under 40 words each.",
 ].join("\n");
@@ -113,6 +115,13 @@ export async function think(operatives: OperativeView[], chiefs: ChiefView[], si
         case "dispatch": {
           run("INSERT INTO dispatches(id,kind,headline,body,faction_id,source,at) VALUES(?,?,?,?,?,?,?)", uid(), "news", act.headline.slice(0, 72), act.body.slice(0, 280), act.factionId === "all" ? null : act.factionId, "director", now());
           applied.push(`dispatch "${act.headline}"`);
+          break;
+        }
+        case "start_operation": {
+          const p = get<{ id: string }>("SELECT id FROM players WHERE codename=?", act.codename);
+          if (!p) break;
+          const chain = await startOperation(p.id, act.theme.slice(0, 160));
+          applied.push(chain ? `operation ${chain.name} for ${act.codename}` : `operation for ${act.codename} not possible now`);
           break;
         }
         case "refill_pool": refreshPool(); applied.push("pool refilled"); break;
