@@ -16,6 +16,8 @@ import { startChiefAgents } from "./chiefAgent.ts";
 import { openStream, streamClients } from "./stream.ts";
 import { registerPushToken, unregisterPushToken, startPush, pushStats } from "./push.ts";
 import { allParams } from "./params.ts";
+import { CONSOLE_HTML } from "./console.ts";
+import { openSector, settleSector, sectorSummary } from "./sectors.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
@@ -45,6 +47,13 @@ app.addHook("preHandler", async (req) => {
   if (!token) return;
   const s = get<{ player_id: string }>("SELECT player_id FROM sessions WHERE token=?", token);
   if (s) req.player = playerView(s.player_id);
+});
+// Admin routes and the console: open in the alpha unless ADMIN_TOKEN is set, then key-protected.
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
+app.addHook("preHandler", async (req, reply) => {
+  if (!ADMIN_TOKEN || !req.url.startsWith("/v1/admin")) return;
+  const k = req.headers["x-admin-key"] ?? (req.query as any)?.key;
+  if (k !== ADMIN_TOKEN) return reply.status(401).send({ error: "admin key required" });
 });
 const need = (req: { player: ReturnType<typeof playerView> | null }) => {
   if (!req.player) throw new ApiError(401, "sign in first");
@@ -223,6 +232,47 @@ app.post("/v1/admin/areas/test", async (req) => {
   return out;
 });
 app.get("/v1/admin/director", async () => ({ ...directorAgent.status(), params: allParams() }));
+app.post("/v1/admin/areas/open", async (req) => {
+  const b = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }).parse(req.body);
+  const a = openSector(b.lat, b.lng, null);
+  await refreshPlans(true, { areaId: a.id, reason: "a new sector was opened by survey" });
+  refreshPool();
+  const settled = await settleSector(a.id);
+  refreshPool();
+  return { id: a.id, ...settled };
+});
+/** Everything the console shows, in one call. */
+app.get("/v1/admin/overview", async () => {
+  const sectors = sectorSummary().map((a) => ({ ...a, pool: get<{ n: number }>("SELECT COUNT(*) n FROM missions WHERE area_id=? AND state='pool'", a.id)!.n }));
+  const inPlay = new Set(all<{ target_id: string }>("SELECT DISTINCT target_id FROM missions WHERE target_id IS NOT NULL AND state IN ('offered','accepted','active')").map((r) => r.target_id));
+  const targets = all<{ id: string; name: string; kind: string; lat: number; lng: number }>("SELECT id, name, kind, lat, lng FROM targets WHERE state='ACTIVE'").map((t) => ({ ...t, inPlay: inPlay.has(t.id) }));
+  const operatives = all<{ player_id: string; codename: string; faction_id: FactionId | null; mode: string; area_id: string | null; checked_in_at: string; last_lat: number | null; last_lng: number | null; last_fix_at: string | null }>(
+    "SELECT p.player_id, pl.codename, pl.faction_id, p.mode, p.area_id, p.checked_in_at, p.last_lat, p.last_lng, p.last_fix_at FROM presence p JOIN players pl ON pl.id=p.player_id WHERE p.expires_at>?", now())
+    .map((p) => ({
+      codename: p.codename, factionId: p.faction_id, faction: p.faction_id ? factionById(p.faction_id).name : "—", mode: p.mode,
+      area: p.area_id ? get<{ name: string }>("SELECT name FROM areas WHERE id=?", p.area_id)?.name ?? null : null,
+      checkedInAt: p.checked_in_at, lat: p.last_lat, lng: p.last_lng, lastFixAt: p.last_fix_at,
+      activeMission: get<{ title: string }>("SELECT title FROM missions WHERE assignee_id=? AND state='active' LIMIT 1", p.player_id)?.title ?? null,
+      openOffers: get<{ n: number }>("SELECT COUNT(*) n FROM offers WHERE player_id=? AND state='open' AND expires_at>?", p.player_id, now())!.n,
+    }));
+  const missions = all<{ id: string; title: string; faction_id: FactionId; state: string; created_at: string; contested_group_id: string | null; assignee: string | null; target: string | null }>(
+    `SELECT m.id, m.title, m.faction_id, m.state, m.created_at, m.contested_group_id, pl.codename assignee, t.name target FROM missions m
+     LEFT JOIN players pl ON pl.id=m.assignee_id LEFT JOIN targets t ON t.id=m.target_id WHERE m.state IN ('offered','accepted','active') ORDER BY m.created_at DESC LIMIT 40`)
+    .map((m) => ({ id: m.id, title: m.title, factionId: m.faction_id, faction: factionById(m.faction_id).name, state: m.state, createdAt: m.created_at, contested: !!m.contested_group_id, assignee: m.assignee, target: m.target }));
+  const chat = all<{ player_id: string; codename: string; faction_id: FactionId | null; role: string; text: string; at: string }>(
+    "SELECT c.player_id, pl.codename, pl.faction_id, c.role, c.text, c.at FROM chat c JOIN players pl ON pl.id=c.player_id ORDER BY c.at DESC LIMIT 30")
+    .map((c) => ({ codename: c.codename, factionId: c.faction_id, chief: c.faction_id ? factionById(c.faction_id).chiefName : "—", role: c.role, text: c.text, at: c.at }));
+  const events = all<{ id: number; type: string; actor: string; payload: string; at: string; codename: string | null }>(
+    "SELECT e.id, e.type, e.actor, e.payload, e.at, pl.codename FROM events e LEFT JOIN players pl ON pl.id=e.player_id ORDER BY e.id DESC LIMIT 120")
+    .map((e) => ({ id: e.id, type: e.type, actor: e.actor, payload: parse(e.payload, {}), at: e.at, codename: e.codename }));
+  return {
+    world: { ...worldStatus(), devSim: DEV_SIM, llm: llmEnabled() },
+    director: { ...directorAgent.status(), params: allParams() },
+    push: { ...pushStats(), streamClients: streamClients() },
+    sectors, targets, operatives, missions, chat, events,
+  };
+});
+app.get("/console", async (_req, reply) => reply.type("text/html; charset=utf-8").send(CONSOLE_HTML));
 
 // ---- the World Director lives here; the forced tick remains for tests ----
 let lastAudit = 0;

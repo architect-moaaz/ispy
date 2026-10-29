@@ -60,6 +60,14 @@ fragments from dead drops and extractions) and the Arbiter resolves it on a fixe
 | POST | /v1/admin/dispatch | → force a dispatch now |
 
 | GET | /v1/admin/director | → the Director agent's status: operatives watched, chief models, cadence, recent decisions |
+| GET | /v1/admin/overview | → everything the console shows: world, director, push, sectors (with target/pool counts), targets (`inPlay`), operatives (position, work), live missions, chief traffic, events |
+| POST | /v1/admin/areas/open | `{ lat, lng }` → `{ id, name, realTargets, final }`: open a sector here and survey it now |
+| GET | /console | the owner's monitoring page (HTML) |
+
+Admin routes require header `x-admin-key` (or `?key=`) when the server has `ADMIN_TOKEN` set.
+Sectors also open automatically: a field check-in outside every area creates `sec-<lat>-<lng>` around the
+operative (`sector.opened`), chiefs plan it at once, and a background survey names it and adds real public
+places (`sector.settled`, retried as `sector.survey_retry` when map sources are down).
 
 World Director agent: a resident process, not a cron. Every ledger event wakes it (deployment,
 offers, accepts, verifications, declines, flagged scans, contests, accusations, fragments, bounties)

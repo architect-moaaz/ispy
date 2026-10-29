@@ -1,5 +1,5 @@
 import type { FactionId } from "@ispy/shared";
-import { all, get, now, parse, logEvent, worldGet } from "./db.ts";
+import { all, get, run, now, uid, parse, logEvent, worldGet } from "./db.ts";
 import { bus, type Signal } from "./bus.ts";
 import { FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { pick } from "./puzzles.ts";
@@ -26,7 +26,7 @@ interface ChiefModel { factionId: FactionId; lastReplan: number; idleAgents: num
 
 const FAST_MS = 20_000, SLOW_MS = 5 * 60_000;
 /** Events worth waking the brain for; the rest it sees on the next periodic review. */
-const THINK_ON = new Set(["presence.check_in", "mission.expired", "mission.abandoned", "contest.formed", "case.confirmed", "case.rejected", "world_event.fragment", "world_event.resolved", "bounty.completed", "location.flagged", "presence.check_out"]);
+const THINK_ON = new Set(["presence.check_in", "sector.opened", "sector.settled", "mission.expired", "mission.abandoned", "contest.formed", "case.confirmed", "case.rejected", "world_event.fragment", "world_event.resolved", "bounty.completed", "location.flagged", "presence.check_out"]);
 const IDLE_NUDGE_MS = 4 * 60_000, STALE_PLAN_MS = 60 * 60_000;
 
 class DirectorAgent {
@@ -101,6 +101,17 @@ class DirectorAgent {
         // Make sure there is something to hand this operative within seconds.
         const pool = get<{ n: number }>("SELECT COUNT(*) n FROM missions WHERE faction_id=? AND mode=? AND state='pool'", m.factionId, m.mode)!.n;
         if (pool === 0) { refreshPool(); this.note("pool refilled on deployment", { for: m.codename }); }
+        return;
+      }
+      case "sector.settled": {
+        // The survey is in: tell the chiefs about the real ground and let the world know a sector exists.
+        const { areaId, name, realTargets } = s.payload as { areaId: string; name: string; realTargets: number };
+        if (realTargets > 0) { await refreshPlans(true, { areaId, reason: `real public places are now mapped in ${name}` }); refreshPool(); }
+        if (!get("SELECT 1 FROM dispatches WHERE headline=?", `New sector: ${name}`)) {
+          run("INSERT INTO dispatches(id,kind,headline,body,faction_id,source,at) VALUES(?,?,?,?,?,?,?)", uid(), "news", `New sector: ${name}`,
+            realTargets > 0 ? `All three agencies have moved into ${name}. ${realTargets} sites are in play.` : `All three agencies have moved into ${name}. Checkpoints are being surveyed.`, null, "director", now());
+        }
+        this.note("sector settled", { name, realTargets });
         return;
       }
       case "mission.offered": if (o) { o.offersSeen++; o.lastActivity = Date.now(); } return;

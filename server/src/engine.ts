@@ -5,6 +5,7 @@ import type {
 } from "@ispy/shared";
 import { all, get, run, tx, now, uid, json, parse, logEvent, worldGet } from "./db.ts";
 import { areaForPoint, bearingDeg, distanceM, offsetM, type AreaRow } from "./geo.ts";
+import { openSector, settleSector } from "./sectors.ts";
 import { FACTIONS, PERSONAS, RANKS, factionById } from "./content.ts";
 import { makeAnalysis, makeCipher, norm, pick, rand } from "./puzzles.ts";
 import { planArea, type AreaPlan } from "./chiefs.ts";
@@ -70,15 +71,17 @@ export function checkIn(player: Player, body: { mode: Mode; lat?: number; lng?: 
   if (paused()) throw new ApiError(503, "the world is paused");
   let areaId: string | null = null;
   let lat: number | null = null, lng: number | null = null;
+  let opened: string | null = null;
   if (body.mode === "field") {
     if (body.lat == null || body.lng == null) throw new ApiError(400, "field deployment needs a location fix");
     if (body.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
     if (body.mock && !body.sim) throw new ApiError(400, "mock location provider detected");
-    const area = areaForPoint(body.lat, body.lng);
+    let area = areaForPoint(body.lat, body.lng);
     if (!area) {
-      const nearest = all<AreaRow>("SELECT * FROM areas").map((a) => ({ a, d: distanceM(body.lat!, body.lng!, a.lat, a.lng) - a.radius_m })).sort((x, y) => x.d - y.d)[0];
-      const km = nearest ? Math.max(0.1, nearest.d / 1000) : null;
-      throw new ApiError(400, nearest ? `You are outside every sector. The nearest is ${nearest.a.name}, about ${km! < 10 ? km!.toFixed(1) : Math.round(km!)} km away.` : "No sectors exist yet.");
+      // Nobody is turned away: the World Director opens a sector around the operative, then names it
+      // and furnishes it with real public places in the background.
+      area = openSector(body.lat, body.lng, player.id);
+      opened = area.id;
     }
     areaId = area.id; lat = body.lat; lng = body.lng;
   } else {
@@ -91,8 +94,18 @@ export function checkIn(player: Player, body: { mode: Mode; lat?: number; lng?: 
        ON CONFLICT(player_id) DO UPDATE SET area_id=excluded.area_id, mode=excluded.mode, checked_in_at=excluded.checked_in_at,
        expires_at=excluded.expires_at, last_lat=excluded.last_lat, last_lng=excluded.last_lng, last_fix_at=excluded.last_fix_at`,
     player.id, areaId, body.mode, t, exp, lat, lng, lat != null ? t : null);
-  logEvent("presence.check_in", "player", { mode: body.mode, areaId }, player.id);
+  logEvent("presence.check_in", "player", { mode: body.mode, areaId, openedSector: opened }, player.id);
+  if (opened) void furnishSector(opened);
   return getPresence(player.id)!;
+}
+
+/** After a sector opens: chiefs plan it right away so the pool fills; the survey of real places runs behind. The Director reacts to `sector.settled`. */
+async function furnishSector(areaId: string) {
+  try {
+    await refreshPlans(true, { areaId, reason: "a new sector just opened with an operative already on the ground; keep the first walks short" });
+    refreshPool();
+    await settleSector(areaId);
+  } catch (e) { console.warn("[sectors] furnishing failed:", (e as Error).message); }
 }
 
 export function heartbeat(player: Player, body: { lat?: number; lng?: number; sim?: boolean }): Presence {
