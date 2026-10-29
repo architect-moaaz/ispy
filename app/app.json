@@ -9,7 +9,8 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "iSpy a Spy uses your location while you are on field duty to find your area and verify you reached a target."
+        "NSLocationWhenInUseUsageDescription": "iSpy a Spy uses your location while you are on field duty to find your area and verify you reached a target.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "com.moaaz.ispyaspy"
     },
