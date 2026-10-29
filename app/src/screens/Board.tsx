@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import type { BoardResponse, BountyCard as BountyT, CrisisView, Dispatch } from "@ispy/shared";
+import type { BoardResponse, BountyCard as BountyT, CrisisView, Dispatch, WorldStatus } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
@@ -13,10 +13,11 @@ export function Board() {
   const [data, setData] = useState<BoardResponse | null>(null);
   const [news, setNews] = useState<Dispatch[]>([]);
   const [crisis, setCrisis] = useState<CrisisView | null>(null);
+  const [world, setWorld] = useState<WorldStatus | null>(null);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {}), api.crisis().then((r) => setCrisis(r.crisis)).catch(() => {})]).catch((e) => setErr(e.message));
+  const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {}), api.crisis().then((r) => setCrisis(r.crisis)).catch(() => {}), api.world().then(setWorld).catch(() => {})]).catch((e) => setErr(e.message));
   useEffect(() => {
     load();
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -59,6 +60,18 @@ export function Board() {
               ))}
             </View>
           </View>
+        </View>
+      )}
+
+      {world?.control && Object.values(world.control).some((c) => Object.values(c).some((n) => n > 0)) && (
+        <View style={s.control}>
+          <Text style={s.eyebrow}>Sector control · a finished site is held for two hours</Text>
+          {world.areas.filter((a) => Object.values(world.control![a.id] ?? {}).some((n) => n > 0)).map((a) => (
+            <View key={a.id} style={{ flexDirection: "row", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
+              <Text style={[s.site, { color: C.dim, width: 120 }]}>{a.name.toUpperCase()}</Text>
+              {Object.entries(world.control![a.id]).map(([f, n]) => <Text key={f} style={[s.site, { color: factionColor(f as any) }]}>{f.toUpperCase()} {n}</Text>)}
+            </View>
+          ))}
         </View>
       )}
 
@@ -151,6 +164,7 @@ function BountyCard({ b, now, busy, onClaim }: { b: BountyT; now: number; busy: 
 }
 
 const s = StyleSheet.create({
+  control: { borderWidth: 1, borderColor: C.line, backgroundColor: C.ink2, padding: 12, marginBottom: 14 },
   crisis: { borderWidth: 1, borderColor: C.amber, backgroundColor: C.ink2, padding: 14, marginBottom: 14 },
   stance: { color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, marginTop: 8 },
   site: { color: C.text, fontFamily: F.typed, fontSize: 11.5 },

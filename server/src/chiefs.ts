@@ -28,6 +28,7 @@ export interface PlanContext {
   rivalAgentsBucket: string;
   recentOutcomes: { template: TemplateId; outcome: string }[];
   reason?: string; // situation update handed to the chief; never attributed to anyone
+  held?: string; // sites held in this area, ours and rivals'
 }
 
 let client: Anthropic | null | undefined;
@@ -87,6 +88,7 @@ export async function planArea(chief: ChiefId, faction: Faction, ctx: PlanContex
       messages: [{
         role: "user",
         content: `Area: ${ctx.areaName}. Your operatives deployed: ${ctx.fieldAgents} field, ${ctx.deskAgents} intel desk. Rival agents present: ${ctx.rivalAgentsBucket}.\n` +
+          (ctx.held ? `Sites held (a finished site is closed to others for two hours): ${ctx.held}.\n` : "") +
           `Recent outcomes: ${ctx.recentOutcomes.length ? ctx.recentOutcomes.map((o) => `${o.template}:${o.outcome}`).join(", ") : "none yet"}.\n` +
           (ctx.reason ? `Situation update from your own analysts: ${ctx.reason}. Re-plan now.\n` : "") + "Produce the plan.",
       }],

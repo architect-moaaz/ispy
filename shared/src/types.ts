@@ -132,6 +132,7 @@ export interface MissionSummary {
   deskLink?: { state: DeskLinkState; fallbackAt: string } | null;
   chain?: { name: string; step: number; of: number } | null; // link of an operation composed by the Director
   crisis?: { name: string; stance: "intercept" | "sabotage" | "mitigate"; joint: string | null } | null; // crisis mission; joint = allied agency it belongs to
+  heldBy?: FactionId | null; // agency currently holding the site (first finished keeps it for two hours)
 }
 
 // ---- Chaos: crises brewed by the Director ----
@@ -163,6 +164,7 @@ export interface NavigateResponse {
   hint: string;
   unlocked: boolean; // false while a desk link is still open
   steps: string[];
+  heldBy?: FactionId | null;
 }
 
 export interface ScanRequest {
@@ -221,6 +223,7 @@ export interface WorldStatus {
   areas: Area[];
   presenceByArea: Record<string, number>;
   activeMissions: number;
+  control?: Record<string, Record<FactionId, number>>; // areaId -> sites held per agency
 }
 export interface WorldEvent {
   id: number;

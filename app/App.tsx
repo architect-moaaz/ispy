@@ -25,6 +25,7 @@ export default function App() {
   const [fontsLoaded] = useFonts({ BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold, CourierPrime_400Regular, CourierPrime_700Bold });
   const [booted, setBooted] = useState(false);
   const [player, setPlayer] = useState<Player | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [faction, setFaction] = useState<Faction | null>(null);
   const [presence, setPresence] = useState<Presence | null>(null);
   const [world, setWorld] = useState<World | null>(null);
@@ -68,7 +69,9 @@ export default function App() {
     if (!player) return;
     connectLive();
     registerForPush();
-    const off = onLive((type) => {
+    const off = onLive((type, data: any) => {
+      if (type === "reward" && data?.xp) { setToast(`+${data.xp} XP${data.credits ? ` · +${data.credits} CREDITS` : ""}${data.why ? ` · ${String(data.why).toUpperCase()}` : ""}`); setTimeout(() => setToast(null), 5000); }
+      if (type === "rank_up" && data?.to) { setToast(`PROMOTED · ${String(data.to).replace("_", " ").toUpperCase()}`); setTimeout(() => setToast(null), 6000); }
       if (["chief.message", "reward", "rank_up", "presence.check_in", "presence.check_out", "live.open"].includes(type)) refreshMe();
       if (type === "admin.paused" || type === "admin.resumed") api.world().then(setWorld).catch(() => {});
     });
@@ -95,6 +98,7 @@ export default function App() {
       <StatusBar style="light" />
       {offline && <Banner text="Can't reach the bureau. Retrying." color={C.stamp} />}
       {world?.paused && <Banner text="The world is paused." />}
+      {toast && <Banner text={toast} color={C.ok} />}
       <View style={s.body}>{body}</View>
       {inGame && (
         <View style={s.tabs}>

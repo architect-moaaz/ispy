@@ -1,9 +1,11 @@
 import type { ChiefId, FactionId } from "@ispy/shared";
-import { all, get, now, worldGet } from "./db.ts";
+import { all, get, now, parse, worldGet } from "./db.ts";
 import { bus, type Signal } from "./bus.ts";
 import { FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { pick } from "./puzzles.ts";
-import { chiefSay, refreshPool } from "./engine.ts";
+import { chiefSay, refreshPool, offerDirect } from "./engine.ts";
+import { distanceM } from "./geo.ts";
+import * as crises from "./crises.ts";
 import { chiefLine, remember } from "./chiefs.ts";
 
 /**
@@ -42,6 +44,8 @@ class ChiefAgent {
         if (!get("SELECT 1 FROM missions WHERE faction_id=? AND mode=? AND state='pool'", this.factionId, s.payload?.mode)) refreshPool();
         await this.say(op.id, op.codename, `${op.codename} just deployed to the ${s.payload?.mode === "desk" ? "intel desk" : "field"}.`,
           pick(lines.welcome, op.id) + (s.payload?.mode === "field" ? " Orders are on the board. Walk." : " The intercepts are yours."), "deployment");
+        const live = s.payload?.areaId ? crises.activeCrisis(s.payload.areaId) : undefined;
+        if (live && s.payload?.mode === "field") await this.dispatchCrisis(live.id, `${op.codename} just deployed during ${live.name}`);
         return;
       }
       case "mission.verified": {
@@ -62,10 +66,12 @@ class ChiefAgent {
         const text = allies.length ? `${line} We are working this one with ${allies.map((a) => factionById(a as FactionId).name).join(" and ")}; their sites are yours to take as well.` : line;
         for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", this.factionId, now())) chiefSay(o.player_id, text, "crisis", true);
         remember(this.chief, "crisis", null, `${s.payload?.name}: told the operatives to ${s.payload?.stances?.[this.factionId]}`);
+        await this.dispatchCrisis(s.payload?.crisisId, `${s.payload?.name} just started`);
         return;
       }
       case "crisis.site_claimed": {
         const mine = s.payload?.faction === this.factionId;
+        await this.dispatchCrisis(s.payload?.crisisId, `${s.payload?.site} just fell to ${factionById(s.payload?.faction).name}`);
         for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>? AND p.player_id<>?", this.factionId, now(), s.playerId ?? "")) {
           chiefSay(o.player_id, mine ? `${s.payload?.site} is ours. ${s.payload?.claimed} of ${s.payload?.of} sites decided. Keep moving.` : `${factionById(s.payload?.faction).name} took ${s.payload?.site}. ${s.payload?.of - s.payload?.claimed} site${s.payload?.of - s.payload?.claimed === 1 ? "" : "s"} left. Move.`, "crisis update");
         }
@@ -76,6 +82,16 @@ class ChiefAgent {
         const won = (s.payload?.leaders ?? []).includes(this.factionId);
         const text = `${s.payload?.name} is ${s.payload?.verdict}. We held ${held} of 3 sites.${won ? " That is a result." : held ? " Not enough." : " We were not in it."}`;
         for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", this.factionId, now())) chiefSay(o.player_id, text, "crisis outcome", true);
+        return;
+      }
+      case "mission.late": {
+        if (!op) return;
+        remember(this.chief, "late", op.codename, `${op.codename} arrived late at ${s.payload?.title}; ${factionById(s.payload?.heldBy).name} held the site`);
+        return;
+      }
+      case "site.held": {
+        if (!op) return;
+        remember(this.chief, "held", op.codename, `${op.codename} took ${s.payload?.target}; we hold ${s.payload?.control?.[this.factionId] ?? "?"} sites there`);
         return;
       }
       case "mission.expired": case "mission.abandoned": {
@@ -122,6 +138,84 @@ class ChiefAgent {
   }
 
   /** Every minute: operatives of mine who are deployed with nothing to do. */
+  /**
+   * Read the pattern in the Director's chaos: what each rival tends to do with each kind of crisis,
+   * which sites fall first, how fast. The chief never knows who brews the chaos; it only sees the sequence.
+   */
+  readPattern(kind: string): { text: string; rivalRace: boolean; firstSites: string[] } {
+    const past = all<crises.CrisisRow>("SELECT * FROM crises WHERE state='resolved' ORDER BY ends_at DESC LIMIT 12");
+    const byRival: Record<string, Record<string, number>> = {};
+    const firstSites: Record<string, number> = {};
+    let firstClaimMin: number[] = [];
+    for (const c of past) {
+      const st = crises.stancesOf(c);
+      for (const f of FACTIONS) if (f.id !== this.factionId && st[f.id]) { byRival[f.id] ??= {}; byRival[f.id][`${c.kind}:${st[f.id]}`] = (byRival[f.id][`${c.kind}:${st[f.id]}`] ?? 0) + 1; }
+      const claimed = crises.sitesOf(c).filter((x) => x.claimedAt).sort((a, b) => a.claimedAt!.localeCompare(b.claimedAt!));
+      if (claimed[0]) { firstSites[claimed[0].name] = (firstSites[claimed[0].name] ?? 0) + 1; firstClaimMin.push((Date.parse(claimed[0].claimedAt!) - Date.parse(c.starts_at)) / 60_000); }
+    }
+    const reads: string[] = [];
+    let rivalRace = false;
+    for (const f of FACTIONS) {
+      if (f.id === this.factionId) continue;
+      const rows = Object.entries(byRival[f.id] ?? {}).filter(([k]) => k.startsWith(kind + ":")).sort((a, b) => b[1] - a[1]);
+      if (rows[0]) {
+        const stance = rows[0][0].split(":")[1];
+        reads.push(`${f.name} usually ${stance}s a ${kind}`);
+        if (stance !== "mitigate") rivalRace = true;
+      }
+    }
+    const hot = Object.entries(firstSites).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n]) => n);
+    const avg = firstClaimMin.length ? Math.round(firstClaimMin.reduce((a, b) => a + b, 0) / firstClaimMin.length) : null;
+    const text = [
+      past.length ? `${past.length} past crises on file.` : "No pattern yet; first crisis on file.",
+      ...reads,
+      hot.length ? `Sites that fall first: ${hot.join(", ")}.` : "",
+      avg != null ? `First site usually goes within ${avg} min.` : "",
+    ].filter(Boolean).join(" ");
+    return { text, rivalRace, firstSites: hot };
+  }
+
+  /** Put operatives on sites: nearest open site each, racing the hot ones first when rivals tend to grab. */
+  async dispatchCrisis(crisisId: string, why: string) {
+    const c = get<crises.CrisisRow>("SELECT * FROM crises WHERE id=? AND state='active'", crisisId);
+    if (!c) return;
+    const pattern = this.readPattern(c.kind);
+    const stance = crises.stancesOf(c)[this.factionId];
+    const open = crises.sitesOf(c).filter((x) => !x.claimedBy);
+    if (!open.length) return;
+    const rivals = all<{ lat: number; lng: number }>("SELECT p.last_lat lat, p.last_lng lng FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id<>? AND p.area_id=? AND p.mode='field' AND p.expires_at>? AND p.last_lat IS NOT NULL", this.factionId, c.area_id, now());
+    const ops = all<{ player_id: string; codename: string; lat: number | null; lng: number | null }>(
+      "SELECT p.player_id, pl.codename, p.last_lat lat, p.last_lng lng FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.area_id=? AND p.mode='field' AND p.expires_at>?", this.factionId, c.area_id, now());
+    // Pact allies coordinate: sites an ally's operative is already on, or has been sent to, are theirs.
+    const taken = new Set<string>();
+    const allies = crises.alliesOf(c, this.factionId);
+    if (allies.length) {
+      for (const r of all<{ site: string }>(
+        `SELECT DISTINCT json_extract(m.params,'$.siteId') site FROM missions m WHERE json_extract(m.params,'$.crisisId')=? AND m.faction_id IN (${allies.map(() => "?").join(",")}) AND (m.state='active' OR m.id IN (SELECT mission_id FROM offers WHERE state='open'))`,
+        c.id, ...allies)) if (r.site) taken.add(r.site);
+    }
+    let sent = 0;
+    for (const o of ops) {
+      if (get("SELECT 1 FROM missions WHERE assignee_id=? AND state='active'", o.player_id)) continue;
+      if (get("SELECT 1 FROM offers o JOIN missions m ON m.id=o.mission_id WHERE o.player_id=? AND o.state='open' AND json_extract(m.params,'$.crisisId')=?", o.player_id, c.id)) continue;
+      // Score: close to me, far from rivals; sites that historically fall first get a push when rivals race.
+      const best = open.filter((x) => !taken.has(x.targetId)).map((x) => {
+        const mine = o.lat != null ? distanceM(o.lat, o.lng!, x.lat, x.lng) : 500;
+        const rival = rivals.length ? Math.min(...rivals.map((r) => distanceM(r.lat, r.lng, x.lat, x.lng))) : 2000;
+        const hot = pattern.rivalRace && pattern.firstSites.includes(x.name) ? 300 : 0;
+        return { x, score: -mine + 0.5 * rival + hot };
+      }).sort((a, b) => b.score - a.score)[0];
+      if (!best) { taken.clear(); continue; }
+      const mission = get<{ id: string }>("SELECT id FROM missions WHERE faction_id=? AND state='pool' AND json_extract(params,'$.crisisId')=? AND json_extract(params,'$.siteId')=?", this.factionId, c.id, best.x.targetId);
+      if (!mission) continue;
+      if (!offerDirect(o.player_id, mission.id)) continue;
+      taken.add(best.x.targetId); sent++;
+      const fallback = `${c.name}: ${stance} at ${best.x.name}. ${pattern.rivalRace ? "Rivals will race this one; move now." : "Quiet so far; take it before it stops being quiet."} It is on your board.`;
+      await this.say(o.player_id, o.codename, `${why}. You read the pattern: ${pattern.text} You are sending ${o.codename} to ${best.x.name} to ${stance}. Give the order in one line with the reason.`, fallback, "crisis dispatch", true);
+    }
+    if (sent) remember(this.chief, "dispatch", null, `${c.name}: dispatched ${sent} operative${sent === 1 ? "" : "s"}; read: ${pattern.text.slice(0, 120)}`);
+  }
+
   async idleCheck() {
     const t = Date.now();
     if (t - this.lastIdleCheck < 60_000 || worldGet("paused", "0") === "1") return;

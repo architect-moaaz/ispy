@@ -213,6 +213,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
             <Text style={s.panelTitle}>{TEMPLATE_NAME[mission.templateId] ?? mission.title} · {nav.targetName}</Text>
             {mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{mission.chain.name.toUpperCase()} · LINK {mission.chain.step} OF {mission.chain.of}</Text>}
             {mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {mission.crisis.name.toUpperCase()} · {mission.crisis.stance.toUpperCase()}{mission.crisis.joint ? ` · JOINT OP WITH ${mission.crisis.joint.toUpperCase()}` : ""}</Text>}
+            {nav.heldBy && nav.heldBy !== factionId && <Text style={[s.mono, { color: C.red, letterSpacing: 1.2 }]}>SITE HELD BY A RIVAL · YOU WILL ARRIVE LATE</Text>}
             <Text style={s.mono}>{fmtCountdown(mission.expiresAt, now)}</Text>
           </View>
           {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
@@ -253,7 +254,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
                 <Button title="Accept mission" onPress={() => accept(o)} loading={busy} style={{ flex: 1.3 }} />
                 <Button title="Decline" kind="ghost" onPress={() => decline(o)} style={{ flex: 1 }} />
               </View>
-              <Text style={[s.mono, { marginTop: 6 }]}>ACCEPT WITHIN {fmtCountdown(o.acceptBy, now)}</Text>
+              <Text style={[s.mono, { marginTop: 6 }]}>ACCEPT WITHIN {fmtCountdown(o.acceptBy, now)} · WINDOW CLOSES IN {fmtCountdown(o.mission.expiresAt, now)}</Text>
             </Dossier>
           ))}
         </View>

@@ -149,3 +149,21 @@ are claimed or the clock runs out the Arbiter resolves it (`crisis.resolved`: in
 contained or fizzled) and the Director writes the epilogue. `GET /v1/world/crisis` returns the current
 or latest crisis for the caller's agency: stances, pacts, sites, outcome and the sector chaos level.
 `POST /v1/admin/crisis/resolve` ends the live one. Chiefs brief their operatives on brew, claims and outcome.
+
+## Time, exclusivity and consequences
+
+Everything is time-boxed: offers (accept window), missions (`expiresAt`, shown as "window closes"),
+operations links, crises (30 to 240 min), bounties and campaigns. **First done wins the site**: when an
+operative verifies a field mission, the target is held by their agency for two hours (`target_locks`,
+`site.held`). Pending work at that site evaporates from every board; anyone already walking there
+finishes "late" (`mission.late`: 40% XP, trust −1, outcome `late`). Exempt: collaborative work (crisis
+missions, pact joint ops) and intel extraction (EXTRACTION). Consequences: `GET /v1/world` reports
+`control` (sites held per agency per sector), held sites feed each agency's power in the Director's
+balance assessment, chiefs plan with what they hold, and the app shows sector control on the Board and
+a "site held by a rival" warning on the mission.
+
+**Chiefs read the chaos.** On every crisis (brew, each site claimed, a new deployment) the chief reads
+the pattern of past crises (what each rival tends to do with that kind, which sites fall first, how fast)
+and dispatches its deployed operatives directly: nearest open site each, far from rivals, hot sites first
+when rivals race, pact allies coordinated so they do not double up. Direct orders arrive as offers at the
+top of the board (`mission.offered` with `direct: true`) with the chief's reasoning in HQ chat.

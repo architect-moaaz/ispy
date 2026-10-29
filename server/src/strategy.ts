@@ -44,7 +44,8 @@ export function assess(): Assessment {
     };
   });
   // Power: a blend of tempo, campaign standing and contest record, normalised so the sum is 1.
-  const raw = factions.map((f) => 1 + f.verifiedHour * 1.0 + f.fragments * 1.5 + (f.contestsWon - f.contestsLost) * 1.2 + f.activeAgents * 0.3);
+  const heldBy = (fid: string) => get<{ n: number }>("SELECT COUNT(*) n FROM target_locks WHERE faction_id=? AND until>?", fid, now())?.n ?? 0;
+  const raw = factions.map((f) => 1 + f.verifiedHour * 1.0 + f.fragments * 1.5 + (f.contestsWon - f.contestsLost) * 1.2 + f.activeAgents * 0.3 + heldBy(f.factionId) * 0.5);
   const sum = raw.reduce((a, b) => a + b, 0);
   factions.forEach((f, i) => { f.power = Math.round((raw[i] / sum) * 100) / 100; });
   const sorted = [...factions].sort((a, b) => b.power - a.power);

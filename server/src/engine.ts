@@ -3,7 +3,7 @@ import type {
   Area, Briefing, Contact, DeskMissionDetail, DeskSubmitResponse, Faction, FactionId, MissionSummary, Mode,
   NavigateResponse, OfferCard, Player, Presence, Rank, ScanRequest, ScanResponse, Skills, TemplateId,
 } from "@ispy/shared";
-import { all, get, run, tx, now, uid, json, parse, logEvent, worldGet } from "./db.ts";
+import { all, get, run, tx, now, uid, json, parse, logEvent, worldGet, db } from "./db.ts";
 import { areaForPoint, bearingDeg, distanceM, offsetM, type AreaRow } from "./geo.ts";
 import { openSector, settleSector } from "./sectors.ts";
 import { FACTIONS, PERSONAS, RANKS, factionById } from "./content.ts";
@@ -17,6 +17,24 @@ import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
+/** Once an operative finishes a site, it is theirs (their agency's) for this long: nobody else can run it. */
+export const TARGET_LOCK_MS = 120 * 60_000;
+db.exec(`CREATE TABLE IF NOT EXISTS target_locks (
+  target_id TEXT PRIMARY KEY, faction_id TEXT NOT NULL, player_id TEXT NOT NULL, mission_id TEXT NOT NULL, until TEXT NOT NULL, at TEXT NOT NULL
+)`);
+interface LockRow { target_id: string; faction_id: FactionId; player_id: string; mission_id: string; until: string; at: string }
+export const lockOn = (targetId: string | null) => targetId ? get<LockRow>("SELECT * FROM target_locks WHERE target_id=? AND until>?", targetId, now()) : undefined;
+/** Collaborative work and intel extraction are open to everyone regardless of locks. */
+const exemptFromLocks = (m: { template_id: string; params: string }) => {
+  const pr = parse<any>(m.params, {});
+  return m.template_id === "EXTRACTION" || !!pr?.crisisId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
+};
+/** Who holds how many sites in a sector right now. */
+export function sectorControl(areaId: string): Record<FactionId, number> {
+  const out = Object.fromEntries(FACTIONS.map((f) => [f.id, 0])) as Record<FactionId, number>;
+  for (const r of all<{ faction_id: FactionId; n: number }>("SELECT l.faction_id, COUNT(*) n FROM target_locks l JOIN targets t ON t.id=l.target_id WHERE t.area_id=? AND l.until>? GROUP BY l.faction_id", areaId, now())) out[r.faction_id] = r.n;
+  return out;
+}
 const PRESENCE_TTL_MS = 15 * 60_000;
 const OFFER_TTL_MS = () => param("offerTtlSec") * 1000;
 const MISSION_TTL_MS = 90 * 60_000;
@@ -156,7 +174,9 @@ export async function refreshPlans(force = false, only?: { factionId?: FactionId
       const rivalAgentsBucket = rivals === 0 ? "0" : rivals <= 3 ? "1-3" : rivals <= 10 ? "4-10" : "10+";
       const recentOutcomes = all<{ template: TemplateId; outcome: string }>(
         "SELECT template_id template, outcome FROM missions WHERE faction_id=? AND area_id=? AND outcome IS NOT NULL ORDER BY completed_at DESC LIMIT 10", f.id, area.id);
-      const { plan, source } = await planArea(f.chief, f, { areaName: area.name, fieldAgents, deskAgents, rivalAgentsBucket, recentOutcomes, reason: only?.reason });
+      const ctl = sectorControl(area.id);
+      const held = `${ctl[f.id]} held by us, ${Object.entries(ctl).filter(([k]) => k !== f.id).map(([k, v]) => `${factionById(k as FactionId).name} ${v}`).join(", ")}`;
+      const { plan, source } = await planArea(f.chief, f, { areaName: area.name, fieldAgents, deskAgents, rivalAgentsBucket, recentOutcomes, reason: only?.reason, held });
       run("INSERT INTO area_plans(id,faction_id,area_id,plan,source,created_at) VALUES(?,?,?,?,?,?)", uid(), f.id, area.id, json(plan), source, now());
       logEvent("area_plan.published", `chief:${f.chief}`, { areaId: area.id, source, headline: plan.headline, contestAppetite: plan.contestAppetite }, null);
     }
@@ -166,9 +186,11 @@ export async function refreshPlans(force = false, only?: { factionId?: FactionId
 // ---------- mission pool ----------
 function openTargets(areaId: string): TargetRow[] {
   const hour = new Date().getHours();
+  // Held sites are off the board for everyone else until the lock lapses.
+  const held = "id NOT IN (SELECT target_id FROM target_locks WHERE until>?)";
   // Dev simulation ignores safe hours so the loop can be tested at night.
-  if (DEV_SIM) return all<TargetRow>("SELECT * FROM targets WHERE area_id=? AND state='ACTIVE'", areaId);
-  return all<TargetRow>("SELECT * FROM targets WHERE area_id=? AND state='ACTIVE' AND safe_start<=? AND safe_end>?", areaId, hour, hour);
+  if (DEV_SIM) return all<TargetRow>(`SELECT * FROM targets WHERE area_id=? AND state='ACTIVE' AND ${held}`, areaId, now());
+  return all<TargetRow>(`SELECT * FROM targets WHERE area_id=? AND state='ACTIVE' AND safe_start<=? AND safe_end>? AND ${held}`, areaId, hour, hour, now());
 }
 /** Why the board is empty, for the app to show. */
 export function boardNotice(player: Player, pres: Presence | null): string | null {
@@ -350,6 +372,7 @@ function summary(m: MissionRow, p?: Player, pres?: PresenceRow | null): MissionS
     areaName: area.name, targetName: target?.name, walkM,
     deskLink: link ? { state: link.state as any, fallbackAt: link.started_at ? new Date(Date.parse(link.started_at) + link.fallback_after_s * 1000).toISOString() : "" } : null,
     chain: (() => { const c = chains.chainOf(m.params); return c ? chains.chainSummary(c.chainId) : null; })(),
+    heldBy: m.target_id ? lockOn(m.target_id)?.faction_id ?? null : null,
     crisis: (() => {
       const pr = parse<any>(m.params, {});
       if (!pr?.crisisId) return null;
@@ -385,6 +408,7 @@ export function offersFor(player: Player): OfferCard[] {
       if (pres.mode === "field") {
         if (s.walkM == null || (s.walkM > player.walkRadiusM && m.reserved_for !== player.id)) return null;
         if (m.target_id && recentTargets.has(m.target_id) && m.reserved_for !== player.id) return null;
+        if (m.target_id && !exemptFromLocks(m) && lockOn(m.target_id)) return null;
       }
       // Proximity first: a 150 m walk scores near 1, the edge of the radius near 0.
       const dist = pres.mode === "field" ? 1 - Math.min(1, Math.max(0, (s.walkM ?? 0) - 100) / Math.max(1, player.walkRadiusM - 100)) : 0.5;
@@ -411,6 +435,18 @@ export function offersFor(player: Player): OfferCard[] {
   return all<OfferRow>("SELECT * FROM offers WHERE player_id=? AND state='open'", player.id).map((o) => ({
     offerId: o.id, acceptBy: o.expires_at, mission: summary(get<MissionRow>("SELECT * FROM missions WHERE id=?", o.mission_id)!, player, pres),
   }));
+}
+
+/** A chief hands a specific operative a specific mission: it appears at the top of their board at once. */
+export function offerDirect(playerId: string, missionId: string): string | null {
+  const m = get<MissionRow>("SELECT * FROM missions WHERE id=? AND state='pool'", missionId);
+  if (!m) return null;
+  if (get("SELECT 1 FROM offers WHERE player_id=? AND mission_id=? AND state='open'", playerId, missionId)) return null;
+  const id = uid();
+  run("INSERT INTO offers(id,mission_id,player_id,state,expires_at,created_at) VALUES(?,?,?,?,?,?)", id, missionId, playerId, "open", new Date(Date.now() + OFFER_TTL_MS()).toISOString(), now());
+  run("UPDATE missions SET state='offered' WHERE id=?", missionId);
+  logEvent("mission.offered", "chief", { missionId, template: m.template_id, direct: true }, playerId);
+  return id;
 }
 
 export function acceptOffer(player: Player, offerId: string): MissionSummary {
@@ -467,7 +503,7 @@ export function navigate(player: Player, missionId: string): NavigateResponse {
       ? ["Walk to the drop", unlocked ? "Scan and enter the pickup code" : "Wait for your analyst to crack the code", "Leave quietly"]
       : ["Walk to the site", "Scan on arrival", "Answer the observation question"];
   return {
-    targetName: t.name, lat: t.lat, lng: t.lng, approachRadiusM: t.approach_radius_m,
+    targetName: t.name, lat: t.lat, lng: t.lng, approachRadiusM: t.approach_radius_m, heldBy: lockOn(t.id)?.faction_id ?? null,
     hint: `${t.kind}: ${t.name}`, unlocked, steps,
   };
 }
@@ -547,7 +583,28 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     xp = contestOutcome === "won" ? Math.round(xp * 1.5) : Math.round(xp * 0.5);
   }
   const flagged = trust < 0.7;
+  // First done wins the site. Anyone else still walking to it arrives late, unless the work is collaborative or an extraction.
+  const lock = m.target_id ? lockOn(m.target_id) : undefined;
+  const late = !!lock && lock.player_id !== player.id && !exemptFromLocks(m);
+  if (late) {
+    xp = Math.round(xp * 0.4);
+    run("UPDATE missions SET state='completed', completed_at=?, outcome='late' WHERE id=?", now(), m.id);
+    logEvent("mission.late", "authority", { missionId: m.id, title: m.title, template: m.template_id, heldBy: lock!.faction_id }, player.id);
+    award(player.id, xp, -1, `${m.title} (late)`);
+    const holder = factionById(lock!.faction_id);
+    return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: -1, contestOutcome: "lost" }, debrief: `${holder.id === player.factionId ? "One of ours" : holder.name} finished this site before you. It is closed for now. Partial credit for the walk; pick faster next time.` };
+  }
   run("UPDATE missions SET state='completed', completed_at=?, outcome=? WHERE id=?", now(), contestOutcome ?? "ok", m.id);
+  if (m.target_id && !exemptFromLocks(m)) {
+    const until = new Date(Date.now() + TARGET_LOCK_MS).toISOString();
+    run("INSERT INTO target_locks(target_id,faction_id,player_id,mission_id,until,at) VALUES(?,?,?,?,?,?) ON CONFLICT(target_id) DO UPDATE SET faction_id=excluded.faction_id, player_id=excluded.player_id, mission_id=excluded.mission_id, until=excluded.until, at=excluded.at",
+      m.target_id, m.faction_id, player.id, m.id, until, now());
+    // Pending work at this site evaporates from every board; the holder's agency keeps the site.
+    run("UPDATE missions SET state='expired', outcome='lost' WHERE id<>? AND target_id=? AND state IN ('pool','offered') AND template_id<>'EXTRACTION' AND json_extract(params,'$.crisisId') IS NULL", m.id, m.target_id);
+    run("UPDATE offers SET state='expired' WHERE state='open' AND mission_id IN (SELECT id FROM missions WHERE target_id=? AND state='expired')", m.target_id);
+    const control = sectorControl(m.area_id);
+    logEvent("site.held", "authority", { targetId: m.target_id, target: get<{ name: string }>("SELECT name FROM targets WHERE id=?", m.target_id)?.name, faction: m.faction_id, until, control }, player.id);
+  }
   if (m.desk_link_id) run("UPDATE desk_links SET state='closed' WHERE id=? AND state<>'fulfilled'", m.desk_link_id);
   logEvent("mission.verified", "authority", { missionId: m.id, title: m.title, template: m.template_id, trust, distance, contestOutcome, flagged }, player.id);
   award(player.id, xp, flagged ? 0 : 2, m.title);
@@ -738,8 +795,10 @@ export function worldStatus() {
   const areas = all<AreaRow>("SELECT * FROM areas").map<Area>((a) => ({ id: a.id, name: a.name, city: a.city, lat: a.lat, lng: a.lng, radiusM: a.radius_m }));
   const presenceByArea: Record<string, number> = {};
   for (const r of all<{ area_id: string; n: number }>("SELECT area_id, COUNT(*) n FROM presence WHERE expires_at>? GROUP BY area_id", now())) presenceByArea[r.area_id] = r.n;
+  const control: Record<string, Record<FactionId, number>> = {};
+  for (const a of areas) control[a.id] = sectorControl(a.id);
   return {
-    paused: paused(), factions: FACTIONS, areas, presenceByArea,
+    paused: paused(), factions: FACTIONS, areas, presenceByArea, control,
     activeMissions: get<{ n: number }>("SELECT COUNT(*) n FROM missions WHERE state='active'")!.n,
   };
 }
