@@ -20,16 +20,16 @@ const MODEL = "claude-opus-5-5";
 const paramKeys = Object.keys(PARAM_SPEC) as [ParamKey, ...ParamKey[]];
 
 const Action = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("message_operative"), codename: z.string(), text: z.string().max(220).describe("Said by that operative's own chief, in the chief's voice"), why: z.string().max(80) }),
-  z.object({ type: z.literal("brief_chief"), factionId: z.enum(["raven", "phantom", "cipher"]), situation: z.string().max(240).describe("Situation update the chief receives as if from its own analysts; it will replan on it") }),
-  z.object({ type: z.literal("publish_contract"), factionId: z.enum(["raven", "phantom", "cipher", "all"]), title: z.string().max(40), contractType: z.string().max(24), brief: z.string().max(200), xp: z.number().int().min(100).max(800), credits: z.number().int().min(0).max(250), criteria: z.object({ template: z.enum(["RECON", "DEAD_DROP", "EXTRACTION", "CIPHER", "ANALYSIS"]).optional(), mode: z.enum(["field", "desk"]).optional(), contestWon: z.boolean().optional(), against: z.enum(["raven", "phantom", "cipher"]).optional(), count: z.number().int().min(1).max(6) }), hours: z.number().int().min(1).max(48) }),
-  z.object({ type: z.literal("set_param"), key: z.enum(paramKeys), value: z.number(), why: z.string().max(100) }),
-  z.object({ type: z.literal("dispatch"), headline: z.string().max(60), body: z.string().max(240), factionId: z.enum(["raven", "phantom", "cipher", "all"]) }),
+  z.object({ type: z.literal("message_operative"), codename: z.string(), text: z.string().describe("at most 220 characters").describe("Said by that operative's own chief, in the chief's voice"), why: z.string().describe("at most 80 characters") }),
+  z.object({ type: z.literal("brief_chief"), factionId: z.enum(["raven", "phantom", "cipher"]), situation: z.string().describe("at most 240 characters").describe("Situation update the chief receives as if from its own analysts; it will replan on it") }),
+  z.object({ type: z.literal("publish_contract"), factionId: z.enum(["raven", "phantom", "cipher", "all"]), title: z.string().describe("at most 40 characters"), contractType: z.string().describe("at most 24 characters"), brief: z.string().describe("at most 200 characters"), xp: z.number().int().min(100).max(800), credits: z.number().int().min(0).max(250), criteria: z.object({ template: z.enum(["RECON", "DEAD_DROP", "EXTRACTION", "CIPHER", "ANALYSIS"]).optional(), mode: z.enum(["field", "desk"]).optional(), contestWon: z.boolean().optional(), against: z.enum(["raven", "phantom", "cipher"]).optional(), count: z.number().int().min(1).max(6) }), hours: z.number().int().min(1).max(48) }),
+  z.object({ type: z.literal("set_param"), key: z.enum(paramKeys), value: z.number(), why: z.string().describe("at most 100 characters") }),
+  z.object({ type: z.literal("dispatch"), headline: z.string().describe("at most 60 characters"), body: z.string().describe("at most 240 characters"), factionId: z.enum(["raven", "phantom", "cipher", "all"]) }),
   z.object({ type: z.literal("refill_pool") }),
-  z.object({ type: z.literal("wait"), why: z.string().max(100) }),
+  z.object({ type: z.literal("wait"), why: z.string().describe("at most 100 characters") }),
 ]);
 const Decision = z.object({
-  assessment: z.string().max(400).describe("Two or three sentences: what is going on and what matters most right now"),
+  assessment: z.string().describe("at most 400 characters").describe("Two or three sentences: what is going on and what matters most right now"),
   actions: z.array(Action).max(6),
 });
 export type DirectorAction = z.infer<typeof Action>;
@@ -86,7 +86,7 @@ export async function think(operatives: OperativeView[], chiefs: ChiefView[], si
           if (messaged.has(act.codename)) break;
           const p = get<{ id: string }>("SELECT id FROM players WHERE codename=?", act.codename);
           if (!p) break;
-          chiefSay(p.id, act.text, `director: ${act.why}`);
+          chiefSay(p.id, act.text.slice(0, 260), `director: ${act.why.slice(0, 120)}`);
           messaged.add(act.codename);
           applied.push(`message ${act.codename}: ${act.why}`);
           break;
@@ -101,7 +101,7 @@ export async function think(operatives: OperativeView[], chiefs: ChiefView[], si
           const fid = act.factionId === "all" ? null : act.factionId;
           const issuer = fid ? factionById(fid).chief : factionById(FACTIONS[0].id).chief;
           run(`INSERT INTO bounties(id,issuer,faction_id,title,type,brief,reward_xp,reward_credits,squad,min_rank,criteria,state,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            uid(), issuer, fid, act.title, act.contractType.toUpperCase(), act.brief, act.xp, act.credits, 0, "recruit", json(act.criteria), "open", new Date(Date.now() + act.hours * 3600_000).toISOString(), now());
+            uid(), issuer, fid, act.title.slice(0, 48), act.contractType.toUpperCase().slice(0, 24), act.brief.slice(0, 240), act.xp, act.credits, 0, "recruit", json(act.criteria), "open", new Date(Date.now() + act.hours * 3600_000).toISOString(), now());
           applied.push(`contract "${act.title}" for ${act.factionId}`);
           break;
         }
@@ -111,7 +111,7 @@ export async function think(operatives: OperativeView[], chiefs: ChiefView[], si
           break;
         }
         case "dispatch": {
-          run("INSERT INTO dispatches(id,kind,headline,body,faction_id,source,at) VALUES(?,?,?,?,?,?,?)", uid(), "news", act.headline, act.body, act.factionId === "all" ? null : act.factionId, "director", now());
+          run("INSERT INTO dispatches(id,kind,headline,body,faction_id,source,at) VALUES(?,?,?,?,?,?,?)", uid(), "news", act.headline.slice(0, 72), act.body.slice(0, 280), act.factionId === "all" ? null : act.factionId, "director", now());
           applied.push(`dispatch "${act.headline}"`);
           break;
         }
