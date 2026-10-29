@@ -20,8 +20,10 @@ import { Board } from "./src/screens/Board";
 type Tab = "hq" | "duty" | "dossier" | "board" | "profile";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
-export default function App() {
+function Shell() {
+  const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({ BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold, CourierPrime_400Regular, CourierPrime_700Bold });
   const [booted, setBooted] = useState(false);
   const [player, setPlayer] = useState<Player | null>(null);
@@ -94,14 +96,14 @@ export default function App() {
   const accent = factionColor(player?.factionId);
   const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Missions"], ["dossier", "Dossier"], ["board", "Board"], ["profile", "Me"]];
   return (
-    <GestureHandlerRootView style={s.root}>
+    <GestureHandlerRootView style={[s.root, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <StatusBar style="light" />
       {offline && <Banner text="Can't reach the bureau. Retrying." color={C.stamp} />}
       {world?.paused && <Banner text="The world is paused." />}
       {toast && <Banner text={toast} color={C.ok} />}
       <View style={s.body}>{body}</View>
       {inGame && (
-        <View style={s.tabs}>
+        <View style={[s.tabs, { paddingBottom: Math.max(12, insets.bottom) }]}>
           {tabs.map(([t, label]) => (
             <Pressable key={t} onPress={() => { setTab(t); refreshMe(); }} style={s.tab} accessibilityRole="button" testID={`tab-${t}`}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
@@ -120,10 +122,18 @@ export default function App() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.ink },
   body: { flex: 1 },
-  tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.ink, paddingBottom: 16 },
+  tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.ink },
   tab: { flex: 1, alignItems: "center", paddingTop: 12, gap: 6 },
   tabText: { color: C.dim, fontFamily: F.displayMed, fontSize: 14, letterSpacing: 1.4, textTransform: "uppercase" },
   badge: { minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.red, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   badgeText: { color: C.text, fontFamily: F.displayMed, fontSize: 11 },
   tabLine: { height: 3, width: 36, borderRadius: 2, backgroundColor: "transparent" },
 });
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Shell />
+    </SafeAreaProvider>
+  );
+}
