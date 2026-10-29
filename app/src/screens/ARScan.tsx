@@ -5,6 +5,8 @@ import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
 import { C, F, factionColor } from "../theme";
 import { Button, Input } from "../ui";
 import { FactionEmblem } from "../graphics";
+import { HoloCache3D } from "../effects/HoloCache3D";
+import { RadarSweep } from "../effects/RadarSweep";
 
 /**
  * Opt-in augmented HUD over the live camera. Shown once a field operative is on site:
@@ -60,33 +62,17 @@ export function ARScan({
       </View>
       {/* mini-map radar */}
       <View style={[s.radar, { top: 44 }]}>
-        <Svg width={96} height={96}>
-          <Circle cx={48} cy={48} r={44} fill={C.glass} stroke={C.cyan} strokeOpacity={0.8} />
-          {[0.33, 0.66].map((k) => <Circle key={k} cx={48} cy={48} r={44 * k} fill="none" stroke={C.cyan} strokeOpacity={0.35} />)}
-          <Line x1={48} y1={4} x2={48} y2={92} stroke={C.cyan} strokeOpacity={0.3} /><Line x1={4} y1={48} x2={92} y2={48} stroke={C.cyan} strokeOpacity={0.3} />
-          {bearing != null && <Path d={`M48 48 L${48 + 40 * Math.sin((bearing * Math.PI) / 180)} ${48 - 40 * Math.cos((bearing * Math.PI) / 180)}`} stroke={C.cyan} strokeWidth={2} />}
-          <Circle cx={48} cy={48} r={3} fill={C.cyan} />
-        </Svg>
-        <Text style={[s.eyebrow, { textAlign: "center" }]}>Tactical mini-map</Text>
+        <RadarSweep size={96} color={C.cyan} bearing={bearing} />
+        <Text style={[s.eyebrow, { textAlign: "center", marginTop: 2 }]}>Tactical Radar</Text>
       </View>
       <Text style={[s.side, { left: 6, top: height * 0.3 }]}>SIGNAL: SECURE</Text>
       <Text style={[s.side, { left: 6, top: height * 0.55 }]}>ENCRYPTION ACTIVE</Text>
       <Text style={[s.side, { right: 6, top: height * 0.5 }]}>DATA-TELEMETRY</Text>
       <Text style={[s.hud, { left: 16, top: 190 }]}>🔒 CAMERA VIEW · NOT RECORDED</Text>
 
-      {/* the virtual cache */}
-      <View pointerEvents="none" style={{ position: "absolute", left: width / 2 - 70, top: height * 0.33, width: 140, alignItems: "center" }}>
-        <Text style={[s.hud, { marginBottom: 6 }]}>CYBER VIRTUAL CACHE</Text>
-        <Animated.View style={{ transform: [{ perspective: 600 }, { rotateY }, { translateY }] }}>
-          <Svg width={120} height={110} viewBox="0 0 120 110">
-            <Path d="M20 40 L60 20 L100 40 L60 60 Z" fill={C.cyan} fillOpacity={0.18} stroke={C.cyan} strokeWidth={1.5} />
-            <Path d="M20 40 V80 L60 100 V60 Z" fill={C.cyan} fillOpacity={0.1} stroke={C.cyan} strokeWidth={1.5} />
-            <Path d="M100 40 V80 L60 100 V60 Z" fill={C.cyan} fillOpacity={0.14} stroke={C.cyan} strokeWidth={1.5} />
-            <Rect x={14} y={14} width={92} height={92} fill="none" stroke={C.cyan} strokeOpacity={0.5} strokeDasharray="6 10" />
-          </Svg>
-        </Animated.View>
-        <Text style={s.mono}>LOCATING CACHE… {distanceM == null ? "--" : `${Math.max(0, Math.round(100 - Math.min(100, distanceM)))}%`}</Text>
-        <Text style={[s.eyebrow, { textAlign: "center" }]}>{targetName.toUpperCase()}</Text>
+      {/* 3D Holographic Virtual Dead-Drop Cache */}
+      <View pointerEvents="none" style={{ position: "absolute", left: width / 2 - 80, top: height * 0.3, width: 160, alignItems: "center" }}>
+        <HoloCache3D factionId={factionId} targetName={targetName} distanceM={distanceM} locked={distanceM == null || distanceM > 45} size={150} />
       </View>
 
       {/* cipher panel + actions */}
