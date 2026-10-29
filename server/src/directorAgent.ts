@@ -206,7 +206,9 @@ class DirectorAgent {
           // Chaos on the rules path: with operatives in the field and nothing live, brew something in the busiest sector.
           const field = all<{ area_id: string; n: number }>("SELECT area_id, COUNT(*) n FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL GROUP BY area_id ORDER BY n DESC", now());
           const last = crises.lastCrisisEndedAt();
-          if (!brain.brainEnabled() && field.length && !crises.activeCrisis() && (!last || Date.now() - Date.parse(last) > crises.CRISIS_MIN_GAP_MS)) {
+          // With the model brain on, chaos is its call; the rules only step in as a floor after a long quiet spell.
+          const gap = brain.brainEnabled() ? 2 * crises.CRISIS_MIN_GAP_MS : crises.CRISIS_MIN_GAP_MS;
+          if (field.length && !crises.activeCrisis() && (!last || Date.now() - Date.parse(last) > gap)) {
             const c = await brewCrisis(field[0].area_id);
             if (c) this.note("crisis brewed", { name: c.name, kind: c.kind });
           }
