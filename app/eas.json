@@ -1,21 +1,39 @@
 {
-  "cli": { "version": ">= 16.0.0", "appVersionSource": "remote" },
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://ispy-server.fly.dev" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ispy-server.fly.dev"
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://ispy-server.fly.dev" }
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ispy-server.fly.dev"
+      },
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
-      "env": { "EXPO_PUBLIC_API_URL": "https://ispy-server.fly.dev" }
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ispy-server.fly.dev"
+      },
+      "channel": "production"
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {}
+  }
 }
