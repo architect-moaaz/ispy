@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Dimensions, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Dimensions, Easing, PanResponder, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-native-svg";
 import type { Contact, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse } from "@ispy/shared";
 import { api } from "../api";
@@ -67,9 +67,39 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const target = nav ? { lat: nav.lat, lng: nav.lng } : null;
   const dist = fix && target ? distanceM(fix, target) : null;
   // With a live target, frame both ends of the walk; otherwise centre on the agent.
-  const center = fix && target ? { lat: (fix.lat + target.lat) / 2, lng: (fix.lng + target.lng) / 2 } : fix ?? nav ?? { lat: 12.9763, lng: 77.5929 };
-  const span = route ? Math.max(...route.coords.map((c) => distanceM(c, center)), dist ?? 0) * 2 : dist;
-  const zoom = span == null ? 17 : span > 1400 ? 15 : span > 650 ? 16 : 17;
+  const autoCenter = fix && target ? { lat: (fix.lat + target.lat) / 2, lng: (fix.lng + target.lng) / 2 } : fix ?? nav ?? { lat: 12.9763, lng: 77.5929 };
+  const span = route ? Math.max(...route.coords.map((c) => distanceM(c, autoCenter)), dist ?? 0) * 2 : dist;
+  const autoZoom = span == null ? 17 : span > 1400 ? 15 : span > 650 ? 16 : 17;
+  // Operative's own framing: pinch or +/- for zoom, drag to pan, ⌖ to go back to auto framing.
+  const [userZoom, setUserZoom] = useState<number | null>(null);
+  const [pan, setPan] = useState({ dLat: 0, dLng: 0 });
+  const zoom = Math.max(13, Math.min(19, userZoom ?? autoZoom));
+  const center = { lat: autoCenter.lat + pan.dLat, lng: autoCenter.lng + pan.dLng };
+  const gesture = useRef({ zoom, centerLat: center.lat, pinchStart: 0, pinchBase: 0, pan, panStart: pan });
+  gesture.current.zoom = zoom; gesture.current.centerLat = center.lat; gesture.current.pan = pan;
+  const zoomBy = (d: number) => setUserZoom((z) => Math.max(13, Math.min(19, (z ?? autoZoom) + d)));
+  const pager = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4 || g.numberActiveTouches === 2,
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: () => { gesture.current.panStart = gesture.current.pan; gesture.current.pinchStart = 0; },
+    onPanResponderMove: (e, g) => {
+      const t = e.nativeEvent.touches;
+      if (t.length >= 2) {
+        const d = Math.hypot(t[0].pageX - t[1].pageX, t[0].pageY - t[1].pageY);
+        if (!gesture.current.pinchStart) { gesture.current.pinchStart = d; gesture.current.pinchBase = gesture.current.zoom; return; }
+        const steps = Math.round(Math.log2(d / gesture.current.pinchStart));
+        const z = Math.max(13, Math.min(19, gesture.current.pinchBase + steps));
+        if (z !== gesture.current.zoom) setUserZoom(z);
+        return;
+      }
+      if (gesture.current.pinchStart) return; // finishing a pinch: do not jump
+      const mpp = (156543.03 * Math.cos((gesture.current.centerLat * Math.PI) / 180)) / 2 ** gesture.current.zoom;
+      const base = gesture.current.panStart;
+      setPan({ dLat: base.dLat + (g.dy * mpp) / 111_320, dLng: base.dLng - (g.dx * mpp) / (111_320 * Math.cos((gesture.current.centerLat * Math.PI) / 180)) });
+    },
+  })).current;
+
   const bearing = fix && target ? bearingDeg(fix, target) : null;
   const onSite = dist != null && nav != null && dist <= nav.approachRadiusM;
   useEffect(() => {
@@ -134,12 +164,20 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         <Text style={s.sector}>{presence.areaName?.toUpperCase() ?? "NO SECTOR"}</Text>
       </View>
 
-      <SatMap center={center} zoom={zoom} width={width} height={height}>
-        {(project) => (
-          <MapOverlay project={project} width={width} height={height} fix={fix} offers={offers} target={target ? { ...target, name: nav!.targetName, locked: !nav!.unlocked } : null}
-            contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} />
-        )}
-      </SatMap>
+      <View {...pager.panHandlers} style={{ width, height }}>
+        <SatMap center={center} zoom={zoom} width={width} height={height}>
+          {(project) => (
+            <MapOverlay project={project} width={width} height={height} fix={fix} offers={offers} target={target ? { ...target, name: nav!.targetName, locked: !nav!.unlocked } : null}
+              contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} />
+          )}
+        </SatMap>
+        <View style={s.zoomBox}>
+          <Text style={s.zoomBtn} onPress={() => zoomBy(1)}>+</Text>
+          <Text style={s.zoomBtn} onPress={() => zoomBy(-1)}>−</Text>
+          <Text style={[s.zoomBtn, (userZoom != null || pan.dLat || pan.dLng) ? { color: C.cyan } : { color: C.dim }]} onPress={() => { setUserZoom(null); setPan({ dLat: 0, dLng: 0 }); }}>⌖</Text>
+        </View>
+        <Text style={s.zoomLevel}>Z{zoom}</Text>
+      </View>
 
       {mission && nav && !completed && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
@@ -373,6 +411,9 @@ const s = StyleSheet.create({
   titleText: { color: C.cyan, fontFamily: F.displayMed, fontSize: 17, letterSpacing: 1.6, textTransform: "uppercase" },
   statusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6, paddingHorizontal: 2 },
   mono: { color: C.dim, fontFamily: F.typed, fontSize: 11.5 },
+  zoomBox: { position: "absolute", right: 8, bottom: 26, borderWidth: 1, borderColor: C.cyanDim, backgroundColor: "rgba(6,20,30,0.75)" },
+  zoomBtn: { color: C.cyan, fontFamily: F.displayMed, fontSize: 20, width: 34, height: 34, lineHeight: 34, textAlign: "center", borderBottomWidth: 1, borderBottomColor: C.line },
+  zoomLevel: { position: "absolute", right: 48, bottom: 30, color: C.dim, fontFamily: F.typed, fontSize: 9, letterSpacing: 1 },
   sector: { color: C.text, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.2, backgroundColor: C.ink2, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.line },
   compass: { position: "absolute", left: 10, top: 10, width: 84, height: 84 },
   compassText: { position: "absolute", color: C.cyan, fontFamily: F.displayMed, fontSize: 10 },
