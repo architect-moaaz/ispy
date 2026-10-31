@@ -52,6 +52,34 @@ const DUD_RATE = 0.22;
 export interface ArtifactRow { id: string; kind: ArtifactKind; name: string; dossier_id: string | null; fragment_index: number | null; genuine: number; planted_by: string | null; area_id: string; site_id: string | null; site_name: string | null; state: string; held_by: FactionId | null; recovered_by: string | null; recovered_at: string | null; examined_by: string | null; examined_at: string | null; deciphered: number; corrupted_until: string | null; data: string; created_at: string }
 export interface DossierRow { id: string; name: string; secret: SecretKind; area_id: string; fragments: number; state: string; held_by: FactionId | null; assembled_by: string | null; assembled_at: string | null; payload: string | null; created_at: string }
 
+/** Painted object and plain-words contents for each artifact, from its kind and name. */
+export function artOf(kind: ArtifactKind, name: string): string {
+  if (kind === "dud") return "forgery";
+  if (kind === "key") return "key";
+  if (kind === "identity") return "identity";
+  if (kind === "device") return "device";
+  const n = name.toLowerCase();
+  return /strip|tape|negative/.test(n) ? "strip" : /map/.test(n) ? "map" : /card|ledger|stub/.test(n) ? "card" : "page";
+}
+export function contentsOf(a: { kind: ArtifactKind; name: string; dossier_id: string | null; fragment_index: number | null; genuine: number; examined_at: string | null; data: string }, dossierName: string | null, cleared: boolean): string {
+  const d = parse<any>(a.data, {});
+  switch (a.kind) {
+    case "fragment": return `Page ${(a.fragment_index ?? 0) + 1} of dossier ${dossierName ?? "unknown"}. Enciphered${cleared && d.system ? ` (${d.system})` : ""}; the plaintext is one line of the secret. Decipher it on the desk; a wrong reading corrupts it for an hour.`;
+    case "key": return d.vault ? `A vault key cut from dossier ${d.dossier}. It opens one package at ${d.forFaction ? "a site only your agency knows" : "a site"}.` : "A cut key. Opens a cipher-locked package on site; one use.";
+    case "identity": return "An agency pass with the photo scratched out. Examined, it adds a name to a rival contact in your dossier.";
+    case "device": return "A relay chip pulled from a site. Examined, it tells you which agency was listening there; it can be turned to listen for you.";
+    case "dud": default: return a.examined_at ? `A forgery. ${d.note ?? ""}` : "It looks like a page of a dossier. Examine it before you trust it.";
+  }
+}
+const NOTE_BY_KIND: Record<ArtifactKind, Record<string, string>> = {
+  fragment: { oracle: "A page. Pages become patterns. Decipher it before you sleep.", ghost: "One page of someone else's secret. Delicious. Get it read.", nexus: "Fragment logged. Checksum pending. Decode and I will stitch it." },
+  key: { oracle: "A key is a promise. Keep it until the lock is worth it.", ghost: "A key. Somewhere there is a door that does not know it is open.", nexus: "Key acquired. Mapping it to a lock. Hold it." },
+  identity: { oracle: "A face without a name. Examine it; names are leverage.", ghost: "Someone's pass. Someone is about to have a bad week.", nexus: "Identity token. Cross-referencing contacts." },
+  device: { oracle: "They were listening here. Now we know where to whisper.", ghost: "A bug. Turn it around and let them hear what we want.", nexus: "Device recovered. Firmware fingerprint will tell us whose." },
+  dud: { oracle: "Examine this before you believe it.", ghost: "If it feels too easy, it was left for you.", nexus: "Unverified. Do not merge until examined." },
+};
+export const noteFor = (kind: ArtifactKind, chief: string) => NOTE_BY_KIND[kind]?.[chief] ?? NOTE_BY_KIND[kind]?.nexus ?? "";
+
 const codename = (id: string | null) => id ? get<{ codename: string }>("SELECT codename FROM players WHERE id=?", id)?.codename ?? "unknown" : null;
 
 /** Keep PER_SECTOR_IN_FIELD artifacts lying in each sector that has operatives, drawn from open dossiers; one in five is a dud. */
@@ -103,7 +131,8 @@ export function recoverAt(siteId: string, playerId: string, factionId: FactionId
   if (!factionId) return null;
   const a = get<ArtifactRow>("SELECT * FROM artifacts WHERE site_id=? AND state='in_field'", siteId);
   if (!a) return null;
-  run("UPDATE artifacts SET state='held', held_by=?, recovered_by=?, recovered_at=? WHERE id=?", factionId, playerId, now(), a.id);
+  const note = noteFor(a.kind === "dud" ? "fragment" : a.kind, factionById(factionId).chief);
+  run("UPDATE artifacts SET state='held', held_by=?, recovered_by=?, recovered_at=?, data=json_set(data,'$.chiefNote', ?) WHERE id=?", factionId, playerId, now(), note, a.id);
   const dossier = a.dossier_id ? get<DossierRow>("SELECT name FROM dossiers WHERE id=?", a.dossier_id)?.name ?? null : null;
   logEvent("artifact.recovered", "authority", { artifactId: a.id, kind: a.kind, name: a.name, site: a.site_name, faction: factionId, dossier }, playerId);
   // Tell the rivals' chiefs it is gone, without saying what it was.
@@ -216,6 +245,8 @@ export function archiveOf(playerId: string, rank: string, xp: number, factionId:
       examined: !!a.examined_at, genuine: a.examined_at ? !!a.genuine : null, plantedBy: a.examined_at && !a.genuine ? (a.planted_by === "director" ? "an unknown hand" : a.planted_by) : null,
       deciphered: !!a.deciphered, corruptedUntil: a.corrupted_until, prompt: c >= 2 && a.kind === "fragment" ? data.prompt ?? null : null, system: c >= 2 ? data.system ?? null : null,
       dossier: a.dossier_id ? get<{ name: string }>("SELECT name FROM dossiers WHERE id=?", a.dossier_id)?.name ?? null : null,
+      art: artOf(a.kind, a.name), contents: contentsOf(a, a.dossier_id ? get<{ name: string }>("SELECT name FROM dossiers WHERE id=?", a.dossier_id)?.name ?? null : null, c >= 2),
+      note: data.chiefNote ?? null, classification: a.kind === "dud" && a.examined_at ? "DISCREDITED" : c >= 3 ? "SECRET" : c >= 2 ? "CONFIDENTIAL" : "RESTRICTED",
     };
   });
   const lost = all<{ payload: string; at: string }>("SELECT payload, at FROM events WHERE type='artifact.lost' AND json_extract(payload,'$.faction')=? ORDER BY id DESC LIMIT 6", factionId)

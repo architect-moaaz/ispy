@@ -42,6 +42,17 @@ export const ART = {
     asset: require("../assets/art/sig-asset.jpg"),
     jammer: require("../assets/art/sig-jammer.jpg"),
   } as Record<string, number>,
+  // Archive artifacts: what the agency keeps.
+  artifact: {
+    page: require("../assets/art/art-page.jpg"),
+    strip: require("../assets/art/art-strip.jpg"),
+    map: require("../assets/art/art-map.jpg"),
+    card: require("../assets/art/art-card.jpg"),
+    key: require("../assets/art/art-key.jpg"),
+    identity: require("../assets/art/art-identity.jpg"),
+    device: require("../assets/art/art-device.jpg"),
+    forgery: require("../assets/art/art-forgery.jpg"),
+  } as Record<string, number>,
   emblem: {
     raven: require("../assets/art/emblem-raven.jpg"),
     phantom: require("../assets/art/emblem-phantom.jpg"),

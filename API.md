@@ -294,3 +294,9 @@ secret read to both desks), trade (another artifact for it), heist (a 90-minute 
 at the site where the rival keeps the page; verifying it lifts the page, `artifact.stolen`), or spoil (a
 forged page planted for the rival's examiners, which when examined names the forger). The other chief
 answers in character. All of it is in the back-channel log, shown in the app's archive and the console.
+
+### Artifact files
+Every artifact has a painted object (`art`: page, strip, map, card, key, identity, device, forgery),
+plain-words `contents`, a `classification` (RESTRICTED, CONFIDENTIAL, SECRET, DISCREDITED for a found
+forgery) and the chief's `note` written at recovery in the chief's voice. The app opens a file on tap:
+object, stamp, provenance, contents, examination, the cipher with a decipher field when cleared, the note.

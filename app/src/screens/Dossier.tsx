@@ -6,6 +6,7 @@ import type { AccuseResponse, CaseDetail, CaseSummary, FactionId } from "@ispy/s
 import { api } from "../api";
 import { ART } from "../art";
 import { signalArt, RARITY_COLOR } from "./FieldLayer";
+import { ArtifactSheet } from "./ArtifactSheet";
 import type { CollectionEntry, ArchiveView } from "@ispy/shared";
 import { Input } from "../ui";
 import { onLive } from "../live";
@@ -82,28 +83,16 @@ export function DossierScreen() {
             </Panel>
           ))}
           {archive.artifacts.map((a) => (
-            <Pressable key={a.id} onPress={() => setOpenArt(openArt === a.id ? null : a.id)}>
-              <Panel tab={a.genuine === false ? C.dim : a.deciphered ? C.ok : C.cyanDim}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={[s.big, { fontSize: 16, flex: 1 }]} numberOfLines={1}>{a.name.toUpperCase()}</Text>
-                  <Text style={s.mono}>{a.kind.toUpperCase()}</Text>
-                </View>
-                <Text style={s.mono}>RECOVERED BY {a.recoveredBy?.toUpperCase() ?? "—"} AT {a.site?.toUpperCase() ?? "—"} · {a.examined ? (a.genuine ? "GENUINE" : `DUD · PLANTED BY ${String(a.plantedBy).toUpperCase()}`) : "UNEXAMINED"}{a.deciphered ? " · DECIPHERED" : ""}</Text>
-                {openArt === a.id && (
-                  <View style={{ marginTop: 8 }}>
-                    {!a.examined && <Button title="Examine" kind="ghost" onPress={() => archAct(() => api.examine(a.id))} style={{ marginTop: 0 }} />}
-                    {a.examined && a.genuine && a.kind === "fragment" && !a.deciphered && (
-                      a.prompt ? (
-                        <>
-                          <Text style={[s.mono, { color: C.text, marginTop: 6 }]}>{a.prompt}</Text>
-                          {a.corruptedUntil && Date.parse(a.corruptedUntil) > Date.now() && <Text style={[s.mono, { color: C.red }]}>CORRUPTED · SETTLES AT {new Date(a.corruptedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>}
-                          <Input value={answers[a.id] ?? ""} onChangeText={(v) => setAnswers({ ...answers, [a.id]: v })} placeholder="PLAINTEXT" autoCapitalize="characters" autoCorrect={false} style={{ marginTop: 6 }} />
-                          <Button title="Decipher" onPress={() => archAct(() => api.decipherArtifact(a.id, answers[a.id] ?? ""))} style={{ marginTop: 6 }} />
-                        </>
-                      ) : <Text style={s.mono}>Reading the fragment needs field-agent clearance.</Text>
-                    )}
+            <Pressable key={a.id} onPress={() => { setArchMsg(null); setOpenArt(a.id); }}>
+              <Panel tab={a.genuine === false ? C.red : a.deciphered ? C.ok : a.examined ? C.cyan : C.amber}>
+                <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+                  <Image source={ART.artifact[a.art] ?? ART.artifact.page} style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 1, borderColor: C.line, opacity: a.genuine === false ? 0.6 : 1 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.big, { fontSize: 15 }]} numberOfLines={1}>{a.name.toUpperCase()}</Text>
+                    <Text style={s.mono}>{a.kind.toUpperCase()} · {a.examined ? (a.genuine ? "GENUINE" : "FORGERY") : "UNEXAMINED"}{a.deciphered ? " · DECIPHERED" : ""} · {a.classification}</Text>
+                    <Text style={s.mono}>BY {a.recoveredBy?.toUpperCase() ?? "—"} AT {a.site?.toUpperCase() ?? "—"} · TAP TO OPEN THE FILE</Text>
                   </View>
-                )}
+                </View>
               </Panel>
             </Pressable>
           ))}
@@ -230,6 +219,12 @@ export function DossierScreen() {
           </View>
         ))}
       </View>
+      {openArt && archive && (() => { const a = archive.artifacts.find((x) => x.id === openArt); return a ? (
+        <ArtifactSheet a={a} clearance={archive.clearance} busy={false} msg={archMsg}
+          onExamine={() => archAct(() => api.examine(a.id))}
+          onDecipher={(ans) => archAct(() => api.decipherArtifact(a.id, ans))}
+          onClose={() => { setOpenArt(null); setArchMsg(null); }} />
+      ) : null; })()}
     </Screen>
   );
 }

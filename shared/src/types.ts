@@ -357,7 +357,7 @@ export type SecretKind = "location" | "name" | "pattern" | "key" | "truth";
 export interface ArchiveView {
   clearance: number; clearanceName: string; nextClearance: { name: string; atXp: number } | null;
   dossiers: { id: string; name: string; secret: SecretKind | "sealed"; fragments: number; held: number; deciphered: number; rivalHeld: number; state: string; reveal: string | null; assembledBy: string | null }[];
-  artifacts: { id: string; kind: ArtifactKind; name: string; site: string | null; recoveredBy: string | null; recoveredAt: string | null; examined: boolean; genuine: boolean | null; plantedBy: string | null; deciphered: boolean; corruptedUntil: string | null; prompt: string | null; system: string | null; dossier: string | null }[];
+  artifacts: { id: string; kind: ArtifactKind; name: string; site: string | null; recoveredBy: string | null; recoveredAt: string | null; examined: boolean; genuine: boolean | null; plantedBy: string | null; deciphered: boolean; corruptedUntil: string | null; prompt: string | null; system: string | null; dossier: string | null; art: string; contents: string; note: string | null; classification: string }[];
   lost: { site: string | null; takenBy: string; at: string }[];
   talks?: { from: string; to: string | null; kind: string; text: string; at: string }[];
 }
