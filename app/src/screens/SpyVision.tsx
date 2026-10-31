@@ -38,6 +38,8 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [route, setRoute] = useState<WalkingRoute | null>(null);
   // Ambient layer: what is around you on the map, and what you have tapped.
   const [field, setField] = useState<MapResponse | null>(null);
+  const [bc, setBc] = useState<{ rivals: { id: string; chief: string; burned: boolean }[]; left: number } | null>(null);
+  const loadBc = async () => { try { const o = await api.backchannel(); setBc({ rivals: o.rivals, left: o.left }); } catch { /* no faction */ } };
   const [sel, setSel] = useState<Selection | null>(null);
   const [spinResult, setSpinResult] = useState<SpinResult | null>(null);
   const [spinning, setSpinning] = useState(false);
@@ -59,6 +61,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const projectRef = useRef<Projector | null>(null);
   const loadField = async (f: Fix | null) => {
     if (!f) return;
+    void loadBc();
     try { const m = await api.map(f.lat, f.lng); setField(m); setSel((cur) => {
       if (!cur) return cur;
       if (cur.type === "signal") { const it = m.signals.find((x) => x.id === cur.item.id); return it ? { type: "signal", item: it } : null; }
@@ -250,6 +253,8 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
             onNavigate={() => selPoint && openTurnByTurn({ lat: selPoint.lat, lng: selPoint.lng }, selPoint.name)}
             onClose={() => setSel(null)}
             bait={field?.distractions ?? []} baitLeft={field?.distractionsLeft ?? 0}
+            rivals={bc?.rivals} tipsLeft={bc?.left ?? 0}
+            onFalseLead={async (toFaction) => { if (sel.type !== "cache") return; setBusy(true); try { const r = await api.sendTip(toFaction, "plant", sel.item.id); setToolMsg(r.ok ? `FALSE LEAD SET AT ${sel.item.name.toUpperCase()} · ${r.left} TIP${r.left === 1 ? "" : "S"} LEFT TODAY` : `FALSE LEAD · ${r.reason}`); await loadField(fix); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}
             onPlant={async () => { if (sel.type !== "cache") return; setBusy(true); try { const r = await api.plantDistraction(sel.item.id); setToolMsg(r.ok ? `BAIT SET AT ${sel.item.name.toUpperCase()} · ${r.left} LEFT TODAY · RIVALS NOW SEE A REAL ORDER THERE` : `BAIT · ${r.reason}`); await loadField(fix); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }} />
         </View>
       )}

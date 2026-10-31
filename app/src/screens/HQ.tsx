@@ -120,11 +120,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
         )}
       </Dossier>
       <View style={s.drawer}>
-        <Button title="Accept mission" onPress={onDuty} style={{ paddingVertical: 16, marginTop: 0 }} />
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <Button title="Talk to chief" kind="ghost" onPress={() => scrollRef.current?.scrollToEnd({ animated: true })} style={{ flex: 1 }} />
-          <Button title="Decline / defer" kind="ghost" onPress={() => {}} style={{ flex: 1 }} />
-        </View>
+        <Button title="Open the mission board" onPress={onDuty} style={{ paddingVertical: 16, marginTop: 0 }} />
       </View>
       {err && <Body style={{ color: C.red }}>{err}</Body>}
     </Screen>
@@ -132,50 +128,41 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
 }
 
 /**
- * The back channel: a wire to a rival chief that does not carry your name. Sell a teammate's live route
- * for credits from an unknown account, or point a rival at a site where there is nothing. Two a day.
- * Chiefs are not fools: a source that burns them twice is dropped.
+ * The back channel: a wire to a rival chief that does not carry your name. Sell a live route (a teammate's
+ * or your own) for credits from an unknown account. Always open; two tips a day, shared with false leads
+ * planted from the map. Chiefs are not fools: a source that burns them twice is dropped.
  */
 function BackChannel() {
   const [opts, setOpts] = useState<BackChannelOptions | null>(null);
-  const [open, setOpen] = useState(false);
   const [to, setTo] = useState<string | null>(null);
-  const [kind, setKind] = useState<"sell" | "plant">("sell");
   const [ref, setRef] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const load = async () => { try { const o = await api.backchannel(); setOpts(o); setTo((t) => t ?? o.rivals.find((r) => !r.burned)?.id ?? null); } catch { /* not deployed or no faction */ } };
-  useEffect(() => { if (open) load(); }, [open]);
+  const load = async () => { try { const o = await api.backchannel(); setOpts(o); setTo((t) => t ?? o.rivals.find((r) => !r.burned)?.id ?? null); } catch { /* no faction yet */ } };
+  useEffect(() => { load(); return onLive((t) => { if (t === "mission.accepted" || t === "mission.verified" || t === "reward") load(); }); }, []);
   const send = async () => {
     if (!to || !ref) return;
     setBusy(true); setMsg(null);
-    try { const r = await api.sendTip(to, kind, ref); setMsg(r.ok ? (kind === "sell" ? `Sold. ${r.credits} credits landed from an account nobody can trace. ${r.left} left today.` : `Planted. ${r.left} left today. If they walk it, they pay for it.`) : r.reason ?? "No."); if (r.ok) { setRef(null); load(); } }
+    try { const r = await api.sendTip(to, "sell", ref); setMsg(r.ok ? `Sold. ${r.credits} credits landed from an account nobody can trace. ${r.left} left today.` : r.reason ?? "No."); if (r.ok) { setRef(null); load(); } }
     catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
   };
-  const choices = kind === "sell" ? (opts?.routes ?? []).map((r) => ({ id: r.missionId, label: r.label })) : (opts?.sites ?? []).map((x) => ({ id: x.id, label: x.name }));
   return (
     <Dossier tab={C.amber} style={{ marginTop: 8 }}>
       <Text style={{ color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 }}>BACK CHANNEL · UNSIGNED</Text>
-      <Body dim>A wire to a rival chief that does not carry your name. Sell a live route (a teammate's, or your own) for credits, or send a rival somewhere empty.</Body>
-      {!open ? <Button title="Open the wire" kind="ghost" onPress={() => setOpen(true)} /> : !opts ? <Spinner /> : (
+      <Body dim>A wire to a rival chief that does not carry your name. Sell a live route, a teammate's or your own, for 40 credits. The rival turns up at that target. False leads are planted from the map.</Body>
+      {!opts ? <Spinner /> : (
         <>
           <Text style={[s.eyebrow, { marginTop: 6 }]}>To · {opts.left} tip{opts.left === 1 ? "" : "s"} left today</Text>
           <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
             {opts.rivals.map((r) => <Button key={r.id} title={`${r.chief}${r.burned ? " · burned" : ""}`} kind={to === r.id ? "primary" : "ghost"} disabled={r.burned} onPress={() => setTo(r.id)} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }} />)}
           </View>
-          <Text style={[s.eyebrow, { marginTop: 8 }]}>What</Text>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <Button title="Sell a route · 40 cr" kind={kind === "sell" ? "primary" : "ghost"} onPress={() => { setKind("sell"); setRef(null); }} style={{ flex: 1, paddingVertical: 8, marginTop: 4 }} />
-            <Button title="Plant a false lead" kind={kind === "plant" ? "primary" : "ghost"} onPress={() => { setKind("plant"); setRef(null); }} style={{ flex: 1, paddingVertical: 8, marginTop: 4 }} />
-          </View>
-          <Text style={[s.eyebrow, { marginTop: 8 }]}>{kind === "sell" ? "Whose route" : "Which site"}</Text>
-          {choices.length === 0 ? <Body dim>{kind === "sell" ? "Nobody in your agency is walking a route right now, you included. Accept an order on the Missions tab, then come back and sell it: the rival turns up at your target, and you are paid either way." : "Deploy to the field to see sites in your sector."}</Body> : choices.map((c) => (
-            <Button key={c.id} title={c.label} kind={ref === c.id ? "primary" : "ghost"} onPress={() => setRef(c.id)} style={{ paddingVertical: 8, marginTop: 4 }} />
+          <Text style={[s.eyebrow, { marginTop: 8 }]}>Whose route</Text>
+          {opts.routes.length === 0 ? <Body dim>Nobody in your agency is walking a route right now, you included. Accept an order on the Missions tab, then come back and sell it.</Body> : opts.routes.map((c) => (
+            <Button key={c.missionId} title={c.label} kind={ref === c.missionId ? "primary" : "ghost"} onPress={() => setRef(c.missionId)} style={{ paddingVertical: 8, marginTop: 4 }} />
           ))}
-          <Button title={kind === "sell" ? "Sell it" : "Send them"} onPress={send} loading={busy} disabled={!to || !ref || opts.left <= 0} style={{ marginTop: 8 }} />
+          <Button title="Sell it · 40 cr" onPress={send} loading={busy} disabled={!to || !ref || opts.left <= 0} style={{ marginTop: 8 }} />
           {msg && <Body style={{ color: C.amber }}>{msg}</Body>}
-          {opts.recent.length > 0 && <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5, marginTop: 6 }}>{opts.recent.map((r) => `${r.kind === "sell" ? "SOLD" : "PLANTED"} · ${r.about} → ${r.to} · ${r.outcome.toUpperCase()}`).join("\n")}</Text>}
-          <Button title="Close the wire" kind="ghost" onPress={() => setOpen(false)} style={{ marginTop: 4, paddingVertical: 8 }} />
+          {opts.recent.length > 0 && <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5, marginTop: 6 }}>{opts.recent.map((r) => `${r.kind === "sell" ? "SOLD" : "FALSE LEAD"} · ${r.about} → ${r.to} · ${r.outcome.toUpperCase()}`).join("\n")}</Text>}
         </>
       )}
     </Dossier>
