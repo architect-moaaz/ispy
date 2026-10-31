@@ -21,9 +21,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS chains (
   created_at TEXT NOT NULL, completed_at TEXT
 )`);
 try { db.exec("ALTER TABLE missions ADD COLUMN reserved_for TEXT"); } catch { /* already there */ }
+try { db.exec("ALTER TABLE chains ADD COLUMN drops INTEGER NOT NULL DEFAULT 0"); } catch { /* already there */ }
 
 export interface ChainStep { template: TemplateId; targetId: string; targetName: string; title: string; brief: string; missionId?: string }
-export interface ChainRow { id: string; player_id: string; faction_id: FactionId; area_id: string; name: string; premise: string; steps: string; step: number; state: string; source: string; bonus_xp: number; created_at: string; completed_at: string | null }
+export interface ChainRow { id: string; player_id: string; faction_id: FactionId; area_id: string; name: string; premise: string; steps: string; step: number; state: string; source: string; bonus_xp: number; drops: number; created_at: string; completed_at: string | null }
 export interface TargetLite { id: string; name: string; kind: string; lat: number; lng: number }
 
 const MODEL = "claude-opus-5-5";
@@ -188,12 +189,38 @@ export function onLinkVerified(playerId: string, chainId: string, index: number,
   return { say: premiseOf(chain).closing, done: true, bonusXp: chain.bonus_xp, name: chain.name };
 }
 
-/** A link was dropped or expired: the operation folds. The chief can start another later. */
-export function onLinkLost(playerId: string, chainId: string, why: string) {
+const MAX_DROPS = 3;
+/**
+ * A link was dropped or expired. The operation holds: the same link goes straight back on the
+ * board, up to three drops in all; the fourth folds it. Returns what the chief should say.
+ */
+export function onLinkLost(playerId: string, chainId: string, why: string, spawn: SpawnStep): { say: string; folded: boolean; name: string } | null {
   const chain = get<ChainRow>("SELECT * FROM chains WHERE id=? AND player_id=? AND state='active'", chainId, playerId);
-  if (!chain) return;
-  run("UPDATE chains SET state='abandoned', completed_at=? WHERE id=?", now(), chainId);
-  logEvent("chain.abandoned", "director", { chainId, name: chain.name, why }, playerId);
+  if (!chain) return null;
+  const steps = parse<ChainStep[]>(chain.steps, []);
+  const drops = (chain.drops ?? 0) + 1;
+  if (drops > MAX_DROPS || !steps[chain.step]) {
+    run("UPDATE chains SET state='abandoned', completed_at=?, drops=? WHERE id=?", now(), drops, chainId);
+    logEvent("chain.abandoned", "director", { chainId, name: chain.name, why, drops }, playerId);
+    return { say: `${chain.name} is dead. Three times the thread went slack in your hands; I will not pass it a fourth.`, folded: true, name: chain.name };
+  }
+  run("UPDATE chains SET drops=? WHERE id=?", drops, chainId);
+  spawnStep(chain, chain.step, spawn);
+  logEvent("chain.link_reissued", "director", { chainId, name: chain.name, link: chain.step + 1, of: steps.length, why, drops }, playerId);
+  const left = MAX_DROPS - drops;
+  return {
+    say: `Link ${chain.step + 1} of ${chain.name} is still yours${why === "link expired" ? ". The window closed, so I opened another" : ""}. It is back on your board. ${left === 0 ? "Drop it again and the operation folds." : `${left} more drop${left === 1 ? "" : "s"} and the operation folds.`}`,
+    folded: false, name: chain.name,
+  };
+}
+
+/** The operation's current link, if it sits at this site: any order verified there counts as the link. */
+export function linkAtSite(playerId: string, targetId: string): { chainId: string; step: number; missionId?: string } | null {
+  const chain = activeChain(playerId);
+  if (!chain) return null;
+  const cur = parse<ChainStep[]>(chain.steps, [])[chain.step];
+  if (!cur || cur.targetId !== targetId) return null;
+  return { chainId: chain.id, step: chain.step, missionId: cur.missionId };
 }
 
 export function chainsOverview() {

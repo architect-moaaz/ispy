@@ -362,3 +362,10 @@ LINE OP). From the operative's last fix, six points along one bearing (0.32, 0.6
 offers are cleared; a six-link operation (recon, drop, extraction, twice) is started on them in order; any
 live crisis in the sector is resolved and a new one is brewed on the three outbound sites. With no bearing,
 the first of eight compass bearings whose far end and midpoint both sit on a footpath is used.
+
+Operations hold through a dropped link: an abandoned or expired link is reissued to the same board at once
+(`chain.link_reissued`), and the chief says so; the fourth drop folds the operation (`chain.abandoned`).
+Any order verified at the current link's site counts as that link (`chain.link_credited`): the pending link
+mission is cancelled and the next link opens. A dead drop spawned while nobody of that agency is at the
+desk ships with its desk link already in `fallback`, so the walker decodes the pickup code solo on site
+instead of waiting out the fallback timer.

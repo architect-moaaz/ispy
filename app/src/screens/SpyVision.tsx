@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Dimensions, Easing, Image, StyleSheet, Text, View } from "react-native";
+import { Alert, Animated, Dimensions, Easing, Image, Modal, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-native-svg";
 import type { CaptureResult, Contact, MapResponse, ToolkitResponse, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse, SpinResult } from "@ispy/shared";
@@ -9,7 +9,9 @@ import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix } from "../
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Dossier, Input, Screen, Stamp, Typed, fmtCountdown } from "../ui";
 import { Projector, SatMap } from "../SatMap";
-import { walkingRoute, openTurnByTurn, fmtWalk, type WalkingRoute } from "../route";
+import { walkingRoute, fmtWalk, guide, type WalkingRoute } from "../route";
+import { Guide } from "./Guide";
+import { Debrief } from "./Debrief";
 import { ART } from "../art";
 import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
@@ -38,6 +40,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [targets, setTargets] = useState<{ id: string; name: string; lat: number; lng: number }[]>([]);
   const [sector, setSector] = useState<{ lat: number; lng: number; radiusM: number } | null>(null);
   const [route, setRoute] = useState<WalkingRoute | null>(null);
+  const [guiding, setGuiding] = useState(false);
   // Ambient layer: what is around you on the map, and what you have tapped.
   const [field, setField] = useState<MapResponse | null>(null);
   const [bc, setBc] = useState<{ rivals: { id: string; chief: string; burned: boolean }[]; left: number; credits: number; costs: { distraction: number; lead: number } } | null>(null);
@@ -107,6 +110,15 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   }, [mission?.id]);
 
   useEffect(() => { fixRef.current = fix; }, [fix]);
+  // Your course: the bearing between fixes once you have moved a few metres, for the guidance arrow.
+  const [course, setCourse] = useState<number | null>(null);
+  const courseFrom = useRef<Fix | null>(null);
+  useEffect(() => {
+    if (!fix) return;
+    if (!courseFrom.current) { courseFrom.current = fix; return; }
+    const moved = distanceM(courseFrom.current, fix);
+    if (moved >= 8) { setCourse(bearingDeg(courseFrom.current, fix)); courseFrom.current = fix; }
+  }, [fix?.lat, fix?.lng]);
   useEffect(() => { if (scan?.result === "locked") setAr(true); }, [scan?.result]);
   // Refresh the ambient layer as you move (every ~25 m) and on live spawns.
   useEffect(() => { void loadField(fix); }, [fix ? Math.round(fix.lat * 4000) : 0, fix ? Math.round(fix.lng * 4000) : 0]);
@@ -178,10 +190,15 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       if (r.result === "verified" && !r.reward) { setCode(""); setTimeout(refresh, 300); }
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
-  const abandon = async () => {
+  const abandonNow = async () => {
     if (!mission) return;
     setBusy(true);
     try { await api.abandon(mission.id); finishMission(); } catch (e: any) { setErr(e.message); setBusy(false); }
+  };
+  const abandon = () => {
+    if (!mission) return;
+    Alert.alert("Abandon this mission?", mission.chain ? `It is link ${mission.chain.step} of ${mission.chain.name}. The link goes back on your board, but three drops fold the operation.` : "It goes back to the pool. Your chief will notice.",
+      [{ text: "Keep it", style: "cancel" }, { text: "Abandon", style: "destructive", onPress: abandonNow }]);
   };
   const finishMission = () => { setMission(null); setNav(null); setScan(null); setCode(""); setBusy(false); };
 
@@ -230,7 +247,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         <SatMap center={center} zoom={zoom} width={width} height={height}>
           {(project) => (projectRef.current = project) && (
             <MapOverlay project={project} width={width} height={height} fix={fix} offers={field ? [] : offers} target={target ? { ...target, name: nav ? nav.targetName : selPoint!.name, locked: nav ? !nav.unlocked : false, duel: !!nav?.faceoff } : null}
-              contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} />
+              contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} nextTurn={route && fix && !onSite ? guide(route, fix).next : null} />
           )}
         </SatMap>
         {field && !mission && (
@@ -253,8 +270,8 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
             onCapture={() => { setCaptureResult(null); setCapturing(true); }}
             onAccept={async () => { if (sel.type !== "pin") return; setBusy(true); try { const r = await api.acceptMission(sel.item.offerId); setMission(r.mission); setSel(null); await refresh(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}
             onDecline={async () => { if (sel.type !== "pin") return; try { await api.declineMission(sel.item.offerId); } catch { /* gone */ } setSel(null); await refresh(); }}
-            onNavigate={() => selPoint && openTurnByTurn({ lat: selPoint.lat, lng: selPoint.lng }, selPoint.name)}
-            onClose={() => setSel(null)}
+            onNavigate={() => setGuiding(true)}
+            onClose={() => { setSel(null); setGuiding(false); }}
             bait={field?.distractions ?? []} baitLeft={field?.distractionsLeft ?? 0}
             onTradecraft={() => { if (sel.type === "cache") { void loadBc(); setBaitSite({ id: sel.item.id, name: sel.item.name }); } }}
             />
@@ -272,17 +289,17 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           }} />
       )}
       {!mission && field && <NearbyTracker signals={field.signals} pins={field.pins} selected={sel} onSelect={setSel} />}
-      {mission && nav && !completed && (
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
-          <Text style={[s.mono, { color: C.cyan, flex: 1 }]}>{onSite ? "ON SITE" : route ? fmtWalk(route.distanceM, route.durationS).toUpperCase() : dist != null ? `${Math.round(dist)} M STRAIGHT LINE` : "LOCATING…"}</Text>
-          {!onSite && <Button title="Navigate" kind="ghost" onPress={() => openTurnByTurn({ lat: nav.lat, lng: nav.lng }, nav.targetName)} style={{ marginTop: 0, paddingVertical: 6, paddingHorizontal: 12 }} />}
-        </View>
-      )}
+      {mission && nav && !completed && onSite && <Text style={[s.mono, { color: C.ok, marginTop: 8 }]}>ON SITE · INSIDE THE RING</Text>}
+      {fix && target && !onSite && (mission || guiding) && (route ? (
+        <Guide route={route} at={fix} course={course} targetName={nav ? nav.targetName : selPoint?.name ?? "the site"} arriveM={nav?.approachRadiusM ?? 40} />
+      ) : (
+        <Text style={[s.mono, { color: C.cyan, marginTop: 8 }]}>{dist != null ? `${Math.round(dist)} M STRAIGHT LINE · PLOTTING A FOOTPATH…` : "LOCATING…"}</Text>
+      ))}
       <Button title={mission ? (onSite ? "Scan the site" : nav?.unlocked ? "Scan on arrival" : "Site locked") : "Scan region"} onPress={() => doScan()} loading={busy} disabled={!!mission && (!nav?.unlocked || !onSite)} style={{ marginTop: 10, paddingVertical: 16 }} />
       <Text style={[s.mono, { textAlign: "center", marginTop: 4 }]}>
         {mission ? (onSite ? "You are inside the ring. Scan to verify the site." : nav?.unlocked ? "Walk to the ring, then scan." : "An intel analyst is unlocking this site.") : "Refreshes orders and signals around you. Tools are on Me; your chief is on HQ."}
       </Text>
-      {mission && onSite && nav?.unlocked && !completed && <Button title={nav.lock && !nav.lockOpen ? "AR scan · open the package" : "AR scan · camera view"} kind={nav.lock && !nav.lockOpen ? undefined : "ghost"} onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
+      {mission && nav?.unlocked && !completed && <Button title={!onSite ? "AR view · look for the package" : nav.lock && !nav.lockOpen ? "AR scan · open the package" : "AR scan · camera view"} kind={onSite && nav.lock && !nav.lockOpen ? undefined : "ghost"} onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
       {kit && (() => {
         // What each tool can do from exactly here: the dial greys the rest and says why.
         const jam = kit.effects.find((e) => e.kind === "jammer"), trk = kit.effects.find((e) => e.kind === "tracker");
@@ -305,17 +322,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       })()}
       <Text onPress={onOffDuty} style={[s.mono, { textAlign: "right", marginTop: 8, color: C.cyanDim, letterSpacing: 1.4 }]}>STAND DOWN</Text>
 
-      {completed && (
-        <Dossier tab={scan.reward!.contestOutcome === "lost" ? C.dim : C.ok} style={{ marginTop: 12 }}>
-          <View style={{ alignItems: "center", marginVertical: 6 }}>
-            <Stamp text={scan.reward!.contestOutcome === "lost" ? "Outrun" : scan.reward!.contestOutcome === "won" ? "First in" : "Verified"} size={40} color={scan.reward!.contestOutcome === "lost" ? C.dim : C.red} />
-          </View>
-          <Typed>{scan.debrief}</Typed>
-          {scan.artifact && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2, marginTop: 4 }]}>ARTIFACT RECOVERED · {scan.artifact.name.toUpperCase()}{scan.artifact.dossier ? ` · DOSSIER ${scan.artifact.dossier.toUpperCase()}` : ""} · IN THE ARCHIVE</Text>}
-          <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: scan.reward!.xp < 0 ? C.red : C.cyan, letterSpacing: 1 }}>{scan.reward!.xp > 0 ? "+" : ""}{scan.reward!.xp} XP   TRUST {scan.reward!.trust >= 0 ? "+" : ""}{scan.reward!.trust}</Text>
-          <Button title="Back to the board" onPress={finishMission} />
-        </Dossier>
-      )}
+      {completed && mission && !arHold && <Debrief scan={scan} mission={mission} targetName={nav?.targetName ?? mission.title} onDone={finishMission} />}
 
       {mission && nav?.faceoff && !completed && (
         <View style={s.duelBar}>
@@ -386,12 +393,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       {err && <Body style={{ color: C.red }}>{err}</Body>}
       {spinResult && <SpinSheetHost result={spinResult} onDone={() => setSpinResult(null)} />}
       {duel && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setDuel(null)}>
         <View style={s.duelModal}>
           <Stamp text={duel.outcome === "won" ? "First in" : "Outrun"} size={46} color={duel.outcome === "won" ? C.red : C.dim} />
           <Text style={[s.duelText, { marginTop: 14, textAlign: "center" }]}>{duel.outcome === "won" ? `${duel.rival.toUpperCase()} OF ${duel.rivalFaction.toUpperCase()} WATCHED YOU TAKE ${duel.target.toUpperCase()}` : `${duel.rival.toUpperCase()} OF ${duel.rivalFaction.toUpperCase()} TOOK ${duel.target.toUpperCase()} FIRST`}</Text>
           <Text style={[s.mono, { marginTop: 8, textAlign: "center" }]}>{duel.outcome === "won" ? "+80 XP · THEY WILL REMEMBER YOUR NAME" : "THE SITE IS THEIRS FOR TWO HOURS · REMEMBER THE NAME"}</Text>
           <Button title="Back to the map" onPress={() => setDuel(null)} />
         </View>
+        </Modal>
       )}
       {capturing && sel?.type === "signal" && (
         <CaptureRitual signal={sel.item} busy={busy} result={captureResult}
@@ -405,13 +414,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
 import { SpinSheet as SpinSheetHost } from "./FieldLayer";
 
 // ---------- overlay ----------
-function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector, route }: {
+function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector, route, nextTurn }: {
   project: Projector; width: number; height: number; fix: Fix | null; offers: OfferCard[];
   target: { lat: number; lng: number; name: string; locked: boolean; duel?: boolean } | null; contacts: Contact[];
   bearing: number | null; dist: number | null; nearest: number | null; radius: number;
   sector: { lat: number; lng: number; radiusM: number } | null;
-  route: WalkingRoute | null;
+  route: WalkingRoute | null; nextTurn: { lat: number; lng: number; type: string } | null;
 }) {
+  const turn = nextTurn && nextTurn.type !== "arrive" ? project(nextTurn) : null;
   const routePts = route ? route.coords.map((c) => { const p = project(c); return `${p.x},${p.y}`; }).join(" ") : null;
   // Controlled sector as a glowing octagon around the area centre.
   const sectorPts = sector ? Array.from({ length: 8 }, (_, i) => {
@@ -458,6 +468,8 @@ function MapOverlay({ project, width, height, fix, offers, target, contacts, bea
             <Polyline points={routePts} fill="none" stroke={C.text} strokeOpacity={0.9} strokeWidth={1} strokeDasharray="2 10" strokeLinecap="round" />
           </G>
         ) : tgt && fix ? <Line x1={me.x} y1={me.y} x2={tgt.x} y2={tgt.y} stroke={C.cyan} strokeOpacity={0.55} strokeWidth={1} strokeDasharray="3 5" /> : null}
+        {/* the next turn on the route */}
+        {turn && <G><Circle cx={turn.x} cy={turn.y} r={9} fill={C.ink} fillOpacity={0.7} stroke={C.text} strokeWidth={1.5} /><Circle cx={turn.x} cy={turn.y} r={3} fill={C.text} /></G>}
         {/* contacts */}
         {contacts.map((c) => { const p = project(c); return <ContactGlyph key={c.id} x={p.x} y={p.y} color={c.faction === "unknown" ? C.cyan : factionColor(c.faction)} />; })}
         {/* player */}
@@ -561,7 +573,7 @@ const s = StyleSheet.create({
   toolBtn: { marginTop: 0, paddingVertical: 6, paddingHorizontal: 10 },
   duelBar: { borderWidth: 2, borderColor: C.red, backgroundColor: "rgba(255,93,108,0.12)", padding: 10, marginTop: 8, alignItems: "center", gap: 2 },
   duelText: { color: C.red, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 },
-  duelModal: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(4,10,14,0.96)", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 60 },
+  duelModal: { flex: 1, backgroundColor: "rgba(4,10,14,0.96)", alignItems: "center", justifyContent: "center", padding: 24 },
   zoomLevel: { position: "absolute", right: 48, bottom: 30, color: C.dim, fontFamily: F.typed, fontSize: 9, letterSpacing: 1 },
   sector: { color: C.text, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.2, backgroundColor: C.ink2, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.line },
   compass: { position: "absolute", left: 10, top: 10, width: 84, height: 84 },

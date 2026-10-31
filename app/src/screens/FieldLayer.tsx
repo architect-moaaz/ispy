@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Animated, Easing, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import type { CacheView, CaptureResult, DistractionView, OfferPin, Rarity, SignalView, SpinResult, StrongholdView } from "@ispy/shared";
 import { ART } from "../art";
 import { C, F, factionColor } from "../theme";
@@ -111,7 +111,7 @@ export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, o
         <Body dim>Inside 40 m, spin it for intel: cipher fragments, decoys, sometimes a jammer or a lens. Every five minutes.</Body>
         {(() => { const b = bait?.find((x) => x.targetId === c.id); return b ? <Text style={[s.mono, { color: C.amber }]}>BAIT · PLANTED BY {b.by.toUpperCase()} · RIVALS SEE A REAL ORDER HERE · {b.bites} BITE{b.bites === 1 ? "" : "S"} · FADES {fmtCountdown(b.expiresAt, now)}</Text> : null; })()}
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {near ? <Button title="Spin cache" onPress={onSpin} loading={busy} disabled={!!c.readyAt} style={{ flex: 1, marginTop: 0 }} /> : <Button title="Navigate" onPress={onNavigate} style={{ flex: 1, marginTop: 0 }} />}
+          {near ? <Button title="Spin cache" onPress={onSpin} loading={busy} disabled={!!c.readyAt} style={{ flex: 1, marginTop: 0 }} /> : <Button title="Guide me there" onPress={onNavigate} style={{ flex: 1, marginTop: 0 }} />}
           <Button title="Close" kind="ghost" onPress={onClose} style={{ marginTop: 0 }} />
         </View>
         {onTradecraft && !bait?.some((x) => x.targetId === c.id) && (
@@ -133,7 +133,7 @@ export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, o
           </View>
         </View>
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {near ? <Button title="Capture" onPress={onCapture} loading={busy} disabled={sg.attemptsLeft <= 0} style={{ flex: 1, marginTop: 0 }} /> : <Button title="Navigate" onPress={onNavigate} style={{ flex: 1, marginTop: 0 }} />}
+          {near ? <Button title="Capture" onPress={onCapture} loading={busy} disabled={sg.attemptsLeft <= 0} style={{ flex: 1, marginTop: 0 }} /> : <Button title="Guide me there" onPress={onNavigate} style={{ flex: 1, marginTop: 0 }} />}
           <Button title="Close" kind="ghost" onPress={onClose} style={{ marginTop: 0 }} />
         </View>
       </Dossier>
@@ -176,6 +176,7 @@ export function SpinSheet({ result, onDone }: { result: SpinResult | null; onDon
   const spin = useRef(new Animated.Value(0)).current;
   useEffect(() => { spin.setValue(0); Animated.timing(spin, { toValue: 1, duration: 1100, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }, [result]);
   return (
+    <Modal visible transparent animationType="fade" onRequestClose={onDone}>
     <View style={s.modal}>
       <View style={s.sheet}>
         <Animated.View style={[s.ring, { transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "720deg"] }) }] }]}>
@@ -196,6 +197,7 @@ export function SpinSheet({ result, onDone }: { result: SpinResult | null; onDon
         <Button title="Back to the map" onPress={onDone} />
       </View>
     </View>
+    </Modal>
   );
 }
 
@@ -224,6 +226,8 @@ export function CaptureRitual({ signal, busy, onAttempt, result, onRetry, onDone
   const flick = Gesture.Pan().onEnd((e) => { if (armed && !busy && !result && e.translationY < -60) onAttempt(Math.max(0, 1 - slips * 0.15), true); }).runOnJS(true);
   const reset = () => { setLock(0); setSlips(0); setArmed(false); onRetry(); };
   return (
+    <Modal visible transparent animationType="fade" onRequestClose={onDone}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <GestureDetector gesture={flick}>
       <View style={s.modal} collapsable={false}>
         <View style={{ alignItems: "center", paddingHorizontal: 20 }}>
@@ -260,6 +264,8 @@ export function CaptureRitual({ signal, busy, onAttempt, result, onRetry, onDone
         </View>
       </View>
     </GestureDetector>
+    </GestureHandlerRootView>
+    </Modal>
   );
 }
 
@@ -281,7 +287,7 @@ const s = StyleSheet.create({
   tileArt: { width: "100%", height: 54, marginBottom: 4 },
   tileName: { fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1 },
   tileSub: { color: C.dim, fontFamily: F.typed, fontSize: 10 },
-  modal: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(4,10,14,0.96)", alignItems: "center", justifyContent: "center", gap: 10, zIndex: 50 },
+  modal: { flex: 1, backgroundColor: "rgba(4,10,14,0.96)", alignItems: "center", justifyContent: "center", gap: 10 },
   sheet: { width: 320, borderWidth: 1, borderColor: C.line, backgroundColor: C.ink2, padding: 18, alignItems: "center", gap: 6 },
   ring: { width: 120, height: 120, borderRadius: 60, borderWidth: 3, borderColor: C.cyan, borderStyle: "dashed", alignItems: "center", marginBottom: 10 },
   ringTick: { width: 6, height: 18, backgroundColor: C.cyan, marginTop: -3 },

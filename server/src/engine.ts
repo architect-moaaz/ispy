@@ -368,6 +368,10 @@ function buildMission(f: Faction, area: AreaRow, template: TemplateId, mode: Mod
       run("INSERT INTO desk_links(id,desk_mission_id,field_mission_id,state,fallback_after_s) VALUES(?,?,?,?,?)", linkId, deskId, id, "open", Math.round(param("deskLinkFallbackMin") * 60));
       run("UPDATE missions SET desk_link_id=?, params=? WHERE id=?", linkId, json({ ...extra, pickupCode: cipher.answer }), id);
       run("UPDATE missions SET desk_link_id=? WHERE id=?", linkId, deskId);
+      // Nobody at this agency's desk right now: the drop ships solo from the start, so a lone walker
+      // is not left standing at a locked site waiting out a fallback timer for an analyst who is not there.
+      const desk = get<{ n: number }>("SELECT COUNT(*) n FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.mode='desk' AND p.expires_at>?", f.id, now())!.n;
+      if (desk === 0) run("UPDATE desk_links SET state='fallback', started_at=? WHERE id=?", now(), linkId);
     }
     return id;
   }
@@ -388,7 +392,7 @@ function sweepExpiry() {
     run("UPDATE missions SET state='expired', outcome='expired' WHERE id=?", m.id);
     if (m.assignee_id) logEvent("mission.expired", "authority", { missionId: m.id, title: m.title }, m.assignee_id);
     const link = chains.chainOf(m.params);
-    if (link && m.reserved_for) chains.onLinkLost(m.reserved_for, link.chainId, "link expired");
+    if (link && m.reserved_for) { const r = chains.onLinkLost(m.reserved_for, link.chainId, "link expired", spawnLink); if (r) chiefSay(m.reserved_for, r.say, r.folded ? `operation ${r.name} folded` : `operation ${r.name}: link reissued`, true); }
   }
   run("UPDATE missions SET state='pool', assignee_id=NULL WHERE state='offered' AND id NOT IN (SELECT mission_id FROM offers WHERE state='open')");
   // Desk-link fallbacks: field agent gets a solo puzzle once the window passes.
@@ -535,7 +539,7 @@ export function abandon(player: Player, missionId: string) {
   run("UPDATE missions SET state='cancelled', outcome='abandoned' WHERE id=?", m.id);
   logEvent("mission.abandoned", "player", { missionId: m.id, title: m.title }, player.id);
   const link = chains.chainOf(m.params);
-  if (link) chains.onLinkLost(player.id, link.chainId, "link abandoned");
+  if (link) { const r = chains.onLinkLost(player.id, link.chainId, "link abandoned", spawnLink); if (r) chiefSay(player.id, r.say, r.folded ? `operation ${r.name} folded` : `operation ${r.name}: link reissued`, true); }
 }
 
 // ---------- navigation & verification ----------
@@ -706,8 +710,21 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     else debrief = `Site secured. ${pr.stance === "intercept" ? "It is ours." : pr.stance === "sabotage" ? "Nobody gets it now." : "The sector stays quiet."} ${get<{ n: number }>("SELECT COUNT(*) n FROM json_each((SELECT sites FROM crises WHERE id=?)) WHERE json_extract(value,'$.claimedBy') IS NOT NULL", pr.crisisId)?.n ?? 1} of 3 sites claimed.`;
     if (m.faction_id !== player.factionId) debrief += ` Joint operation credit to ${f.name}.`;
   }
-  // Operations: a verified link opens the next one, or closes the chain with a bonus.
-  const link = chains.chainOf(m.params);
+  // Operations: a verified link opens the next one, or closes the chain with a bonus. Any order
+  // verified at the current link's site counts as that link, so a crisis order on the route does not
+  // leave the operation waiting for a second walk to the same spot.
+  let link = chains.chainOf(m.params);
+  if (!link) {
+    const at = m.target_id ? chains.linkAtSite(player.id, m.target_id) : null;
+    if (at) {
+      link = at;
+      if (at.missionId) {
+        run("UPDATE missions SET state='cancelled', outcome='credited' WHERE id=? AND state IN ('pool','offered','accepted','active')", at.missionId);
+        run("UPDATE offers SET state='expired' WHERE state='open' AND mission_id=?", at.missionId);
+      }
+      logEvent("chain.link_credited", "authority", { chainId: at.chainId, link: at.step + 1, via: m.title }, player.id);
+    }
+  }
   if (link) {
     const r = chains.onLinkVerified(player.id, link.chainId, link.step, spawnLink);
     if (r) {
