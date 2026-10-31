@@ -26,7 +26,7 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
   return (
     <Screen>
       <Kicker color={color}>{faction ? `${faction.name}, reporting to ${faction.chiefName}` : "Civilian"}</Kicker>
-      <Display size={56}>{player.codename}</Display>
+      <Display size={player.codename.length > 14 ? 30 : 40}>{player.codename}</Display>
       <Panel style={{ borderColor: color }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <Stat label="rank" value={player.rank.replace("_", " ")} />
@@ -51,15 +51,14 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
             <Image source={ART.tool.fragment} style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: C.cyan }} />
             <Kicker>Toolkit · {kit.fragments} cipher fragments</Kicker>
           </View>
-          <Body dim>Human judgement decides when a tool is worth spending. Caches give fragments, lenses, jammers and decoys; fragments craft the rest.</Body>
+          <Body dim>Caches drop lenses, jammers and decoys. Fragments craft the rest. Field tools sit on the map; desk tools on the desk.</Body>
           {kit.effects.length > 0 && <Text style={{ color: C.ok, fontFamily: F.typed, fontSize: 11.5, marginBottom: 6 }}>ACTIVE · {kit.effects.map((e) => `${e.kind.toUpperCase()} until ${new Date(e.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`).join(" · ")}</Text>}
           {kit.tools.filter((t) => t.id !== "fragment").map((t) => (
             <View key={t.id} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 7, borderTopWidth: 1, borderTopColor: C.line }}>
               <Image source={ART.tool[t.id]} style={{ width: 52, height: 52, borderRadius: 26, borderWidth: 1, borderColor: t.qty > 0 ? C.cyan : C.line, opacity: t.qty > 0 ? 1 : 0.5 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: t.qty > 0 ? C.text : C.dim, fontFamily: F.displayMed, fontSize: 15, letterSpacing: 1.2 }}>{t.name.toUpperCase()}{t.permanent ? "" : ` · ×${t.qty}`}</Text>
-                <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5 }}>{t.blurb}</Text>
-                <Text style={{ color: C.cyanDim, fontFamily: F.typed, fontSize: 11 }}>Use: {t.use}</Text>
+                <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5 }} numberOfLines={2}>{t.use}</Text>
               </View>
               {t.craft && <Button title={`Craft · ${t.craft}`} kind="ghost" onPress={() => craft(t.id)} disabled={kit.fragments < t.craft} style={{ marginTop: 0, paddingVertical: 6, paddingHorizontal: 10 }} />}
             </View>
@@ -83,7 +82,7 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
       <Panel>
         <Kicker>Record</Kicker>
         {events.length === 0 && <Body dim>Nothing yet.</Body>}
-        {events.map((e, i) => (
+        {events.slice(0, 14).map((e, i) => (
           <View key={i} style={{ flexDirection: "row", gap: 10, marginBottom: 5 }}>
             <Typed onPaper={false} style={{ color: C.dim, marginBottom: 0, width: 46 }}>{new Date(e.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Typed>
             <Typed onPaper={false} style={{ marginBottom: 0, flex: 1 }}>{e.text}</Typed>

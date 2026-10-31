@@ -5,7 +5,7 @@ import type { BackChannelOptions, Briefing, ChatMessage } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
-import { Body, Button, Display, Dossier, Input, Screen, Spinner } from "../ui";
+import { Body, Button, Display, Dossier, Input, Kicker, Screen, Spinner } from "../ui";
 import { ChiefBanner, FactionEmblem } from "../graphics";
 
 const SPECIALTY: Record<string, string> = {
@@ -46,7 +46,9 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
 
   return (
     <Screen>
-      <Display color={color}>{briefing.chiefName} HQ ({briefing.factionName} faction)</Display>
+      <Kicker color={color}>{briefing.factionName} · headquarters</Kicker>
+      <Display color={color} size={30}>Chief {briefing.chiefName}</Display>
+      <Text style={[s.sub, { marginTop: -6, marginBottom: 10 }]}>{SPECIALTY[briefing.chief]}</Text>
       {briefing.today && (
         <Dossier tab={C.amber}>
           <Text style={{ fontFamily: F.displayMed, fontSize: 13, color: C.amber, letterSpacing: 1.6 }}>TODAY{briefing.today.sector ? ` · ${briefing.today.sector.toUpperCase()}` : ""}</Text>
@@ -62,17 +64,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           </Text>
         </Dossier>
       )}
-      <Dossier tab={color} style={{ marginTop: 8 }}>
-        <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-          <FactionEmblem id={factionId} size={52} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.eyebrow}>Intelligence chief</Text>
-            <Text style={s.big}>Chief {briefing.chiefName}</Text>
-            <Text style={s.sub}>{SPECIALTY[briefing.chief]}</Text>
-          </View>
-        </View>
-      </Dossier>
-      <View style={{ marginBottom: 12 }}><ChiefBanner factionId={factionId} height={210} /></View>
+      <View style={{ marginBottom: 12 }}><ChiefBanner factionId={factionId} height={160} /></View>
 
       <Text style={s.section}>[ Encrypted link · active ]</Text>
       <Dossier tab={C.cyanDim} style={{ padding: 0 }}>
@@ -104,20 +96,14 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
       <BackChannel />
 
       <Dossier tab={color}>
-        <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
-          <Gauge label="Trust score" value={briefing.standing.trust / 100} text={`${briefing.standing.trust}%`} color={color} />
-          <Gauge label="Cover integrity" value={0.94} text="94%" color={C.cyan} sub={`rank ${briefing.standing.rank.replace("_", " ")} · ${briefing.standing.xp}/${briefing.standing.nextRankAt} XP`} />
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <Gauge label="Chief's trust" value={briefing.standing.trust / 100} text={`${briefing.standing.trust}%`} color={color} />
+          <Gauge label="Next rank" value={briefing.standing.xp / Math.max(1, briefing.standing.nextRankAt)} text={briefing.standing.rank.replace("_", " ")} color={C.cyan} sub={`${briefing.standing.xp} / ${briefing.standing.nextRankAt} XP`} />
         </View>
-      </Dossier>
-
-      <Text style={s.section}>Active strategic orders</Text>
-      <Dossier tab={C.cyan}>
-        <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 14.5, lineHeight: 21 }}>{briefing.headline}</Text>
-        {briefing.recent.length > 0 && (
-          <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 6 }}>
-            {briefing.recent.slice(0, 4).map((r, i) => <Text key={i} style={{ color: C.dim, fontFamily: F.typed, fontSize: 12, marginBottom: 2 }}>{r}</Text>)}
-          </View>
-        )}
+        <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 8 }}>
+          <Text style={s.eyebrow}>Standing orders</Text>
+          <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 13.5, lineHeight: 19 }}>{briefing.headline}</Text>
+        </View>
       </Dossier>
       <View style={s.drawer}>
         <Button title="Open the mission board" onPress={onDuty} style={{ paddingVertical: 16, marginTop: 0 }} />
@@ -149,7 +135,7 @@ function BackChannel() {
   return (
     <Dossier tab={C.amber} style={{ marginTop: 8 }}>
       <Text style={{ color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 }}>BACK CHANNEL · UNSIGNED</Text>
-      <Body dim>A wire to a rival chief that does not carry your name. Sell a live route, a teammate's or your own, for 40 credits. The rival turns up at that target. False leads are planted from the map.</Body>
+      <Body dim>Sell a live route to a rival chief for 40 credits, unsigned. Their operative turns up at that target.</Body>
       {!opts ? <Spinner /> : (
         <>
           <Text style={[s.eyebrow, { marginTop: 6 }]}>To · {opts.left} tip{opts.left === 1 ? "" : "s"} left today</Text>
@@ -172,15 +158,15 @@ function BackChannel() {
 function Gauge({ label, value, text, color, sub }: { label: string; value: number; text: string; color: string; sub?: string }) {
   const r = 26, c = 2 * Math.PI * r;
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
       <Svg width={64} height={64}>
         <Circle cx={32} cy={32} r={r} stroke={C.line} strokeWidth={5} fill="none" />
         <Circle cx={32} cy={32} r={r} stroke={color} strokeWidth={5} fill="none" strokeDasharray={`${c * Math.max(0, Math.min(1, value))} ${c}`} strokeLinecap="butt" rotation={-90} origin="32, 32" />
       </Svg>
-      <View>
+      <View style={{ flex: 1 }}>
         <Text style={s.eyebrow}>{label}</Text>
-        <Text style={[s.big, { color }]}>{text}</Text>
-        {sub && <Text style={s.sub}>{sub}</Text>}
+        <Text style={[s.big, { color, fontSize: 20 }]} numberOfLines={1}>{text}</Text>
+        {sub && <Text style={s.sub} numberOfLines={1}>{sub}</Text>}
       </View>
     </View>
   );

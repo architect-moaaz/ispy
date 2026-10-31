@@ -37,8 +37,8 @@ export function Board() {
 
   return (
     <Screen>
-      <Display>Bounty board</Display>
-      <Text style={s.sub2}>Chief-issued contracts · non-cash rewards only</Text>
+      <Display>The board</Display>
+      <Text style={s.sub2}>The war this week · contracts · the ladder</Text>
 
       {ev && (
         <View style={[s.banner, ev.state === "resolved" && { borderColor: C.dim }]}>
@@ -72,11 +72,11 @@ export function Board() {
             <View key={r.codename} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5, backgroundColor: r.you ? "#12303c" : "transparent" }}>
               <Text style={[s.site, { width: 22, color: C.dim }]}>{i + 1}</Text>
               <Text style={[s.site, { flex: 1, color: factionColor(r.factionId), fontFamily: F.displayMed, letterSpacing: 1 }]} numberOfLines={1}>{r.codename.toUpperCase()}{r.title ? `  · ${r.title.toUpperCase()}` : ""}</Text>
-              <Text style={[s.site, { color: C.dim }]}>{r.held}h · {r.wins}w · {r.captures}c</Text>
+              <Text style={[s.site, { color: C.dim }]} numberOfLines={1}>{r.held} held · {r.wins} won · {r.captures} caught</Text>
               <Text style={[s.site, { width: 34, textAlign: "right", color: C.text }]}>{r.score}</Text>
             </View>
           ))}
-          <Text style={[s.site, { color: C.dim, marginTop: 6 }]}>h sites held · w face-offs and contests won · c captures. Resets Monday.</Text>
+          <Text style={[s.site, { color: C.dim, marginTop: 6 }]}>Sites held, face-offs won, signals caught. Resets Monday.</Text>
         </View>
       )}
       {world?.control && Object.values(world.control).some((c) => Object.values(c).some((n) => n > 0)) && (
@@ -174,7 +174,7 @@ function BountyCard({ b, now, busy, onClaim }: { b: BountyT; now: number; busy: 
         {b.status === "LOCKED" && <Text style={[s.tag, { color: C.dim, borderColor: C.line }]}>needs {b.minRank.replace("_", " ")}</Text>}
         <Text style={[s.sub, { marginLeft: "auto" }]}>expires {fmtCountdown(b.expiresAt, now)}</Text>
       </View>
-      {b.status === "ELIGIBLE" && <Button title="Claim contract" onPress={onClaim} loading={busy} style={{ marginTop: 10, paddingVertical: 10 }} />}
+      {b.status === "ELIGIBLE" && <Button title="Take it" kind="ghost" onPress={onClaim} loading={busy} style={{ marginTop: 8, paddingVertical: 8 }} />}
     </Panel>
   );
 }

@@ -98,8 +98,9 @@ export function DossierScreen() {
           ))}
           {archive.lost.length > 0 && (
             <Panel tab={C.red}>
-              <Text style={s.eyebrowAmber}>LOST TO RIVALS</Text>
-              {archive.lost.map((l, i) => <Text key={i} style={s.mono}>{l.takenBy.toUpperCase()} took whatever lay at {l.site?.toUpperCase() ?? "a site"} · {new Date(l.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>)}
+              <Text style={s.eyebrowAmber}>LOST TO RIVALS · {archive.lost.length}</Text>
+              {archive.lost.slice(0, 3).map((l, i) => <Text key={i} style={s.mono}>{l.takenBy.toUpperCase()} · {l.site ?? "a site"} · {new Date(l.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>)}
+              {archive.lost.length > 3 && <Text style={s.mono}>and {archive.lost.length - 3} more this week</Text>}
             </Panel>
           )}
           {(archive.talks ?? []).length > 0 && (
@@ -111,12 +112,9 @@ export function DossierScreen() {
           {archMsg && <Body style={{ color: C.cyan }}>{archMsg}</Body>}
         </>
       )}
-      <Display size={26} style={{ marginTop: 18 }}>Investigation dossier</Display>
+      <Display size={22} style={{ marginTop: 18 }}>Investigations</Display>
       {cases.length === 0 ? (
-        <Panel tab={C.cyanDim}>
-          <Text style={s.big}>No open cases</Text>
-          <Body dim style={{ marginBottom: 0 }}>Evidence comes from the field. Complete missions while rival operatives are in your sector, or win a contested target, and a case opens on whoever you brushed against.</Body>
-        </Panel>
+        <Text style={[s.mono, { textAlign: "center", marginBottom: 12 }]}>NO OPEN CASES · A CASE OPENS ON WHOEVER YOU BRUSH AGAINST IN THE FIELD</Text>
       ) : (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10, justifyContent: "center" }}>
           {cases.map((c) => (
@@ -208,7 +206,7 @@ export function DossierScreen() {
         </>
       )}
       {err && <Body style={{ color: C.red, textAlign: "center" }}>{err}</Body>}
-      <Display size={26} style={{ marginTop: 18 }}>Field collection</Display>
+      <Display size={22} style={{ marginTop: 18 }}>Field collection</Display>
       <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5, marginBottom: 8 }}>{collection.filter((c) => c.count > 0).length} OF {collection.length} SIGNAL TYPES CAPTURED</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {collection.map((c) => (

@@ -766,18 +766,18 @@ export function deskSubmit(player: Player, missionId: string, answer: string): D
 // ---------- briefing / history ----------
 export function history(playerId: string, limit = 30): { at: string; text: string }[] {
   return all<{ type: string; payload: string; at: string }>(
-    "SELECT type, payload, at FROM events WHERE player_id=? ORDER BY id DESC LIMIT ?", playerId, limit,
+    "SELECT type, payload, at FROM events WHERE player_id=? AND type NOT IN ('mission.offered','presence.fix','chief.message') ORDER BY id DESC LIMIT ?", playerId, limit,
   ).map((e) => ({ at: e.at, text: describe(e.type, parse<any>(e.payload, {})) }));
 }
 function describe(type: string, p: any): string {
   switch (type) {
-    case "mission.offered": return `Offered: ${p.template}`;
+    case "mission.offered": return `Offered: ${p.template}`; // filtered out of the operative's record; noise
     case "mission.accepted": return `Accepted ${p.title}${p.contested ? " (contested)" : ""}`;
     case "mission.verified": return `Completed ${p.title}${p.contestOutcome ? ` — contest ${p.contestOutcome}` : ""}${p.unlockedFor ? ` — unlocked ${p.unlockedFor}` : ""}`;
     case "mission.expired": return `Expired: ${p.title}`;
     case "mission.abandoned": return `Abandoned ${p.title}`;
     case "mission.leg_complete": return `Checkpoint ${p.leg} confirmed`;
-    case "reward": return `+${p.xp} XP, ${p.trust >= 0 ? "+" : ""}${p.trust} trust${p.credits ? `, +${p.credits} credits` : ""} (${p.why})`;
+    case "reward": { const sgn = (n: number) => `${n > 0 ? "+" : ""}${n}`; const parts = [p.xp ? `${sgn(p.xp)} XP` : null, p.trust ? `${sgn(p.trust)} trust` : null, p.credits ? `${sgn(p.credits)} credits` : null].filter(Boolean); return `${parts.join(", ") || "No change"} · ${p.why}`; }
     case "rank_up": return `Promoted to ${p.to}`;
     case "presence.check_in": return p.mode === "desk" ? "Deployed to the intel desk" : "Deployed to the field";
     case "presence.check_out": return "Stood down";
@@ -796,6 +796,21 @@ function describe(type: string, p: any): string {
     case "bounty.completed": return `Contract complete: ${p.title} (+${p.credits} credits)`;
     case "world_event.fragment": return `Fragment ${p.fragments} recovered for ${p.faction.toUpperCase()}`;
     case "assessment.scored": return "Assessment scored";
+    case "chief.message": return "Your chief wrote";
+    case "leak.delivered": return "A line arrived from an unknown source";
+    case "tool.crafted": return `Crafted a ${p.tool ?? "tool"}`;
+    case "distraction.planted": return `Bait planted at ${p.target}`;
+    case "distraction.sprung": return `Your bait at ${p.target} caught ${p.by}`;
+    case "mission.decoyed": return `Walked into bait at ${p.title ? p.title.toLowerCase() : "a site"}`;
+    case "tip.sold": return `Sold a route to ${String(p.to).toUpperCase()} over the wire`;
+    case "tip.planted": return `Pointed ${String(p.to).toUpperCase()} at ${p.site}`;
+    case "faceoff.started": return `Face-off with ${p.rival} at ${p.target}`;
+    case "faceoff.resolved": return `${p.outcome === "won" ? "Won" : "Lost"} the face-off at ${p.target}`;
+    case "artifact.recovered": return `Recovered ${p.name}`;
+    case "artifact.lost": return `${p.name} was lifted by a rival`;
+    case "signal.captured": return `Captured a ${p.name ?? p.kind ?? "signal"}`;
+    case "cache.spun": return `Spun the cache at ${p.target ?? "a site"}`;
+    case "title.awarded": return `Title earned: ${p.title}`;
     case "player.registered": return "Clearance granted";
     default: return type;
   }
