@@ -15,7 +15,8 @@ import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
 import { CaptureRitual, FieldMarkers, NearbyTracker, SelectionCard, type Selection } from "./FieldLayer";
 import { BaitSheet } from "./BaitSheet";
-import { ToolDial, type DialTool } from "./ToolDial";
+import { type DialTool } from "./ToolDial";
+import { FieldKit } from "./FieldKit";
 
 const TEMPLATE_NAME: Record<string, string> = { RECON: "RECON", DEAD_DROP: "VIRTUAL DEAD DROP", EXTRACTION: "EXTRACTION", ANALYSIS: "ANALYSIS", CIPHER: "CIPHER" };
 
@@ -304,7 +305,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
             default: return { ...t, enabled: false };
           }
         });
-        return <ToolDial tools={dial} busy={toolBusy} hint={toolMsg}
+        return <FieldKit tools={dial} effects={kit.effects} busy={toolBusy} hint={toolMsg}
           onUse={(t) => { if (t.id === "lens" && mission) useTool("lens", { missionId: mission.id }); else if (t.id === "decoy" && nav && fix) useTool("decoy", { targetId: nav.targetId, lat: fix.lat, lng: fix.lng }); else useTool(t.id); }} />;
       })()}
       <Text onPress={onOffDuty} style={[s.mono, { textAlign: "right", marginTop: 8, color: C.cyanDim, letterSpacing: 1.4 }]}>STAND DOWN</Text>
