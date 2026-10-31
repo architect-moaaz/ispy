@@ -26,7 +26,7 @@ import type {
   Presence,
   ScanRequest,
   ScanResponse,
-  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry, ToolkitResponse, ToolUseResult, UnlockResult, ArchiveView, ArchiveActionResult, PlantResult } from "@ispy/shared";
+  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry, ToolkitResponse, ToolUseResult, UnlockResult, ArchiveView, ArchiveActionResult, PlantResult, BackChannelOptions, TipResult } from "@ispy/shared";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
 const TOKEN_KEY = "ispy.token";
@@ -134,6 +134,8 @@ export const api = {
   tools: () => get<ToolkitResponse>("/v1/tools"),
   archive: () => get<ArchiveView>("/v1/archive"),
   plantDistraction: (targetId: string) => post<PlantResult>("/v1/distractions", { targetId }),
+  backchannel: () => get<BackChannelOptions>("/v1/backchannel"),
+  sendTip: (toFaction: string, kind: "sell" | "plant", refId: string) => post<TipResult>("/v1/backchannel", { toFaction, kind, refId }),
   examine: (id: string) => post<ArchiveActionResult>(`/v1/archive/${id}/examine`),
   decipherArtifact: (id: string, answer: string) => post<ArchiveActionResult>(`/v1/archive/${id}/decipher`, { answer }),
   assemble: (dossierId: string) => post<ArchiveActionResult>(`/v1/archive/dossiers/${dossierId}/assemble`),

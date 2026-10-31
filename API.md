@@ -322,3 +322,33 @@ lives in `DAILY_CAP` in `server/src/distractions.ts`).
 - Scan: a verified scan on bait returns `decoyed: true`. In AR the package shakes, crumbles to ash
   (`effects/Disintegrate.tsx`), a DECOY stamp lands, and the view holds for ~3.5 s before the debrief. A real
   package plays the opening burst and an EXTRACTED stamp in the same held window.
+
+## Intrigue (the Director as spymaster, the admin as its partner)
+
+`server/src/intrigue.ts`. Nothing in this section is visible to players except what reaches them as a leak,
+a chief's line or the back channel.
+
+- **Relations.** Every pair of agencies carries a heat 0–100: allied (<30), truce (<50), cold war (<75),
+  open war. Pacts cool (−15), intel shares (−8); face-offs (+3), bait bites (+6), heists (+12), sold routes
+  (+8), wedge leaks (+10) heat. Peace decays back toward cold war by itself. Admin can nudge any pair.
+- **Profiles.** The Director studies every agency and every operative active this week: stats (power,
+  artifacts, bait planted/bitten, pacts, heists, face-offs, tips, trust, active hours) and a written read.
+  Rules mode writes the read from the numbers; model mode rewrites it in the voice of a case officer's file.
+- **Leaks.** `createLeak(to, text, truth, purpose, source)`. To an operative: a `leak` row on their
+  encrypted link, shown as UNKNOWN SOURCE. To an agency: its chief remembers it, passes it to every deployed
+  operative without knowing the source, and replans on it. The admin can HOLD leaks for approval, approve or
+  veto pending ones, and write their own (true or false) to any agency or any deployed operative.
+- **Directives.** Free text from the admin; the next scheme folds them in and marks them used.
+- **The scheme.** Every 15 min with operatives deployed (2 h otherwise, or SCHEME NOW): refresh profiles,
+  then in model mode one call returns objectives, reads, up to four leaks and heat changes; in rules mode a
+  wedge leak goes to the weaker of any pair that has stayed warm for 90 min, and a true leak about the
+  leader arms the trailer when the gap is wide. Objectives are kept in `world.plan_objectives`.
+- **Back channel (rogue operatives).** `GET /v1/backchannel` → rivals (with `burned`), teammates' live
+  routes, sites in your sector, tips left (2/day), recent tips. `POST /v1/backchannel {toFaction, kind,
+  refId}`: `sell` a teammate's active route → the rival gets a real order at that site (face-off likely)
+  and the tipster gets 40 credits "from an unknown account"; `plant` a false lead → a one-rival bait outside
+  the distraction cap. Chiefs are smart: two bitten plants in a day and that chief drops the source.
+- **Admin routes.** `GET /v1/admin/plan`; `POST /v1/admin/plan/scheme`; `POST /v1/admin/plan/directive
+  {text}`; `POST /v1/admin/plan/leaks {toKind,toId,text,truth,purpose}`; `POST
+  /v1/admin/plan/leaks/:id/approve|veto`; `POST /v1/admin/plan/settings {holdLeaks}`; `POST
+  /v1/admin/plan/relation {a,b,delta,why}`. The console shows all of it in "The Plan".

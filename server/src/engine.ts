@@ -31,7 +31,7 @@ export const lockOn = (targetId: string | null) => targetId ? get<LockRow>("SELE
 /** Collaborative work and intel extraction are open to everyone regardless of locks. */
 const exemptFromLocks = (m: { template_id: string; params: string }) => {
   const pr = parse<any>(m.params, {});
-  return m.template_id === "EXTRACTION" || !!pr?.crisisId || !!pr?.heistArtifactId || !!pr?.distractionId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
+  return m.template_id === "EXTRACTION" || !!pr?.crisisId || !!pr?.heistArtifactId || !!pr?.distractionId || !!pr?.tipId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
 };
 /** Who holds how many sites in a sector right now. */
 export function sectorControl(areaId: string): Record<FactionId, number> {
@@ -326,6 +326,15 @@ distractions.registerSpawner((factionId, areaId, targetId, distractionId, brief)
   const id = createMission(f, areaId, "RECON", "field", target, { distractionId, needsObservation: false, crisisId: null }, `${distractionId}:${factionId}`, { brief });
   run("UPDATE missions SET expires_at=? WHERE id=?", new Date(Date.now() + 2 * 60 * 60_000).toISOString(), id);
 });
+
+// A sold route: the rival agency gets a real order at the teammate's target, so a face-off can form there.
+export function spawnTipMission(factionId: FactionId, areaId: string, targetId: string, tipId: string, brief: string) {
+  const f = factionById(factionId);
+  const target = get<TargetRow>("SELECT * FROM targets WHERE id=?", targetId);
+  if (!target) return;
+  const id = createMission(f, areaId, "RECON", "field", target, { tipId, needsObservation: false, crisisId: null }, `${tipId}:${factionId}`, { brief });
+  run("UPDATE missions SET expires_at=? WHERE id=?", new Date(Date.now() + 90 * 60_000).toISOString(), id);
+}
 
 /** A heist: a presence-verified field mission at the site where a rival keeps a page; verifying it lifts the page. */
 archive.registerHeistSpawner((factionId, areaId, siteId, artifactId, title, brief) => {
@@ -865,7 +874,7 @@ export function chiefSay(playerId: string, text: string, why: string, force = fa
 }
 export function unreadChief(playerId: string): number {
   const p = get<{ chief_read_at: string | null }>("SELECT chief_read_at FROM players WHERE id=?", playerId);
-  return get<{ n: number }>("SELECT COUNT(*) n FROM chat WHERE player_id=? AND role='chief' AND at>?", playerId, p?.chief_read_at ?? "")!.n;
+  return get<{ n: number }>("SELECT COUNT(*) n FROM chat WHERE player_id=? AND role IN ('chief','leak') AND at>?", playerId, p?.chief_read_at ?? "")!.n;
 }
 export function markChiefRead(playerId: string) { run("UPDATE players SET chief_read_at=? WHERE id=?", now(), playerId); }
 

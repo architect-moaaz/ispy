@@ -15,6 +15,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS distractions (
   state TEXT NOT NULL DEFAULT 'live', created_at TEXT NOT NULL, expires_at TEXT NOT NULL, sprung_by TEXT, sprung_at TEXT, bites INTEGER NOT NULL DEFAULT 0
 )`);
 
+try { db.exec("ALTER TABLE distractions ADD COLUMN via TEXT NOT NULL DEFAULT 'plant'"); } catch { /* already there */ }
+
 export const DAILY_CAP = 3;
 const TTL_MS = 2 * 60 * 60_000;
 
@@ -22,7 +24,19 @@ export type Spawner = (factionId: FactionId, areaId: string, targetId: string, d
 let spawner: Spawner | null = null;
 export const registerSpawner = (fn: Spawner) => { spawner = fn; };
 
-export const leftToday = (playerId: string) => Math.max(0, DAILY_CAP - get<{ n: number }>("SELECT COUNT(*) n FROM distractions WHERE player_id=? AND created_at>?", playerId, new Date(Date.now() - 86_400_000).toISOString())!.n);
+export const leftToday = (playerId: string) => Math.max(0, DAILY_CAP - get<{ n: number }>("SELECT COUNT(*) n FROM distractions WHERE player_id=? AND via='plant' AND created_at>?", playerId, new Date(Date.now() - 86_400_000).toISOString())!.n);
+
+/** A false lead for one rival agency only, outside the daily cap: the back channel uses it. */
+export function plantFor(playerId: string, factionId: FactionId, targetId: string, onlyFaction: FactionId, via: string): { ok: boolean; reason?: string; id?: string } {
+  const t = get<{ id: string; name: string; area_id: string }>("SELECT id, name, area_id FROM targets WHERE id=? AND state='ACTIVE'", targetId);
+  if (!t) return { ok: false, reason: "Pick a real site." };
+  if (get("SELECT 1 FROM distractions WHERE target_id=? AND state='live' AND expires_at>?", targetId, now())) return { ok: false, reason: "There is already bait at that site." };
+  const id = uid();
+  run("INSERT INTO distractions(id,player_id,faction_id,area_id,target_id,target_name,created_at,expires_at,via) VALUES(?,?,?,?,?,?,?,?,?)", id, playerId, factionId, t.area_id, t.id, t.name, now(), new Date(Date.now() + TTL_MS).toISOString(), via);
+  const f = factionById(onlyFaction);
+  spawner?.(onlyFaction, t.area_id, t.id, id, pick(PERSONAS[f.chief].lines.RECON, `${id}:${onlyFaction}`).replace("{target}", t.name));
+  return { ok: true, id };
+}
 
 export function plant(playerId: string, factionId: FactionId | null, targetId: string): { ok: boolean; reason?: string; id?: string; left?: number; expiresAt?: string } {
   if (!factionId) return { ok: false, reason: "Join an agency first." };

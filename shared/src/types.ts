@@ -215,7 +215,7 @@ export interface DeskSubmitResponse {
 // ---- Chief ----
 export interface ChatMessage {
   id: string;
-  role: "player" | "chief";
+  role: "player" | "chief" | "leak"; // leak: an anonymous line from UNKNOWN SOURCE
   text: string;
   at: string;
 }
@@ -366,3 +366,13 @@ export interface ArchiveView {
 export interface ArchiveActionResult { ok: boolean; reason?: string; genuine?: boolean; plantedBy?: string | null; note?: string; correct?: boolean; corruptedUntil?: string; secret?: SecretKind; reveal?: string }
 
 export interface PlantResult { ok: boolean; reason?: string; id?: string; left?: number; expiresAt?: string }
+
+// ---------- the back channel (rogue operatives) ----------
+export interface BackChannelOptions {
+  left: number;
+  rivals: { id: FactionId; name: string; chief: string; burned: boolean }[];
+  routes: { missionId: string; label: string }[]; // teammates' live routes you could sell
+  sites: { id: string; name: string }[]; // sites you could point a rival at
+  recent: { kind: string; about: string; to: string; outcome: string; at: string }[];
+}
+export interface TipResult { ok: boolean; reason?: string; left?: number; credits?: number }

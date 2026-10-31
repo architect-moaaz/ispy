@@ -16,6 +16,7 @@ import * as rivalry from "./rivalry.ts";
 import * as tools from "./tools.ts";
 import * as archive from "./archive.ts";
 import * as distractions from "./distractions.ts";
+import * as intrigue from "./intrigue.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -208,6 +209,25 @@ app.get("/v1/map", async (req) => {
   }).filter((x): x is NonNullable<typeof x> => !!x);
   return { ...m, pins, distractions: distractions.mineInArea(p.id, p.factionId, areaId), distractionsLeft: distractions.leftToday(p.id) };
 });
+// The back channel: an operative tips a rival chief anonymously. Sells a teammate's route for credits, or plants a false lead.
+app.get("/v1/backchannel", async (req) => { const p = need(req); return intrigue.backchannelOptions(p.id, p.factionId) ?? { left: 0, rivals: [], routes: [], sites: [], recent: [] }; });
+app.post("/v1/backchannel", async (req) => {
+  const p = need(req);
+  const b = z.object({ toFaction: z.enum(["raven", "phantom", "cipher"]), kind: z.enum(["sell", "plant"]), refId: z.string() }).parse(req.body);
+  return intrigue.sendTip(p.id, p.factionId, b.toFaction, b.kind, b.refId);
+});
+// The Plan: the Director's scheme, visible to the admin only, and the admin's hand in it.
+app.get("/v1/admin/plan", async () => intrigue.plan());
+app.post("/v1/admin/plan/scheme", async () => ({ result: await intrigue.scheme(true), plan: intrigue.plan() }));
+app.post("/v1/admin/plan/directive", async (req) => ({ id: intrigue.addDirective(z.object({ text: z.string().trim().min(1).max(600) }).parse(req.body).text) }));
+app.post("/v1/admin/plan/leaks", async (req) => {
+  const b = z.object({ toKind: z.enum(["agency", "operative"]), toId: z.string(), text: z.string().trim().min(1).max(400), truth: z.boolean(), purpose: z.string().max(200).default("admin") }).parse(req.body);
+  return intrigue.createLeak(b.toKind === "agency" ? { kind: "agency", id: b.toId as FactionId } : { kind: "operative", id: b.toId }, b.text, b.truth, b.purpose, "admin") ?? { error: "unknown recipient" };
+});
+app.post<{ Params: { id: string } }>("/v1/admin/plan/leaks/:id/approve", async (req) => ({ sent: intrigue.deliver(req.params.id) }));
+app.post<{ Params: { id: string } }>("/v1/admin/plan/leaks/:id/veto", async (req) => { intrigue.veto(req.params.id); return { ok: true }; });
+app.post("/v1/admin/plan/settings", async (req) => { const b = z.object({ holdLeaks: z.boolean() }).parse(req.body); intrigue.setHoldLeaks(b.holdLeaks); return { holdLeaks: intrigue.holdLeaks() }; });
+app.post("/v1/admin/plan/relation", async (req) => { const b = z.object({ a: z.enum(["raven", "phantom", "cipher"]), b: z.enum(["raven", "phantom", "cipher"]), delta: z.number().int().min(-50).max(50), why: z.string().max(120).default("admin") }).parse(req.body); intrigue.nudge(b.a, b.b, b.delta, b.why); return { relations: intrigue.relationsView() }; });
 app.post("/v1/distractions", async (req) => { const p = need(req); return distractions.plant(p.id, p.factionId, z.object({ targetId: z.string() }).parse(req.body).targetId); });
 app.post<{ Params: { id: string } }>("/v1/caches/:id/spin", async (req) => {
   const p = need(req);
@@ -371,7 +391,7 @@ app.get("/v1/admin/overview", async () => {
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
     sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
-    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(), tools: tools.toolsOverview(), archive: archive.archiveOverview(), distractions: distractions.overview(),
+    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(), tools: tools.toolsOverview(), archive: archive.archiveOverview(), distractions: distractions.overview(), plan: intrigue.plan(),
     funnel: {
       registered: get<{ n: number }>("SELECT COUNT(*) n FROM players")!.n,
       assessed: get<{ n: number }>("SELECT COUNT(*) n FROM assessments")!.n,
@@ -403,6 +423,7 @@ startChiefAgents();
 retireCheckpoints().catch((e) => console.warn("[sectors] checkpoint migration failed:", (e as Error).message));
 startPush();
 directorAgent.start();
+intrigue.start();
 
 await app.listen({ port: PORT, host: "0.0.0.0" });
 app.log.info(`iSpy server on :${PORT} devSim=${DEV_SIM} llm=${llmEnabled()}`);

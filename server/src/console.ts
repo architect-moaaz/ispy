@@ -36,6 +36,17 @@ table{width:100%;border-collapse:collapse}td,th{padding:3px 6px;text-align:left;
 <button id="b-pause" class="warn">PAUSE</button><button id="b-tick">FORCE TICK</button><button id="b-dispatch">DISPATCH</button><button id="b-key">KEY</button></header>
 <main>
 <div style="display:grid;gap:10px"><div id="map"></div>
+<section><h2>The Plan · Director × Admin <span class="muted" style="letter-spacing:0;text-transform:none">(only you see this)</span></h2>
+<div class="row" id="plan-head"></div>
+<div id="plan-objectives" class="thought" style="border-left-color:var(--amber)">…</div>
+<div class="row" id="plan-relations"></div>
+<div id="plan-agencies"></div>
+<details><summary class="muted" style="cursor:pointer">Operative files</summary><table id="plan-ops"></table></details>
+<div class="row" style="margin-top:8px"><input id="directive" placeholder="Directive to the Director, e.g. make CIPHER paranoid about KESTREL; keep RAVEN and PHANTOM at war" style="flex:1;min-width:240px;background:#07151c;color:var(--text);border:1px solid var(--line);padding:6px;font:inherit"><button id="b-directive">DIRECT</button><button id="b-scheme">SCHEME NOW</button><button id="b-hold" class="warn">HOLD LEAKS</button></div>
+<div class="row"><select id="leak-to" style="background:#07151c;color:var(--text);border:1px solid var(--line);padding:6px;font:inherit"></select><input id="leak-text" placeholder="Leak text, as an anonymous source would write it" style="flex:1;min-width:200px;background:#07151c;color:var(--text);border:1px solid var(--line);padding:6px;font:inherit"><label class="muted"><input type="checkbox" id="leak-truth"> true</label><button id="b-leak">LEAK</button></div>
+<div class="feed" id="plan-leaks" style="max-height:34vh"></div>
+<details><summary class="muted" style="cursor:pointer">Back channel · operatives' tips to rival chiefs</summary><div class="feed" id="plan-tips" style="max-height:24vh"></div></details>
+</section>
 <section><h2>World Director</h2><div class="row" id="balance"></div><div class="thought" id="thought">…</div><div class="feed" id="decisions" style="max-height:40vh"></div></section>
 <section><h2>Chaos · crises and back-channel talks</h2><div id="crises" class="feed" style="max-height:60vh"></div></section>
 <section><h2>Funnel</h2><div class="row" id="funnel"></div></section>
@@ -59,6 +70,7 @@ const map=L.map('map',{zoomControl:true}).setView([12.9757,77.5952],14);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'}).addTo(map);
 const layers={sectors:L.layerGroup().addTo(map),targets:L.layerGroup().addTo(map),ops:L.layerGroup().addTo(map)};
 const FCOL={raven:'#38e1ff',phantom:'#c77dff',cipher:'#5dffb0'};
+const FN={raven:'RAVEN',phantom:'PHANTOM',cipher:'CIPHER'};
 let fitted=false;
 const esc=(s)=>String(s??'').replace(/[&<>]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const t=(iso)=>iso?new Date(iso).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'';
@@ -76,6 +88,18 @@ function render(o){
  for(const p of o.operatives){if(p.lat==null)continue;const ic=L.divIcon({className:'',html:'<div class="op-ico" style="background:'+(FCOL[p.factionId]||'#fff')+'"></div>',iconSize:[14,14]});
   L.marker([p.lat,p.lng],{icon:ic}).bindTooltip(esc(p.codename)+' · '+esc(p.faction)+' · '+esc(p.mode)).addTo(layers.ops);pts.push([p.lat,p.lng])}
  if(!fitted&&pts.length){map.fitBounds(L.latLngBounds(pts).pad(.2));fitted=true}
+ // the plan
+ const pl=o.plan||{};
+ $('plan-head').innerHTML='<span class="pill">mode <b>'+esc(pl.mode)+'</b></span><span class="pill">leaks <b>'+(pl.holdLeaks?'<span class="a">held for approval</span>':'<span class="g">auto</span>')+'</b></span><span class="pill muted">schemed '+(pl.updatedAt?(ago(pl.updatedAt)==='now'?'just now':ago(pl.updatedAt)+' ago'):'never')+'</span>';
+ $('b-hold').textContent=pl.holdLeaks?'RELEASE LEAKS':'HOLD LEAKS';
+ $('plan-objectives').innerHTML=(pl.objectives&&pl.objectives.length)?pl.objectives.map((x,i)=>'<div>'+(i+1)+'. '+esc(x)+'</div>').join(''):'<span class="muted">No scheme yet. Press SCHEME NOW, or wait for the next housekeeping pass.</span>';
+ $('plan-relations').innerHTML=(pl.relations||[]).map(r=>{const col=r.heat>=75?'var(--red)':r.heat>=50?'var(--amber)':r.heat>=30?'var(--dim)':'var(--green)';return '<span class="pill" title="'+esc(r.note)+'"><span style="color:'+(FCOL[r.a]||'#fff')+'">'+esc(r.aName)+'</span> / <span style="color:'+(FCOL[r.b]||'#fff')+'">'+esc(r.bName)+'</span> <b style="color:'+col+'">'+esc(r.state)+'</b> '+r.heat+' <button data-rel="'+r.a+','+r.b+',-10" style="padding:0 5px">−</button><button data-rel="'+r.a+','+r.b+',10" style="padding:0 5px">+</button></span>'}).join('');
+ $('plan-agencies').innerHTML=(pl.agencies||[]).map(a=>'<div style="margin:4px 0"><span style="color:'+(FCOL[a.id]||'#fff')+'">'+esc(a.name)+'</span> <span class="muted">power '+a.stats.power+' · '+a.stats.deployed+' deployed · '+a.stats.artifacts+' artifacts · bait '+a.stats.baitPlanted+'/'+a.stats.baitBitten+' · pacts '+a.stats.pacts+' · heists '+a.stats.heists+'</span><div style="margin-left:8px">'+esc(a.read)+'</div></div>').join('')||'<span class="muted">no agency files yet</span>';
+ $('plan-ops').innerHTML='<tr><th>codename</th><th>agency</th><th>read</th><th>stats</th></tr>'+((pl.operatives||[]).map(p=>'<tr><td>'+esc(p.codename)+'</td><td class="muted">'+esc(p.stats.faction)+' · '+esc(p.stats.rank)+'</td><td>'+esc(p.read)+'</td><td class="muted">'+p.stats.verified+' done · bait '+p.stats.baitPlanted+'/'+p.stats.baitBitten+' · fo '+p.stats.faceoffsWon+'-'+p.stats.faceoffsLost+' · tips '+p.stats.tipsSent+' · trust '+p.stats.trust+'</td></tr>').join('')||'<tr><td class="muted" colspan="4">nobody studied yet</td></tr>');
+ const rc=pl.recipients||{agencies:[],operatives:[]};const sel=$('leak-to');const cur=sel.value;
+ sel.innerHTML=rc.agencies.map(a=>'<option value="agency:'+a.id+'">agency · '+esc(a.name)+'</option>').join('')+rc.operatives.map(p=>'<option value="operative:'+p.id+'">operative · '+esc(p.codename)+'</option>').join('');if(cur)sel.value=cur;
+ $('plan-leaks').innerHTML=(pl.leaks||[]).map(l=>'<div><span class="t">'+t(l.created_at)+'</span><span class="'+(l.state==='pending'?'a':l.state==='vetoed'?'r':'g')+'">'+esc(l.state)+'</span> → <b>'+esc(l.to_name)+'</b> <span class="'+(l.truth?'g':'r')+'">'+(l.truth?'TRUE':'FALSE')+'</span> <span class="muted">'+esc(l.source)+'</span><div style="margin-left:8px">“'+esc(l.text)+'”</div><div class="muted" style="margin-left:8px">purpose: '+esc(l.purpose)+(l.state==='pending'?' <button data-leak="'+l.id+'" data-act="approve" style="padding:0 6px">APPROVE</button> <button data-leak="'+l.id+'" data-act="veto" class="warn" style="padding:0 6px">VETO</button>':'')+'</div></div>').join('')||'<div class="muted">no leaks yet</div>';
+ $('plan-tips').innerHTML=(pl.tips||[]).map(x=>'<div><span class="t">'+t(x.at)+'</span><span style="color:'+(FCOL[x.fromFaction]||'#fff')+'">'+esc(x.from)+'</span> → <span style="color:'+(FCOL[x.to]||'#fff')+'">'+esc(FN[x.to]||x.to)+'</span> <span class="muted">'+esc(x.kind)+' · '+esc(x.about)+' · '+esc(x.outcome)+'</span></div>').join('')||'<div class="muted">no tips yet</div>';
  // director
  const d=o.director;$('thought').textContent=d.brain.lastThought||(d.brain.mode==='rules'?'Rules mode: no model configured.':'No thought yet. The brain thinks when operatives act.');
  $('balance').innerHTML=d.balance?d.balance.factions.map(f=>'<span class="pill">'+esc(f.name)+' <b>'+f.power+'</b> · '+f.fragments+' frag · '+f.verifiedHour+'/h</span>').join('')+'<span class="pill">leader <b>'+esc(d.balance.leader)+'</b> gap '+d.balance.gap+'</span>':'<span class="muted">no assessment yet</span>';
@@ -84,7 +108,6 @@ function render(o){
   else if(det){body=' <span class="muted">'+esc(typeof det==='string'?det:JSON.stringify(det)).slice(0,240)+'</span>'}
   return '<div><span class="t">'+t(r.at)+'</span><span class="k">'+esc(r.what)+'</span>'+body+'</div>'}).join('');
  // crises with stances, pacts, sites, verdict and the chiefs' back-channel transcript
- const FN={raven:'RAVEN',phantom:'PHANTOM',cipher:'CIPHER'};
  $('crises').innerHTML=(o.crises||[]).map(c=>'<div style="padding:8px 0"><div><span class="a">'+esc(c.name)+'</span> <span class="muted">· '+esc(c.kind)+' · '+esc(c.area||'')+' · '+(c.state==='active'?'<span class="g">live, ends '+t(c.endsAt)+'</span>':esc(c.state)+(c.outcome?' · <b>'+esc(c.outcome.verdict)+'</b>':''))+' · '+esc(c.source)+'</span></div>'
   +'<div class="muted" style="margin:2px 0 4px">'+esc(c.premise||'')+'</div>'
   +'<div>'+Object.entries(c.stances||{}).map(([f,st])=>'<span class="pill" style="color:'+(FCOL[f]||'#fff')+'">'+FN[f]+' · '+esc(st)+'</span>').join(' ')+(c.pacts&&c.pacts.length?' <span class="pill a">pact: '+esc(c.pacts.map(p=>p.map(f=>FN[f]).join('+')).join(', '))+'</span>':'')+'</div>'
@@ -107,6 +130,13 @@ async function refresh(){try{render(await api('/v1/admin/overview'))}catch(e){$(
 $('b-pause').onclick=async()=>{const o=await api('/v1/admin/overview');await api('/v1/admin/pause',{method:'POST',body:JSON.stringify({paused:!o.world.paused})});refresh()};
 $('b-tick').onclick=async()=>{await api('/v1/admin/tick',{method:'POST'});refresh()};
 $('b-dispatch').onclick=async()=>{await api('/v1/admin/dispatch',{method:'POST'});refresh()};
+$('b-directive').onclick=async()=>{const v=$('directive').value.trim();if(!v)return;await api('/v1/admin/plan/directive',{method:'POST',body:JSON.stringify({text:v})});$('directive').value='';refresh()};
+$('b-scheme').onclick=async()=>{$('b-scheme').textContent='SCHEMING…';try{await api('/v1/admin/plan/scheme',{method:'POST'})}finally{$('b-scheme').textContent='SCHEME NOW';refresh()}};
+$('b-hold').onclick=async()=>{const o=await api('/v1/admin/plan');await api('/v1/admin/plan/settings',{method:'POST',body:JSON.stringify({holdLeaks:!o.holdLeaks})});refresh()};
+$('b-leak').onclick=async()=>{const [toKind,toId]=$('leak-to').value.split(':');const text=$('leak-text').value.trim();if(!text||!toId)return;await api('/v1/admin/plan/leaks',{method:'POST',body:JSON.stringify({toKind,toId,text,truth:$('leak-truth').checked,purpose:'admin'})});$('leak-text').value='';refresh()};
+document.addEventListener('click',async(e)=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.leak){await api('/v1/admin/plan/leaks/'+b.dataset.leak+'/'+b.dataset.act,{method:'POST'});refresh()}
+ if(b.dataset.rel){const [a,bb,d]=b.dataset.rel.split(',');await api('/v1/admin/plan/relation',{method:'POST',body:JSON.stringify({a,b:bb,delta:Number(d),why:'admin'})});refresh()}});
 $('b-key').onclick=()=>{const k=prompt('Admin key (blank to clear):',key());if(k===null)return;k?localStorage.setItem('ispy-admin-key',k):localStorage.removeItem('ispy-admin-key');refresh()};
 map.on('click',async(e)=>{if(!confirm('Open a sector at '+e.latlng.lat.toFixed(5)+', '+e.latlng.lng.toFixed(5)+'?'))return;
  await api('/v1/admin/areas/open',{method:'POST',body:JSON.stringify({lat:e.latlng.lat,lng:e.latlng.lng})});fitted=false;refresh()});

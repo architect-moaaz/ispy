@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import type { Briefing, ChatMessage } from "@ispy/shared";
+import type { BackChannelOptions, Briefing, ChatMessage } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
@@ -28,7 +28,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
       setBriefing(b); setMessages(m.messages);
     } catch (e: any) { setErr(e.message); }
   };
-  useEffect(() => { load(); return onLive((t) => { if (t === "chief.message" || t === "reward" || t === "rank_up") load(); }); }, []);
+  useEffect(() => { load(); return onLive((t) => { if (t === "chief.message" || t === "reward" || t === "rank_up" || t === "leak.delivered") load(); }); }, []);
 
   const send = async () => {
     const t = text.trim();
@@ -78,7 +78,15 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
       <Dossier tab={C.cyanDim} style={{ padding: 0 }}>
         <ScrollView ref={scrollRef} style={{ maxHeight: 300 }} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
           {messages.length === 0 && <Body dim>Nothing yet. Your chief is listening.</Body>}
-          {messages.map((m) => (
+          {messages.map((m) => m.role === "leak" ? (
+            <View key={m.id} style={{ marginBottom: 8, alignSelf: "stretch" }}>
+              <Text style={[s.eyebrow, { color: C.amber }]}>UNKNOWN SOURCE · NO RETURN PATH · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+              <View style={{ backgroundColor: "rgba(255,179,71,0.07)", borderWidth: 1, borderStyle: "dashed", borderColor: C.amber, padding: 10 }}>
+                <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 14.5, lineHeight: 21 }}>{m.text}</Text>
+                <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11, marginTop: 4 }}>Unsigned. Could be a gift, could be a hook. Your chief has not seen it.</Text>
+              </View>
+            </View>
+          ) : (
             <View key={m.id} style={{ marginBottom: 8, alignSelf: m.role === "player" ? "flex-end" : "flex-start", maxWidth: "92%" }}>
               <Text style={[s.eyebrow, { textAlign: m.role === "player" ? "right" : "left" }]}>{m.role === "player" ? "You" : briefing.chiefName} · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
               <View style={{ backgroundColor: m.role === "player" ? C.cyanGlow : C.paper2, borderWidth: 1, borderColor: m.role === "player" ? C.cyan : C.line, padding: 10 }}>
@@ -92,6 +100,8 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           <Button title="Send" onPress={send} loading={busy} style={{ marginTop: 0 }} />
         </View>
       </Dossier>
+
+      <BackChannel />
 
       <Dossier tab={color}>
         <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
@@ -118,6 +128,57 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
       </View>
       {err && <Body style={{ color: C.red }}>{err}</Body>}
     </Screen>
+  );
+}
+
+/**
+ * The back channel: a wire to a rival chief that does not carry your name. Sell a teammate's live route
+ * for credits from an unknown account, or point a rival at a site where there is nothing. Two a day.
+ * Chiefs are not fools: a source that burns them twice is dropped.
+ */
+function BackChannel() {
+  const [opts, setOpts] = useState<BackChannelOptions | null>(null);
+  const [open, setOpen] = useState(false);
+  const [to, setTo] = useState<string | null>(null);
+  const [kind, setKind] = useState<"sell" | "plant">("sell");
+  const [ref, setRef] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = async () => { try { setOpts(await api.backchannel()); } catch { /* not deployed or no faction */ } };
+  useEffect(() => { if (open) load(); }, [open]);
+  const send = async () => {
+    if (!to || !ref) return;
+    setBusy(true); setMsg(null);
+    try { const r = await api.sendTip(to, kind, ref); setMsg(r.ok ? (kind === "sell" ? `Sold. ${r.credits} credits landed from an account nobody can trace. ${r.left} left today.` : `Planted. ${r.left} left today. If they walk it, they pay for it.`) : r.reason ?? "No."); if (r.ok) { setRef(null); load(); } }
+    catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
+  };
+  const choices = kind === "sell" ? (opts?.routes ?? []).map((r) => ({ id: r.missionId, label: r.label })) : (opts?.sites ?? []).map((x) => ({ id: x.id, label: x.name }));
+  return (
+    <Dossier tab={C.amber} style={{ marginTop: 8 }}>
+      <Text style={{ color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 }}>BACK CHANNEL · UNSIGNED</Text>
+      <Body dim>A wire to a rival chief that does not carry your name. Sell a teammate's route for credits, or send a rival somewhere empty.</Body>
+      {!open ? <Button title="Open the wire" kind="ghost" onPress={() => setOpen(true)} /> : !opts ? <Spinner /> : (
+        <>
+          <Text style={[s.eyebrow, { marginTop: 6 }]}>To · {opts.left} tip{opts.left === 1 ? "" : "s"} left today</Text>
+          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+            {opts.rivals.map((r) => <Button key={r.id} title={`${r.chief}${r.burned ? " · burned" : ""}`} kind={to === r.id ? "primary" : "ghost"} disabled={r.burned} onPress={() => setTo(r.id)} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }} />)}
+          </View>
+          <Text style={[s.eyebrow, { marginTop: 8 }]}>What</Text>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            <Button title="Sell a route · 40 cr" kind={kind === "sell" ? "primary" : "ghost"} onPress={() => { setKind("sell"); setRef(null); }} style={{ flex: 1, paddingVertical: 8, marginTop: 4 }} />
+            <Button title="Plant a false lead" kind={kind === "plant" ? "primary" : "ghost"} onPress={() => { setKind("plant"); setRef(null); }} style={{ flex: 1, paddingVertical: 8, marginTop: 4 }} />
+          </View>
+          <Text style={[s.eyebrow, { marginTop: 8 }]}>{kind === "sell" ? "Whose route" : "Which site"}</Text>
+          {choices.length === 0 ? <Body dim>{kind === "sell" ? "No teammate is walking a route right now." : "Deploy to the field to see sites."}</Body> : choices.map((c) => (
+            <Button key={c.id} title={c.label} kind={ref === c.id ? "primary" : "ghost"} onPress={() => setRef(c.id)} style={{ paddingVertical: 8, marginTop: 4 }} />
+          ))}
+          <Button title={kind === "sell" ? "Sell it" : "Send them"} onPress={send} loading={busy} disabled={!to || !ref || opts.left <= 0} style={{ marginTop: 8 }} />
+          {msg && <Body style={{ color: C.amber }}>{msg}</Body>}
+          {opts.recent.length > 0 && <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5, marginTop: 6 }}>{opts.recent.map((r) => `${r.kind === "sell" ? "SOLD" : "PLANTED"} · ${r.about} → ${r.to} · ${r.outcome.toUpperCase()}`).join("\n")}</Text>}
+          <Button title="Close the wire" kind="ghost" onPress={() => setOpen(false)} style={{ marginTop: 4, paddingVertical: 8 }} />
+        </>
+      )}
+    </Dossier>
   );
 }
 
