@@ -17,6 +17,7 @@ import * as tools from "./tools.ts";
 import * as archive from "./archive.ts";
 import * as distractions from "./distractions.ts";
 import * as intrigue from "./intrigue.ts";
+import * as lineop from "./lineop.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -310,6 +311,8 @@ app.get("/v1/world/crisis", async (req) => {
   const pres = p ? getPresence(p.id) : null;
   return { crisis: crises.view(p?.factionId ?? null, pres?.areaId) };
 });
+// A playtest line: chaos laid along one corridor for one operative to walk out and back.
+app.post("/v1/admin/lineop", async (req) => lineop.layLine(z.object({ codename: z.string(), km: z.number().min(0.6).max(10).optional(), bearing: z.number().min(0).max(359).optional(), minutes: z.number().int().min(60).max(240).optional(), kind: z.enum(["courier", "jammer", "auction", "leak"]).optional(), lat: z.number().optional(), lng: z.number().optional(), theme: z.string().max(200).optional() }).parse(req.body)));
 app.post("/v1/admin/crisis", async (req) => {
   const b = z.object({ areaId: z.string().optional(), kind: z.enum(["courier", "jammer", "auction", "leak"]).optional(), minutes: z.number().int().min(30).max(240).optional(), theme: z.string().max(200).optional() }).parse(req.body ?? {});
   const areaId = b.areaId ?? get<{ area_id: string }>("SELECT area_id FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL GROUP BY area_id ORDER BY COUNT(*) DESC LIMIT 1", now())?.area_id ?? get<{ id: string }>("SELECT id FROM areas ORDER BY id LIMIT 1")!.id;

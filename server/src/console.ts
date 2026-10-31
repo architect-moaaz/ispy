@@ -33,7 +33,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:3px 6px;text-align:left;
 <span class="pill">world <b id="h-paused">…</b></span><span class="pill">brain <b id="h-brain">…</b></span><span class="pill">llm <b id="h-llm">…</b></span>
 <span class="pill">operatives <b id="h-ops">0</b></span><span class="pill">stream <b id="h-stream">0</b></span><span class="pill">push <b id="h-push">0</b></span>
 <span class="pill muted" id="h-updated"></span>
-<button id="b-pause" class="warn">PAUSE</button><button id="b-tick">FORCE TICK</button><button id="b-dispatch">DISPATCH</button><button id="b-key">KEY</button></header>
+<button id="b-line">LINE OP</button><button id="b-pause" class="warn">PAUSE</button><button id="b-tick">FORCE TICK</button><button id="b-dispatch">DISPATCH</button><button id="b-key">KEY</button></header>
 <main>
 <div style="display:grid;gap:10px"><div id="map"></div>
 <section><h2>The Plan · Director × Admin <span class="muted" style="letter-spacing:0;text-transform:none">(only you see this)</span></h2>
@@ -128,6 +128,8 @@ function render(o){
 }
 async function refresh(){try{render(await api('/v1/admin/overview'))}catch(e){$('h-updated').textContent=String(e.message||e)}}
 $('b-pause').onclick=async()=>{const o=await api('/v1/admin/overview');await api('/v1/admin/pause',{method:'POST',body:JSON.stringify({paused:!o.world.paused})});refresh()};
+$('b-line').onclick=async()=>{const codename=prompt('Operative codename (must be deployed to the field):');if(!codename)return;const km=Number(prompt('Total length in km (walked out and back):','2.5')||'2.5');const bearingIn=prompt('Bearing in degrees (blank = pick a direction with footpaths):','');const body={codename,km};if(bearingIn)body.bearing=Number(bearingIn);
+ $('b-line').textContent='LAYING…';try{const r=await api('/v1/admin/lineop',{method:'POST',body:JSON.stringify(body)});alert(r.ok?('Line laid at '+r.bearing+'°.\n'+r.sites.map(s=>s.name).join('\n')+'\nOperation: '+r.operation+'\nCrisis: '+r.crisis):('No: '+r.reason))}catch(e){alert(e.message)}finally{$('b-line').textContent='LINE OP';refresh()}};
 $('b-tick').onclick=async()=>{await api('/v1/admin/tick',{method:'POST'});refresh()};
 $('b-dispatch').onclick=async()=>{await api('/v1/admin/dispatch',{method:'POST'});refresh()};
 $('b-directive').onclick=async()=>{const v=$('directive').value.trim();if(!v)return;await api('/v1/admin/plan/directive',{method:'POST',body:JSON.stringify({text:v})});$('directive').value='';refresh()};

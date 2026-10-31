@@ -353,3 +353,12 @@ a chief's line or the back channel.
   {text}`; `POST /v1/admin/plan/leaks {toKind,toId,text,truth,purpose}`; `POST
   /v1/admin/plan/leaks/:id/approve|veto`; `POST /v1/admin/plan/settings {holdLeaks}`; `POST
   /v1/admin/plan/relation {a,b,delta,why}`. The console shows all of it in "The Plan".
+
+## Line operation (playtest)
+
+`POST /v1/admin/lineop { codename, km?=2.5, bearing?, minutes?=150, kind?, lat?, lng?, theme? }` (console:
+LINE OP). From the operative's last fix, six points along one bearing (0.32, 0.66, 1.0 of the half-length out;
+0.78, 0.5, 0.14 back) are snapped to footpaths and inserted as waypoint targets; the operative's open
+offers are cleared; a six-link operation (recon, drop, extraction, twice) is started on them in order; any
+live crisis in the sector is resolved and a new one is brewed on the three outbound sites. With no bearing,
+the first of eight compass bearings whose far end and midpoint both sit on a footpath is used.

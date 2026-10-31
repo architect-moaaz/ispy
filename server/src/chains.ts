@@ -24,7 +24,7 @@ try { db.exec("ALTER TABLE missions ADD COLUMN reserved_for TEXT"); } catch { /*
 
 export interface ChainStep { template: TemplateId; targetId: string; targetName: string; title: string; brief: string; missionId?: string }
 export interface ChainRow { id: string; player_id: string; faction_id: FactionId; area_id: string; name: string; premise: string; steps: string; step: number; state: string; source: string; bonus_xp: number; created_at: string; completed_at: string | null }
-interface TargetLite { id: string; name: string; kind: string; lat: number; lng: number }
+export interface TargetLite { id: string; name: string; kind: string; lat: number; lng: number }
 
 const MODEL = "claude-opus-5-5";
 const NAMES = ["OPERATION GLASS KEY", "OPERATION NIGHTJAR", "OPERATION PAPER TIGER", "OPERATION LOW TIDE", "OPERATION SECOND SHADOW", "OPERATION QUIET HOUR", "OPERATION BLUE LANTERN", "OPERATION LAST COURIER"];
@@ -135,6 +135,26 @@ export async function startChain(playerId: string, spawn: SpawnStep, theme?: str
   run("UPDATE chains SET premise=? WHERE id=?", json({ premise: story.premise, closing: story.closing }), id);
   spawnStep(chain, 0, spawn);
   logEvent("chain.started", "director", { chainId: id, name: story.name, links: steps.length, source: story.source, area: area.name }, playerId);
+  return get<ChainRow>("SELECT * FROM chains WHERE id=?", id)!;
+}
+
+/** An operation on exactly these sites, in this order, with these templates: the Director lays the route. */
+export async function startChainFrom(playerId: string, spawn: SpawnStep, targets: TargetLite[], shape: TemplateId[], theme?: string, nameOverride?: string): Promise<ChainRow | null> {
+  const prior = activeChain(playerId);
+  if (prior) { run("UPDATE chains SET state='abandoned', completed_at=? WHERE id=?", now(), prior.id); run("UPDATE missions SET state='cancelled' WHERE assignee_id=? AND state='active' AND json_extract(params,'$.chainId')=?", playerId, prior.id); }
+  const me = get<{ faction_id: FactionId | null; area_id: string | null }>("SELECT pl.faction_id, p.area_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE p.player_id=? AND p.expires_at>?", playerId, now());
+  if (!me?.faction_id || !me.area_id || targets.length < 2) return null;
+  const area = get<AreaRow>("SELECT * FROM areas WHERE id=?", me.area_id)!;
+  const seed = `${playerId}:line:${now().slice(0, 16)}`;
+  const plan = targets.map((t, i) => ({ template: shape[i % shape.length], targetName: t.name, kind: t.kind, target: t }));
+  const story = await authoredStory(me.faction_id, plan, seed, theme);
+  const steps: ChainStep[] = plan.map((s, i) => ({ template: s.template, targetId: s.target.id, targetName: s.target.name, title: `${STEP_TITLES[s.template]} · link ${i + 1} of ${plan.length}`, brief: story.briefs[i] }));
+  const id = uid();
+  run("INSERT INTO chains(id,player_id,faction_id,area_id,name,premise,steps,step,state,source,bonus_xp,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+    id, playerId, me.faction_id, me.area_id, nameOverride ?? story.name, json({ premise: story.premise, closing: story.closing }), json(steps), 0, "active", story.source, 150 + 50 * steps.length, now());
+  const chain = get<ChainRow>("SELECT * FROM chains WHERE id=?", id)!;
+  spawnStep(chain, 0, spawn);
+  logEvent("chain.started", "director", { chainId: id, name: chain.name, links: steps.length, source: story.source, area: area.name, line: true }, playerId);
   return get<ChainRow>("SELECT * FROM chains WHERE id=?", id)!;
 }
 

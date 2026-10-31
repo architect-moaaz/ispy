@@ -152,7 +152,7 @@ async function chooseStance(c: { name: string; premise: string; kind: string }, 
 }
 
 /** Brew a crisis in a sector. Returns null when the sector has too few open sites or one is already running. */
-export async function brew(areaId: string, spawn: SpawnCrisisMission, opts: { kind?: string; theme?: string; minutes?: number } = {}): Promise<CrisisRow | null> {
+export async function brew(areaId: string, spawn: SpawnCrisisMission, opts: { kind?: string; theme?: string; minutes?: number; siteIds?: string[] } = {}): Promise<CrisisRow | null> {
   if (activeCrisis(areaId)) return null;
   const area = get<AreaRow>("SELECT * FROM areas WHERE id=?", areaId);
   if (!area) return null;
@@ -164,8 +164,9 @@ export async function brew(areaId: string, spawn: SpawnCrisisMission, opts: { ki
   const kindKey = opts.kind && KINDS[opts.kind] ? opts.kind : pick(Object.keys(KINDS), seed);
   const kind = KINDS[kindKey];
   // Three sites spread out: a random first, then the farthest from the picks so far (keeps them apart).
-  const first = targets[Math.floor(rand(seed + ":s") * targets.length)];
-  const picks = [first];
+  const handed = opts.siteIds ? opts.siteIds.map((id) => targets.find((t) => t.id === id)).filter((t): t is typeof targets[number] => !!t) : [];
+  const first = handed[0] ?? targets[Math.floor(rand(seed + ":s") * targets.length)];
+  const picks = handed.length ? handed.slice(0, 3) : [first];
   while (picks.length < 3) {
     const far = targets.filter((t) => !picks.includes(t)).map((t) => ({ t, d: Math.min(...picks.map((p) => distanceM(p.lat, p.lng, t.lat, t.lng))) })).sort((a, b) => b.d - a.d)[0];
     if (!far) break;

@@ -307,6 +307,7 @@ const spawnLink: chains.SpawnStep = (chain, step, index) => {
   return id;
 };
 export const startOperation = (playerId: string, theme?: string) => chains.startChain(playerId, spawnLink, theme);
+export const startOperationOn = (playerId: string, targets: chains.TargetLite[], shape: TemplateId[], theme?: string, name?: string) => chains.startChainFrom(playerId, spawnLink, targets, shape, theme, name);
 
 /** A crisis mission: presence-verified at the site, in the agency's chosen stance, open to pact allies. */
 const spawnCrisisMission: crises.SpawnCrisisMission = (crisis, factionId, site, stance, title, brief, jointWith) => {
@@ -316,7 +317,7 @@ const spawnCrisisMission: crises.SpawnCrisisMission = (crisis, factionId, site, 
   run("UPDATE missions SET expires_at=? WHERE id=?", crisis.ends_at, id);
   return id;
 };
-export const brewCrisis = (areaId: string, opts?: { kind?: string; theme?: string; minutes?: number }) => crises.brew(areaId, spawnCrisisMission, opts);
+export const brewCrisis = (areaId: string, opts?: { kind?: string; theme?: string; minutes?: number; siteIds?: string[] }) => crises.brew(areaId, spawnCrisisMission, opts);
 
 /** A distraction: for each rival agency, an ordinary-looking recon at the baited site. It carries no lock and no artifact. */
 distractions.registerSpawner((factionId, areaId, targetId, distractionId, brief) => {
