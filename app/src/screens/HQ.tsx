@@ -73,7 +73,8 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.cyan }} />
           <Label style={{ marginBottom: 0 }}>Encrypted link to {briefing.chiefName}</Label>
         </View>
-        <ScrollView ref={scrollRef} style={{ maxHeight: 300 }} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
+        <Text style={[s.eyebrow, { marginBottom: 6 }]}>{messages.length} on the link · scroll up for earlier</Text>
+        <ScrollView ref={scrollRef} nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 380 }} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
           {messages.length === 0 && <Body dim>Nothing yet. Your chief is listening.</Body>}
           {messages.map((m) => m.role === "leak" ? (
             <View key={m.id} style={{ marginBottom: 8, alignSelf: "stretch" }}>
