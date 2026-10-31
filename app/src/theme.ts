@@ -1,26 +1,28 @@
 // Spy Vision HUD: cyan instrumentation over dark glass and real satellite imagery.
 export const C = {
-  ink: "#0A0E14", // primary obsidian
-  ink2: "#121820", // secondary dark glass
-  glass: "rgba(18, 24, 32, 0.84)", // panels over the map and camera
+  ink: "#070B10", // the night: base of every screen
+  ink2: "#0F161E", // slate: a surface resting on the night
+  slate2: "#16202B", // raised slate: a surface on a surface
+  hair: "rgba(141, 178, 189, 0.14)", // hairline between rows
+  glass: "rgba(15, 22, 30, 0.86)", // panels over the map and camera
   line: "#1C5A66",
-  cyan: "#00F0FF",
+  cyan: "#00E5F2", // the one signal colour: the primary action and whatever is live
   cyanDim: "#139CA8",
-  cyanGlow: "rgba(0, 240, 255, 0.22)",
+  cyanGlow: "rgba(0, 229, 242, 0.18)",
   purple: "#9D00FF",
   indigo: "#7A5CFF",
   amber: "#FFAA00",
   emerald: "#19E3B1",
   ruby: "#FF2A5F",
-  text: "#DDF6F8",
-  dim: "#7FA6AE",
+  text: "#E8F1F3",
+  dim: "#8AA3AC",
   red: "#FF2A5F",
   ok: "#3DF2A6",
   // Aliases kept so panel-based screens read the same.
   paper: "rgba(18, 24, 32, 0.84)",
-  paper2: "#0F1A24",
-  onPaper: "#DDF6F8",
-  onPaperDim: "#7FA6AE",
+  paper2: "#16202B",
+  onPaper: "#E8F1F3",
+  onPaperDim: "#8AA3AC",
   stamp: "#FF2A5F",
 };
 

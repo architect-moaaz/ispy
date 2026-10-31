@@ -11,7 +11,7 @@ import type { CollectionEntry, ArchiveView } from "@ispy/shared";
 import { Input } from "../ui";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
-import { Body, Button, Display, Dossier as Panel, Screen, Spinner, Stamp } from "../ui";
+import { Body, Button, Display, Panel, Screen, Spinner, Stamp } from "../ui";
 import { FactionEmblem } from "../graphics";
 
 const FACTION_NAME: Record<string, string> = { raven: "RAVEN", phantom: "PHANTOM", cipher: "CIPHER" };
@@ -210,7 +210,7 @@ export function DossierScreen() {
       <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5, marginBottom: 8 }}>{collection.filter((c) => c.count > 0).length} OF {collection.length} SIGNAL TYPES CAPTURED</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {collection.map((c) => (
-          <View key={c.kind} style={{ width: "31%", borderWidth: 1, borderColor: c.count ? (c.best ? RARITY_COLOR[c.best] : C.cyan) : C.line, backgroundColor: C.ink2, padding: 6, opacity: c.count ? 1 : 0.45 }}>
+          <View key={c.kind} style={{ width: "31%", borderRadius: 12, borderWidth: c.count ? 1 : 0, borderColor: c.count ? (c.best ? RARITY_COLOR[c.best] : C.cyan) : "transparent", backgroundColor: C.ink2, padding: 6, opacity: c.count ? 1 : 0.45 }}>
             <Image source={signalArt(c.kind, c.art)} style={{ width: "100%", height: 64, marginBottom: 4 }} resizeMode="contain" />
             <Text style={{ color: c.count ? C.text : C.dim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1 }} numberOfLines={1}>{c.name.toUpperCase()}</Text>
             <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 10 }}>{c.count ? `×${c.count} · best ${c.best}` : "not yet"}</Text>
@@ -259,7 +259,7 @@ const s = StyleSheet.create({
   eyebrowAmber: { color: C.amber, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.6, marginBottom: 4 },
   mono: { color: C.dim, fontFamily: F.typed, fontSize: 11.5 },
   caseNo: { color: C.dim, fontFamily: F.typed, fontSize: 12, textAlign: "center", marginBottom: 10 },
-  chip: { borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: C.ink2 },
+  chip: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: C.slate2 },
   chipText: { color: C.dim, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1.2 },
   silhouette: { width: 60, height: 60, overflow: "hidden", backgroundColor: C.ink, borderWidth: 1, borderColor: C.cyan, alignItems: "center", justifyContent: "flex-end" },
   eyebrow: { color: C.dim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" },
@@ -268,7 +268,7 @@ const s = StyleSheet.create({
   section: { color: C.cyan, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 6, marginTop: 4 },
   file: { color: C.text, fontFamily: F.typed, fontSize: 14 },
   kind: { color: C.cyanDim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.2 },
-  meterBg: { height: 10, backgroundColor: C.ink, borderWidth: 1, borderColor: C.line, marginBottom: 6, overflow: "hidden", flexDirection: "row" },
+  meterBg: { height: 10, borderRadius: 5, backgroundColor: C.ink, marginBottom: 6, overflow: "hidden", flexDirection: "row" },
   threshold: { position: "absolute", top: -2, width: 2, height: 14, backgroundColor: C.red },
   axis: { fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1, textAlign: "center" },
   axisNote: { color: C.dim, fontSize: 10, textAlign: "center" },

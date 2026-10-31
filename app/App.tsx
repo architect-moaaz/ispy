@@ -136,9 +136,9 @@ function Shell() {
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.ink },
   body: { flex: 1 },
-  tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.line, backgroundColor: C.ink },
+  tabs: { flexDirection: "row", borderTopWidth: 1, borderTopColor: C.hair, backgroundColor: C.ink },
   tab: { flex: 1, alignItems: "center", paddingTop: 12, gap: 6 },
-  tabText: { color: C.dim, fontFamily: F.displayMed, fontSize: 14, letterSpacing: 1.4, textTransform: "uppercase" },
+  tabText: { color: C.dim, fontSize: 13, letterSpacing: 0.2 },
   badge: { minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.red, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   badgeText: { color: C.text, fontFamily: F.displayMed, fontSize: 11 },
   tabLine: { height: 3, width: 36, borderRadius: 2, backgroundColor: "transparent" },

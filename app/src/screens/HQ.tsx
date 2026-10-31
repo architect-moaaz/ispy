@@ -5,8 +5,8 @@ import type { BackChannelOptions, Briefing, ChatMessage } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
-import { Body, Button, Display, Dossier, Input, Kicker, Screen, Spinner } from "../ui";
-import { ChiefBanner, FactionEmblem } from "../graphics";
+import { Body, Button, Hero, Input, Label, Screen, Spinner, Surface } from "../ui";
+import { ART } from "../art";
 
 const SPECIALTY: Record<string, string> = {
   oracle: "Investigation, evidence and pattern recognition",
@@ -41,17 +41,21 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
   };
 
   const color = factionColor(factionId);
+  const lastLine = [...messages].reverse().find((m) => m.role === "chief")?.text ?? null;
   if (!briefing) return <Screen>{err ? <Body style={{ color: C.red }}>{err}</Body> : <Spinner />}</Screen>;
   const pct = Math.min(1, briefing.standing.xp / Math.max(1, briefing.standing.nextRankAt));
 
   return (
     <Screen>
-      <Kicker color={color}>{briefing.factionName} · headquarters</Kicker>
-      <Display color={color} size={30}>Chief {briefing.chiefName}</Display>
-      <Text style={[s.sub, { marginTop: -6, marginBottom: 10 }]}>{SPECIALTY[briefing.chief]}</Text>
+      <Hero source={ART.portrait[factionId ?? "cipher"]} height={300}>
+        <Text style={{ color, fontSize: 13, marginBottom: 2 }}>{briefing.factionName} · your chief</Text>
+        <Text style={{ color: C.text, fontFamily: F.displayMed, fontSize: 40, lineHeight: 42 }}>{briefing.chiefName}</Text>
+        <Text style={{ color: C.dim, fontSize: 13, marginBottom: 8 }}>{SPECIALTY[briefing.chief]}</Text>
+        {lastLine && <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 13.5, lineHeight: 19 }} numberOfLines={3}>“{lastLine}”</Text>}
+      </Hero>
       {briefing.today && (
-        <Dossier tab={C.amber}>
-          <Text style={{ fontFamily: F.displayMed, fontSize: 13, color: C.amber, letterSpacing: 1.6 }}>TODAY{briefing.today.sector ? ` · ${briefing.today.sector.toUpperCase()}` : ""}</Text>
+        <Surface accent={C.amber}>
+          <Label color={C.amber}>Today{briefing.today.sector ? ` in ${briefing.today.sector}` : ""}</Label>
           {briefing.today.firstTimer && <Body dim>Your first assignment is on the Missions tab: break one intercept, then the nearest site in the field.</Body>}
           {briefing.today.hotWindow && <Body dim>Sector goes hot: {briefing.today.hotWindow}. Be deployed before it starts.</Body>}
           {briefing.today.crisis && <Body dim>Live crisis: {briefing.today.crisis.name}. Orders: {briefing.today.crisis.stance ?? "stand by"}{briefing.today.crisis.allies.length ? ` with ${briefing.today.crisis.allies.join(" + ")}` : ""}.</Body>}
@@ -59,30 +63,31 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           {briefing.today.nemesis && <Text style={{ color: factionColor(briefing.today.nemesis.factionId), fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.4, marginTop: 4 }}>NEMESIS · {briefing.today.nemesis.codename.toUpperCase()} OF {briefing.today.nemesis.faction} · YOU {briefing.today.nemesis.wins} – {briefing.today.nemesis.losses} THEM</Text>}
           {briefing.today.operativeOfTheWeek && <Text style={{ color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.4, marginTop: 4 }}>OPERATIVE OF THE WEEK · {briefing.today.operativeOfTheWeek.toUpperCase()}</Text>}
           {briefing.today.titles.length > 0 && <Text style={{ color: C.cyan, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.4, marginTop: 4 }}>YOUR TITLES · {briefing.today.titles.map((t) => t.toUpperCase()).join(" · ")}</Text>}
-          <Text style={{ fontFamily: F.typed, fontSize: 11.5, color: C.dim }}>
-            SECTOR CONTROL · {Object.entries(briefing.today.control).map(([f, n]) => `${f.toUpperCase()} ${n}`).join(" · ")}
+          <Text style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>
+            Sector control: {Object.entries(briefing.today.control).map(([f, n]) => `${f.toUpperCase()} ${n}`).join(", ")}
           </Text>
-        </Dossier>
+        </Surface>
       )}
-      <View style={{ marginBottom: 12 }}><ChiefBanner factionId={factionId} height={160} /></View>
-
-      <Text style={s.section}>[ Encrypted link · active ]</Text>
-      <Dossier tab={C.cyanDim} style={{ padding: 0 }}>
+      <Surface>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.cyan }} />
+          <Label style={{ marginBottom: 0 }}>Encrypted link to {briefing.chiefName}</Label>
+        </View>
         <ScrollView ref={scrollRef} style={{ maxHeight: 300 }} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
           {messages.length === 0 && <Body dim>Nothing yet. Your chief is listening.</Body>}
           {messages.map((m) => m.role === "leak" ? (
             <View key={m.id} style={{ marginBottom: 8, alignSelf: "stretch" }}>
-              <Text style={[s.eyebrow, { color: C.amber }]}>UNKNOWN SOURCE · NO RETURN PATH · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
-              <View style={{ backgroundColor: "rgba(255,179,71,0.07)", borderWidth: 1, borderStyle: "dashed", borderColor: C.amber, padding: 10 }}>
+              <Text style={[s.eyebrow, { color: C.amber }]}>Unknown source · no return path · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+              <View style={{ backgroundColor: "rgba(255,170,0,0.07)", borderWidth: 1, borderStyle: "dashed", borderColor: C.amber, borderRadius: 12, padding: 11 }}>
                 <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 14.5, lineHeight: 21 }}>{m.text}</Text>
                 <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11, marginTop: 4 }}>Unsigned. Could be a gift, could be a hook. Your chief has not seen it.</Text>
               </View>
             </View>
           ) : (
             <View key={m.id} style={{ marginBottom: 8, alignSelf: m.role === "player" ? "flex-end" : "flex-start", maxWidth: "92%" }}>
-              <Text style={[s.eyebrow, { textAlign: m.role === "player" ? "right" : "left" }]}>{m.role === "player" ? "You" : briefing.chiefName} · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
-              <View style={{ backgroundColor: m.role === "player" ? C.cyanGlow : C.paper2, borderWidth: 1, borderColor: m.role === "player" ? C.cyan : C.line, padding: 10 }}>
-                <Text style={{ color: C.text, fontSize: 15, lineHeight: 21 }}>{m.text}</Text>
+              <Text style={[s.eyebrow, { marginBottom: 3, textAlign: m.role === "player" ? "right" : "left" }]}>{m.role === "player" ? "You" : briefing.chiefName} · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+              <View style={{ backgroundColor: m.role === "player" ? C.cyanGlow : C.slate2, borderRadius: 12, borderTopLeftRadius: m.role === "player" ? 12 : 3, borderTopRightRadius: m.role === "player" ? 3 : 12, padding: 11 }}>
+                <Text style={{ color: C.text, fontSize: 15, lineHeight: 21, fontFamily: m.role === "chief" ? F.typed : undefined }}>{m.text}</Text>
               </View>
             </View>
           ))}
@@ -91,20 +96,20 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           <Input value={text} onChangeText={setText} placeholder="Message your chief" style={{ flex: 1, marginBottom: 0 }} onSubmitEditing={send} />
           <Button title="Send" onPress={send} loading={busy} style={{ marginTop: 0 }} />
         </View>
-      </Dossier>
+      </Surface>
 
       <BackChannel />
 
-      <Dossier tab={color}>
+      <Surface>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
           <Gauge label="Chief's trust" value={briefing.standing.trust / 100} text={`${briefing.standing.trust}%`} color={color} />
           <Gauge label="Next rank" value={briefing.standing.xp / Math.max(1, briefing.standing.nextRankAt)} text={briefing.standing.rank.replace("_", " ")} color={C.cyan} sub={`${briefing.standing.xp} / ${briefing.standing.nextRankAt} XP`} />
         </View>
-        <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.line, paddingTop: 8 }}>
-          <Text style={s.eyebrow}>Standing orders</Text>
+        <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.hair, paddingTop: 8 }}>
+          <Label>Standing orders</Label>
           <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 13.5, lineHeight: 19 }}>{briefing.headline}</Text>
         </View>
-      </Dossier>
+      </Surface>
       <View style={s.drawer}>
         <Button title="Open the mission board" onPress={onDuty} style={{ paddingVertical: 16, marginTop: 0 }} />
       </View>
@@ -133,16 +138,16 @@ function BackChannel() {
     catch (e: any) { setMsg(e.message); } finally { setBusy(false); }
   };
   return (
-    <Dossier tab={C.amber} style={{ marginTop: 8 }}>
-      <Text style={{ color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 }}>BACK CHANNEL · UNSIGNED</Text>
+    <Surface accent={C.amber}>
+      <Label color={C.amber}>Back channel, unsigned</Label>
       <Body dim>Sell a live route to a rival chief for 40 credits, unsigned. Their operative turns up at that target.</Body>
       {!opts ? <Spinner /> : (
         <>
-          <Text style={[s.eyebrow, { marginTop: 6 }]}>To · {opts.left} tip{opts.left === 1 ? "" : "s"} left today</Text>
+          <Label style={{ marginTop: 6 }}>To which chief · {opts.left} tip{opts.left === 1 ? "" : "s"} left today</Label>
           <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
             {opts.rivals.map((r) => <Button key={r.id} title={`${r.chief}${r.burned ? " · burned" : ""}`} kind={to === r.id ? "primary" : "ghost"} disabled={r.burned} onPress={() => setTo(r.id)} style={{ paddingVertical: 8, paddingHorizontal: 12, marginTop: 4 }} />)}
           </View>
-          <Text style={[s.eyebrow, { marginTop: 8 }]}>Whose route</Text>
+          <Label style={{ marginTop: 8 }}>Whose route</Label>
           {opts.routes.length === 0 ? <Body dim>Nobody in your agency is walking a route right now, you included. Accept an order on the Missions tab, then come back and sell it.</Body> : opts.routes.map((c) => (
             <Button key={c.missionId} title={c.label} kind={ref === c.missionId ? "primary" : "ghost"} onPress={() => setRef(c.missionId)} style={{ paddingVertical: 8, marginTop: 4 }} />
           ))}
@@ -151,7 +156,7 @@ function BackChannel() {
           {opts.recent.length > 0 && <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5, marginTop: 6 }}>{opts.recent.map((r) => `${r.kind === "sell" ? "SOLD" : "FALSE LEAD"} · ${r.about} → ${r.to} · ${r.outcome.toUpperCase()}`).join("\n")}</Text>}
         </>
       )}
-    </Dossier>
+    </Surface>
   );
 }
 
@@ -173,9 +178,9 @@ function Gauge({ label, value, text, color, sub }: { label: string; value: numbe
 }
 
 const s = StyleSheet.create({
-  eyebrow: { color: C.dim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" },
+  eyebrow: { color: C.dim, fontSize: 11.5, letterSpacing: 0.2, marginBottom: 3 },
   big: { color: C.text, fontFamily: F.displayMed, fontSize: 24, lineHeight: 26, letterSpacing: 1, textTransform: "uppercase" },
   sub: { color: C.dim, fontSize: 13 },
-  drawer: { borderWidth: 1, borderColor: C.cyan + "66", backgroundColor: C.glass, padding: 10, marginTop: 4 },
+  drawer: { marginTop: 4 },
   section: { color: C.cyan, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 6, marginTop: 4, textAlign: "center" },
 });

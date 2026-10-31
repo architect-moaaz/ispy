@@ -5,7 +5,7 @@ import type { BoardResponse, BountyCard as BountyT, CrisisView, Dispatch, Ladder
 import { api } from "../api";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
-import { Body, Button, Display, Dossier as Panel, Screen, Spinner, fmtCountdown } from "../ui";
+import { Body, Button, Display, Panel, Screen, Spinner, fmtCountdown } from "../ui";
 import { ART } from "../art";
 
 /** Bounty board, the live global event, and the operative's inventory. */
@@ -38,7 +38,7 @@ export function Board() {
   return (
     <Screen>
       <Display>The board</Display>
-      <Text style={s.sub2}>The war this week · contracts · the ladder</Text>
+      <Text style={s.sub2}>The war this week, the ladder, and contracts worth taking.</Text>
 
       {ev && (
         <View style={[s.banner, ev.state === "resolved" && { borderColor: C.dim }]}>
@@ -180,23 +180,23 @@ function BountyCard({ b, now, busy, onClaim }: { b: BountyT; now: number; busy: 
 }
 
 const s = StyleSheet.create({
-  control: { borderWidth: 1, borderColor: C.line, backgroundColor: C.ink2, padding: 12, marginBottom: 14 },
-  crisis: { borderWidth: 1, borderColor: C.amber, backgroundColor: C.ink2, padding: 14, marginBottom: 14 },
+  control: { borderRadius: 14, backgroundColor: C.ink2, padding: 14, marginBottom: 12 },
+  crisis: { borderRadius: 14, borderLeftWidth: 3, borderColor: C.amber, backgroundColor: C.ink2, padding: 14, marginBottom: 12 },
   stance: { color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, marginTop: 8 },
   site: { color: C.text, fontFamily: F.typed, fontSize: 11.5 },
-  sub2: { color: C.dim, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1.4, textTransform: "uppercase", textAlign: "center", marginBottom: 12 },
-  banner: { minHeight: 250, borderWidth: 1, borderColor: C.cyan + "88", overflow: "hidden", marginBottom: 14, justifyContent: "flex-end" },
+  sub2: { color: C.dim, fontSize: 13, marginTop: -4, marginBottom: 12 },
+  banner: { minHeight: 250, borderRadius: 16, overflow: "hidden", marginBottom: 12, justifyContent: "flex-end", backgroundColor: C.ink2 },
   eyebrow: { color: C.cyanDim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" },
   eventTitle: { color: C.cyan, fontFamily: F.display, fontSize: 34, lineHeight: 36, letterSpacing: 2, textShadowColor: C.cyan, textShadowRadius: 16, textShadowOffset: { width: 0, height: 0 } },
   countdown: { color: C.text, fontFamily: F.typed, fontSize: 13 },
   sub: { color: C.dim, fontSize: 13, lineHeight: 18 },
   factionLabel: { fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1.2, width: 72 },
-  progressBg: { flex: 1, height: 8, backgroundColor: C.ink, borderWidth: 1, borderColor: C.line, overflow: "hidden" },
+  progressBg: { flex: 1, height: 8, borderRadius: 4, backgroundColor: C.ink, overflow: "hidden" },
   pct: { color: C.text, fontFamily: F.typed, fontSize: 12, width: 36, textAlign: "right" },
   section: { color: C.cyan, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 8, marginTop: 4 },
   title: { color: C.text, fontFamily: F.displayMed, fontSize: 20, lineHeight: 22, letterSpacing: 1, textTransform: "uppercase" },
-  status: { fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.4, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
-  tag: { color: C.cyan, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1.2, borderWidth: 1, borderColor: C.cyanDim, paddingHorizontal: 6, paddingVertical: 2 },
+  status: { fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1, borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  tag: { color: C.cyan, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 0.6, backgroundColor: C.cyanGlow, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   item: { color: C.text, fontFamily: F.displayMed, fontSize: 16, letterSpacing: 0.8 },
   qty: { color: C.cyan, fontFamily: F.display, fontSize: 22 },
 });

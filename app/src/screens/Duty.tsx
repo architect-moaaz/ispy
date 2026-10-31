@@ -4,7 +4,7 @@ import type { Mode, Presence } from "@ispy/shared";
 import { api } from "../api";
 import { currentFix } from "../location";
 import { C, F } from "../theme";
-import { Body, Button, Display, Dossier, Kicker, Screen } from "../ui";
+import { Body, Button, Display, Kicker, Screen, Surface } from "../ui";
 import { DevPanel } from "./DevPanel";
 import { Desk } from "./Desk";
 import { SpyVision } from "./SpyVision";
@@ -52,18 +52,18 @@ export function Duty({ presence, devSim, onPresence, onHQ, onBoard, codename, fa
   // A recruit's first assignment is the desk: a real cipher, a first win and a rank before any location permission.
   const rookie = xp <= 0;
   const field = (
-    <Dossier tab={rookie ? C.cyanDim : C.cyan}>
+    <Surface raised={!rookie}>
       <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1.5 }}>FIELD OPS</Text>
       <Body dim>{rookie ? "After your first desk win. Your first field order will be the nearest site, a short walk." : "Reads your location once to find your sector, then only while a mission is live. Daylight, public places."}</Body>
       <Button title="Deploy to the field" kind={rookie ? "ghost" : undefined} onPress={() => checkIn("field")} loading={busy} />
-    </Dossier>
+    </Surface>
   );
   const desk = (
-    <Dossier tab={rookie ? C.cyan : C.cyanDim}>
+    <Surface raised={rookie}>
       <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1.5 }}>{rookie ? "FIRST ASSIGNMENT · INTEL DESK" : "INTEL DESK"}</Text>
       <Body dim>{rookie ? "Your chief wants to see how you think before you walk. Break one intercept. No location needed." : "No location. Ciphers and analysis that a field operative is waiting on right now."}</Body>
       <Button title={rookie ? "Take the first intercept" : "Deploy to the intel desk"} kind={rookie ? undefined : "ghost"} onPress={() => checkIn("desk")} loading={busy} />
-    </Dossier>
+    </Surface>
   );
   if (busy && xp > 0 && !err) return <Screen><Display>Deploying</Display><Kicker>Finding your sector</Kicker><Body dim>Reading your position once. The map opens with everything near you: caches to spin, signals to capture, and your chief's orders as pins.</Body></Screen>;
   return (

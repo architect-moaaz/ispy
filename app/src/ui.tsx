@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import {
-  ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle,
+  ActivityIndicator, Animated, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { C, F } from "./theme";
 
 export function Screen({ children, scroll = true, pad = true, scrollEnabled = true }: { children: React.ReactNode; scroll?: boolean; pad?: boolean; scrollEnabled?: boolean }) {
@@ -13,15 +14,38 @@ export function Screen({ children, scroll = true, pad = true, scrollEnabled = tr
   );
 }
 
-/** Screen title in the HUD voice: condensed caps, cyan, bracketed. */
-export function Display({ children, size = 34, color = C.cyan, style }: { children: React.ReactNode; size?: number; color?: string; style?: any }) {
-  return <Text style={[s.display, { fontSize: size, lineHeight: size * 1.05, color }, style]}>{children}</Text>;
+/** Screen title: condensed, mixed case, left-aligned. One per screen. */
+export function Display({ children, size = 30, color = C.text, style }: { children: React.ReactNode; size?: number; color?: string; style?: any }) {
+  return <Text style={[s.display, { fontSize: size, lineHeight: size * 1.08, color }, style]}>{children}</Text>;
+}
+/** A small sentence-case label above a value or a list. */
+export function Label({ children, color = C.dim, style }: { children: React.ReactNode; color?: string; style?: any }) {
+  return <Text style={[s.label, { color }, style]}>{children}</Text>;
+}
+/** A flat surface resting on the night. An accent colour marks the one thing on screen that is live or unsigned. */
+export function Surface({ children, accent, raised, style, pad = 14 }: { children: React.ReactNode; accent?: string; raised?: boolean; style?: ViewStyle; pad?: number }) {
+  return (
+    <View style={[s.surface, raised && { backgroundColor: C.slate2 }, style]}>
+      {accent && <View style={[s.accent, { backgroundColor: accent }]} />}
+      <View style={{ flex: 1, padding: pad, paddingLeft: accent ? pad + 6 : pad }}>{children}</View>
+    </View>
+  );
+}
+/** A full-bleed image that fades into the surface below, with content set on the fade. */
+export function Hero({ source, height = 280, children, tint = C.ink, style }: { source: any; height?: number; children?: React.ReactNode; tint?: string; style?: ViewStyle }) {
+  return (
+    <View style={[{ height, borderRadius: 16, overflow: "hidden", backgroundColor: C.ink2, marginBottom: 12 }, style]}>
+      <Image source={source} style={{ position: "absolute", left: 0, right: 0, top: 0, width: "100%", height: height * 1.15 }} resizeMode="cover" />
+      <LinearGradient colors={["rgba(7,11,16,0)", "rgba(7,11,16,0.35)", tint]} locations={[0, 0.45, 1]} style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: height * 0.8 }} />
+      <View style={{ flex: 1, justifyContent: "flex-end", padding: 16 }}>{children}</View>
+    </View>
+  );
 }
 export function Title({ children, color = C.text, style }: { children: React.ReactNode; color?: string; style?: any }) {
   return <Text style={[s.title, { color }, style]}>{children}</Text>;
 }
-/** Small instrument label. */
-export function Kicker({ children, color = C.cyanDim }: { children: React.ReactNode; color?: string }) {
+/** A short line above a title: who this is, where we are. */
+export function Kicker({ children, color = C.dim }: { children: React.ReactNode; color?: string }) {
   return <Text style={[s.kicker, { color }]}>{children}</Text>;
 }
 export function Body({ children, dim, onPaper, style }: { children: React.ReactNode; dim?: boolean; onPaper?: boolean; style?: any }) {
@@ -42,7 +66,11 @@ export function Dossier({ children, tab = C.cyan, style }: { children: React.Rea
     </View>
   );
 }
-export const Panel = Dossier;
+/** File screens use flat surfaces; a cyan "tab" is the old default and means no accent. */
+export function Panel({ children, tab, style }: { children: React.ReactNode; tab?: string; style?: ViewStyle }) {
+  const accent = tab && tab !== C.cyan && tab !== C.cyanDim ? tab : undefined;
+  return <Surface accent={accent} style={style}>{children}</Surface>;
+}
 
 function Corner({ color, pos }: { color: string; pos: "tl" | "tr" | "bl" | "br" }) {
   const v: ViewStyle = { position: "absolute", width: 10, height: 10, borderColor: color };
@@ -63,7 +91,7 @@ export function Button({
   const primary = kind === "primary" || kind === "ink";
   const bg = primary ? C.cyan : kind === "danger" ? C.red : "transparent";
   const fg = primary ? C.ink : kind === "danger" ? C.text : C.cyan;
-  const border = kind === "danger" ? C.red : C.cyan;
+  const border = kind === "danger" ? C.red : primary ? C.cyan : C.cyan + "99";
   return (
     <Pressable
       onPress={onPress}
@@ -141,24 +169,27 @@ export function fmtCountdown(iso: string, now: number) {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.ink },
   content: { padding: 14, paddingBottom: 40, maxWidth: 560, width: "100%", alignSelf: "center" },
-  display: { fontFamily: F.displayMed, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 2, textAlign: "center" },
-  title: { fontFamily: F.displayMed, fontSize: 22, lineHeight: 24, letterSpacing: 1, textTransform: "uppercase", marginBottom: 4 },
-  kicker: { fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6, textTransform: "uppercase", marginBottom: 6 },
-  body: { fontSize: 15, lineHeight: 21, marginBottom: 8 },
+  display: { fontFamily: F.displayMed, letterSpacing: 0.2, marginBottom: 6, textAlign: "left" },
+  title: { fontFamily: F.displayMed, fontSize: 21, lineHeight: 24, letterSpacing: 0.2, marginBottom: 4 },
+  kicker: { fontSize: 13, letterSpacing: 0.2, marginBottom: 2 },
+  label: { fontSize: 12.5, letterSpacing: 0.1, marginBottom: 4 },
+  surface: { backgroundColor: C.ink2, borderRadius: 14, marginBottom: 12, flexDirection: "row", overflow: "hidden" },
+  accent: { width: 3, borderRadius: 2, marginVertical: 12, marginLeft: 12 },
+  body: { fontSize: 15, lineHeight: 22, marginBottom: 8 },
   typed: { fontSize: 13.5, lineHeight: 19, marginBottom: 6, color: C.text },
   panel: { backgroundColor: C.glass, borderWidth: 1, marginBottom: 12, flexDirection: "row" },
   edge: { width: 4 },
   panelBody: { flex: 1, padding: 12 },
-  btn: { paddingVertical: 13, paddingHorizontal: 16, borderWidth: 1.5, alignItems: "center", marginTop: 8 },
-  btnGlow: { shadowColor: C.cyan, shadowOpacity: 0.55, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } },
-  btnText: { fontFamily: F.displayMed, fontSize: 19, letterSpacing: 2, textTransform: "uppercase" },
-  input: { backgroundColor: C.paper2, color: C.text, borderColor: C.line, borderWidth: 1, padding: 12, fontSize: 16, marginBottom: 8, fontFamily: F.typed },
-  choice: { flexDirection: "row", alignItems: "center", gap: 10, padding: 11, borderWidth: 1, marginBottom: 6 },
+  btn: { paddingVertical: 13, paddingHorizontal: 16, borderWidth: 1.5, borderRadius: 10, alignItems: "center", marginTop: 8 },
+  btnGlow: { shadowColor: C.cyan, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } },
+  btnText: { fontFamily: F.displayMed, fontSize: 18, letterSpacing: 1, textTransform: "uppercase" },
+  input: { backgroundColor: C.slate2, color: C.text, borderColor: C.hair, borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, marginBottom: 8, fontFamily: F.typed },
+  choice: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderWidth: 1, borderRadius: 12, marginBottom: 6 },
   choiceDot: { width: 12, height: 12, borderWidth: 1.5 },
   stamp: { alignSelf: "flex-start", borderWidth: 3, paddingHorizontal: 10, paddingVertical: 2 },
   stampText: { fontFamily: F.display, letterSpacing: 2, textTransform: "uppercase" },
   banner: { padding: 10, alignItems: "center" },
   bannerText: { color: C.ink, fontFamily: F.displayMed, fontSize: 15, letterSpacing: 1.5, textTransform: "uppercase" },
-  meterBg: { height: 6, backgroundColor: C.ink, overflow: "hidden", marginBottom: 10, borderWidth: 1, borderColor: C.line },
+  meterBg: { height: 6, borderRadius: 3, backgroundColor: C.ink, overflow: "hidden", marginBottom: 10 },
   meterFill: { height: 6 },
 });
