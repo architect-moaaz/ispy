@@ -15,6 +15,17 @@ export const ART = {
     ANALYSIS: require("../assets/art/mission-intercept.jpg"),
     CIPHER: require("../assets/art/mission-intercept.jpg"),
   } as Record<string, number>,
+  // Tool icons for the dial and the toolkit; black backgrounds so they sit on the HUD as objects.
+  tool: {
+    cipher_kit: require("../assets/art/tool-cipher_kit.jpg"),
+    fragment: require("../assets/art/tool-fragment.jpg"),
+    key: require("../assets/art/tool-key.jpg"),
+    lens: require("../assets/art/tool-lens.jpg"),
+    jammer: require("../assets/art/tool-jammer.jpg"),
+    tracker: require("../assets/art/tool-tracker.jpg"),
+    decoy: require("../assets/art/tool-decoy.jpg"),
+    burner: require("../assets/art/tool-burner.jpg"),
+  } as Record<string, number>,
   emblem: {
     raven: require("../assets/art/emblem-raven.jpg"),
     phantom: require("../assets/art/emblem-phantom.jpg"),

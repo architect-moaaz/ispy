@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Dimensions, Easing, Image, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-native-svg";
-import type { CaptureResult, Contact, MapResponse, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse, SpinResult } from "@ispy/shared";
+import type { CaptureResult, Contact, MapResponse, ToolkitResponse, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse, SpinResult } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix } from "../location";
@@ -14,6 +14,7 @@ import { ART } from "../art";
 import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
 import { CaptureRitual, FieldMarkers, NearbyTracker, SelectionCard, type Selection } from "./FieldLayer";
+import { ToolDial, type DialTool } from "./ToolDial";
 
 const TEMPLATE_NAME: Record<string, string> = { RECON: "RECON", DEAD_DROP: "VIRTUAL DEAD DROP", EXTRACTION: "EXTRACTION", ANALYSIS: "ANALYSIS", CIPHER: "CIPHER" };
 
@@ -43,7 +44,12 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [capturing, setCapturing] = useState(false);
   const [captureResult, setCaptureResult] = useState<CaptureResult | null>(null);
   const [toolMsg, setToolMsg] = useState<string | null>(null);
-  const useTool = async (tool: string, body: any = {}) => { try { const r = await api.useTool(tool, { ...body, sim: fix?.sim }); setToolMsg(r.ok ? `${tool.toUpperCase()} · ${r.hint ?? r.detail ?? "done"}` : `${tool.toUpperCase()} · ${r.reason ?? "no"}`); await refresh(); } catch (e: any) { setToolMsg(e.message); } };
+  const [kit, setKit] = useState<ToolkitResponse | null>(null);
+  const [toolBusy, setToolBusy] = useState(false);
+  const loadKit = () => api.tools().then(setKit).catch(() => {});
+  useEffect(() => { loadKit(); }, []);
+  useEffect(() => onLive((ty) => { if (ty === "reward" || ty === "cache.spun" || ty === "tool.crafted") loadKit(); }), []);
+  const useTool = async (tool: string, body: any = {}) => { setToolBusy(true); try { const r = await api.useTool(tool, { ...body, sim: fix?.sim }); setToolMsg(r.ok ? `${tool.toUpperCase()} · ${r.hint ?? r.detail ?? "done"}` : `${tool.toUpperCase()} · ${r.reason ?? "no"}`); await Promise.all([refresh(), loadKit()]); } catch (e: any) { setToolMsg(e.message); } finally { setToolBusy(false); } };
   const [duel, setDuel] = useState<{ outcome: "won" | "lost"; rival: string; rivalFaction: string; target: string } | null>(null);
   useEffect(() => onLive((ty, data: any) => {
     if (ty === "faceoff.started") { setNotice(null); refresh(); }
@@ -246,14 +252,26 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         </View>
       </View>
       {mission && onSite && nav?.unlocked && !completed && <Button title="AR scan · camera view" kind="ghost" onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
-      <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-        <Button title="Jammer" kind="ghost" onPress={() => useTool("jammer")} style={s.toolBtn} />
-        <Button title="Tracker" kind="ghost" onPress={() => useTool("tracker")} style={s.toolBtn} />
-        {!mission && <Button title="Burner" kind="ghost" onPress={() => useTool("burner")} style={s.toolBtn} />}
-        {mission && nav && mission.templateId === "RECON" && <Button title="Lens" kind="ghost" onPress={() => useTool("lens", { missionId: mission.id })} style={s.toolBtn} />}
-        {completed && nav && fix && <Button title="Plant decoy" kind="ghost" onPress={() => useTool("decoy", { targetId: nav.targetId, lat: fix.lat, lng: fix.lng })} style={s.toolBtn} />}
-      </View>
-      {toolMsg && <Text style={[s.mono, { color: C.cyan, marginTop: 6 }]}>{toolMsg}</Text>}
+      {kit && (() => {
+        // What each tool can do from exactly here: the dial greys the rest and says why.
+        const jam = kit.effects.find((e) => e.kind === "jammer"), trk = kit.effects.find((e) => e.kind === "tracker");
+        const dial: DialTool[] = kit.tools.map((t) => {
+          const has = t.permanent || t.qty > 0;
+          switch (t.id) {
+            case "cipher_kit": return { ...t, enabled: false, why: "Open it on the intel desk while you work an intercept." };
+            case "fragment": return { ...t, enabled: false, why: `${t.qty} fragments. Craft on Me: key 3, tracker 2, burner 1.` };
+            case "key": return { ...t, enabled: false, why: has ? "Use it on the intel desk with an intercept open." : "Craft one on Me from three fragments." };
+            case "lens": return { ...t, enabled: has && !!mission && mission.templateId === "RECON" && !completed, why: has ? "Needs a recon mission in hand." : "Caches sometimes hold one." };
+            case "jammer": return { ...t, enabled: has && !jam, why: jam ? `Jamming until ${new Date(jam.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` : "Caches sometimes hold one." };
+            case "tracker": return { ...t, enabled: has && !trk, why: trk ? `Tracking until ${new Date(trk.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` : "Craft one on Me from two fragments." };
+            case "decoy": return { ...t, enabled: has && !!completed && !!nav && !!fix, why: has ? "Plant it on a site right after you verify." : "Caches sometimes hold one." };
+            case "burner": return { ...t, enabled: has && !mission, why: has ? "Only while no mission is live." : "Craft one on Me from a fragment." };
+            default: return { ...t, enabled: false };
+          }
+        });
+        return <ToolDial tools={dial} busy={toolBusy} hint={toolMsg}
+          onUse={(t) => { if (t.id === "lens" && mission) useTool("lens", { missionId: mission.id }); else if (t.id === "decoy" && nav && fix) useTool("decoy", { targetId: nav.targetId, lat: fix.lat, lng: fix.lng }); else useTool(t.id); }} />;
+      })()}
       <Text onPress={onOffDuty} style={[s.mono, { textAlign: "right", marginTop: 8, color: C.cyanDim, letterSpacing: 1.4 }]}>STAND DOWN</Text>
 
       {completed && (

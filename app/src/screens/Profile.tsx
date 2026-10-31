@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import type { Faction, Player, SkillKey, TitleEntry, ToolkitResponse } from "@ispy/shared";
 import { api, setToken } from "../api";
+import { ART } from "../art";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Kicker, Meter, Panel, Screen, Typed } from "../ui";
 
@@ -46,11 +47,15 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
       </Panel>
       {kit && (
         <Panel>
-          <Kicker>Toolkit · {kit.fragments} cipher fragments</Kicker>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <Image source={ART.tool.fragment} style={{ width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: C.cyan }} />
+            <Kicker>Toolkit · {kit.fragments} cipher fragments</Kicker>
+          </View>
           <Body dim>Human judgement decides when a tool is worth spending. Caches give fragments, lenses, jammers and decoys; fragments craft the rest.</Body>
           {kit.effects.length > 0 && <Text style={{ color: C.ok, fontFamily: F.typed, fontSize: 11.5, marginBottom: 6 }}>ACTIVE · {kit.effects.map((e) => `${e.kind.toUpperCase()} until ${new Date(e.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`).join(" · ")}</Text>}
           {kit.tools.filter((t) => t.id !== "fragment").map((t) => (
             <View key={t.id} style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 7, borderTopWidth: 1, borderTopColor: C.line }}>
+              <Image source={ART.tool[t.id]} style={{ width: 52, height: 52, borderRadius: 26, borderWidth: 1, borderColor: t.qty > 0 ? C.cyan : C.line, opacity: t.qty > 0 ? 1 : 0.5 }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: t.qty > 0 ? C.text : C.dim, fontFamily: F.displayMed, fontSize: 15, letterSpacing: 1.2 }}>{t.name.toUpperCase()}{t.permanent ? "" : ` · ×${t.qty}`}</Text>
                 <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5 }}>{t.blurb}</Text>

@@ -248,3 +248,10 @@ Operatives own tools and decide when to spend them. `GET /v1/tools` (toolkit, ac
 
 Shown on Me (toolkit, crafting, active effects), on the desk (kit, key) and under the map (jammer,
 tracker, burner, lens, plant decoy).
+
+### Tool graphics and the dial
+Eight painted icons (`assets/art/tool-*.jpg`, registered as `ART.tool`). On the map the toolkit is a
+half-wheel (`ToolDial`): tools sit on an arc with their counts; drag left or right or tap to rotate; the
+tool at the top is in hand with its purpose and one Use button. Tools that cannot be used from here are
+greyed with the reason (desk-only, none left, already running, needs a recon, plant after a verify).
+Me shows the same icons in the toolkit list with crafting.
