@@ -22,6 +22,7 @@ type Tab = "hq" | "duty" | "dossier" | "board" | "profile" | "holo";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Updates from "expo-updates";
 
 function Shell() {
   const insets = useSafeAreaInsets();
@@ -29,6 +30,19 @@ function Shell() {
   const [booted, setBooted] = useState(false);
   const [player, setPlayer] = useState<Player | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Apply a published update as soon as it is downloaded, instead of on the launch after.
+  useEffect(() => {
+    if (__DEV__ || !Updates.isEnabled) return;
+    (async () => {
+      try {
+        const r = await Updates.checkForUpdateAsync();
+        if (!r.isAvailable) return;
+        setToast("UPDATING THE BUREAU…");
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+      } catch { setToast(null); }
+    })();
+  }, []);
   const [faction, setFaction] = useState<Faction | null>(null);
   const [presence, setPresence] = useState<Presence | null>(null);
   const [world, setWorld] = useState<World | null>(null);
