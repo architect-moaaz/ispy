@@ -11,6 +11,7 @@ import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
 import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
+import * as field from "./field.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -186,6 +187,36 @@ const chatHistory = (playerId: string): ChatMessage[] =>
   all<ChatMessage>("SELECT id, role, text, at FROM chat WHERE player_id=? ORDER BY at DESC LIMIT 40", playerId).reverse();
 
 app.get("/v1/world/contacts", async (req) => ({ contacts: contactsFor(need(req)) }));
+
+// ---- ambient field layer ----
+app.get("/v1/map", async (req) => {
+  const p = need(req);
+  const q = z.object({ lat: z.coerce.number().min(-90).max(90), lng: z.coerce.number().min(-180).max(180) }).parse(req.query);
+  const pres = get<{ area_id: string | null }>("SELECT area_id FROM presence WHERE player_id=? AND expires_at>?", p.id, now());
+  const areaId = pres?.area_id ?? get<{ id: string }>("SELECT id FROM areas ORDER BY ((lat-?)*(lat-?)+(lng-?)*(lng-?)) LIMIT 1", q.lat, q.lat, q.lng, q.lng)?.id;
+  if (!areaId) return { caches: [], signals: [], stronghold: null, pins: [] };
+  const m = field.mapAround(p.id, p.factionId, areaId, q.lat, q.lng);
+  // Offers as pins: the chief's orders drawn where they are.
+  const pins = offersFor(p).map((o) => {
+    const t = get<{ lat: number; lng: number }>("SELECT t.lat, t.lng FROM missions m JOIN targets t ON t.id=m.target_id WHERE m.id=?", o.mission.id);
+    return t ? { offerId: o.offerId, missionId: o.mission.id, lat: t.lat, lng: t.lng, title: o.mission.title, templateId: o.mission.templateId, targetName: o.mission.targetName ?? "", walkM: o.mission.walkM ?? 0, rewardXp: o.mission.rewardXp, acceptBy: o.acceptBy, chain: o.mission.chain ?? null, crisis: o.mission.crisis ?? null } : null;
+  }).filter((x): x is NonNullable<typeof x> => !!x);
+  return { ...m, pins };
+});
+app.post<{ Params: { id: string } }>("/v1/caches/:id/spin", async (req) => {
+  const p = need(req);
+  const b = z.object({ lat: z.number(), lng: z.number(), sim: z.boolean().optional() }).parse(req.body);
+  if (b.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
+  return field.spinCache(p.id, req.params.id, b.lat, b.lng);
+});
+app.post<{ Params: { id: string } }>("/v1/signals/:id/capture", async (req) => {
+  const p = need(req);
+  const b = z.object({ lat: z.number(), lng: z.number(), hold: z.number().min(0).max(1).default(0.5), flick: z.boolean().default(true), sim: z.boolean().optional() }).parse(req.body);
+  if (b.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
+  return field.captureSignal(p.id, p.factionId, req.params.id, b.lat, b.lng, b.hold, b.flick);
+});
+app.get("/v1/collection", async (req) => ({ collection: field.collectionOf(need(req).id) }));
+app.post("/v1/admin/signals/spawn", async () => ({ spawned: field.spawnAround() }));
 // ---- investigations ----
 app.get("/v1/investigations", async (req) => ({ cases: investigations.listCases(need(req).id) }));
 app.get<{ Params: { id: string } }>("/v1/investigations/:id", async (req) => investigations.caseDetail(need(req).id, req.params.id));
@@ -284,6 +315,7 @@ app.get("/v1/admin/overview", async () => {
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
     sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
+    field: field.fieldOverview(),
     funnel: {
       registered: get<{ n: number }>("SELECT COUNT(*) n FROM players")!.n,
       assessed: get<{ n: number }>("SELECT COUNT(*) n FROM assessments")!.n,

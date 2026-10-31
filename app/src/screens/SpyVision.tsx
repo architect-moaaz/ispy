@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Dimensions, Easing, Image, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-native-svg";
-import type { Contact, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse } from "@ispy/shared";
+import type { CaptureResult, Contact, MapResponse, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse, SpinResult } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix } from "../location";
@@ -13,6 +13,7 @@ import { walkingRoute, openTurnByTurn, fmtWalk, type WalkingRoute } from "../rou
 import { ART } from "../art";
 import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
+import { CaptureRitual, FieldMarkers, NearbyTracker, SelectionCard, type Selection } from "./FieldLayer";
 
 const TEMPLATE_NAME: Record<string, string> = { RECON: "RECON", DEAD_DROP: "VIRTUAL DEAD DROP", EXTRACTION: "EXTRACTION", ANALYSIS: "ANALYSIS", CIPHER: "CIPHER" };
 
@@ -34,6 +35,25 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [targets, setTargets] = useState<{ id: string; name: string; lat: number; lng: number }[]>([]);
   const [sector, setSector] = useState<{ lat: number; lng: number; radiusM: number } | null>(null);
   const [route, setRoute] = useState<WalkingRoute | null>(null);
+  // Ambient layer: what is around you on the map, and what you have tapped.
+  const [field, setField] = useState<MapResponse | null>(null);
+  const [sel, setSel] = useState<Selection | null>(null);
+  const [spinResult, setSpinResult] = useState<SpinResult | null>(null);
+  const [spinning, setSpinning] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [captureResult, setCaptureResult] = useState<CaptureResult | null>(null);
+  const fixRef = useRef<Fix | null>(null);
+  const projectRef = useRef<Projector | null>(null);
+  const loadField = async (f: Fix | null) => {
+    if (!f) return;
+    try { const m = await api.map(f.lat, f.lng); setField(m); setSel((cur) => {
+      if (!cur) return cur;
+      if (cur.type === "signal") { const it = m.signals.find((x) => x.id === cur.item.id); return it ? { type: "signal", item: it } : null; }
+      if (cur.type === "cache") { const it = m.caches.find((x) => x.id === cur.item.id); return it ? { type: "cache", item: it } : cur; }
+      if (cur.type === "pin") { const it = m.pins.find((x) => x.offerId === cur.item.offerId); return it ? { type: "pin", item: it } : null; }
+      return m.stronghold ? { type: "stronghold", item: m.stronghold } : null;
+    }); } catch { /* keep the last map */ }
+  };
 
   const refresh = async () => {
     try {
@@ -45,6 +65,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         if (a.mission) setMission(a.mission);
       }
       setContacts((await api.contacts()).contacts);
+      await loadField(fixRef.current);
       setErr(null);
     } catch (e: any) { if (e.status !== 401) setErr(e.message); }
   };
@@ -66,7 +87,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
     return () => { clearInterval(p); clearInterval(hb); off(); };
   }, [mission?.id]);
 
-  const target = nav ? { lat: nav.lat, lng: nav.lng } : null;
+  useEffect(() => { fixRef.current = fix; }, [fix]);
+  // Refresh the ambient layer as you move (every ~25 m) and on live spawns.
+  useEffect(() => { void loadField(fix); }, [fix ? Math.round(fix.lat * 4000) : 0, fix ? Math.round(fix.lng * 4000) : 0]);
+  useEffect(() => onLive((ty) => { if (ty === "signals.spawned" || ty === "cache.spun" || ty === "signal.captured") void loadField(fixRef.current); }), []);
+  // What you are walking to: the mission's site, or whatever you tapped on the map.
+  const selPoint = !nav && sel && sel.type !== "stronghold" ? { lat: sel.item.lat, lng: sel.item.lng, name: sel.type === "pin" ? sel.item.targetName : sel.item.name } : null;
+  const target = nav ? { lat: nav.lat, lng: nav.lng } : selPoint ? { lat: selPoint.lat, lng: selPoint.lng } : null;
+  const selDist = fix && selPoint ? distanceM(fix, selPoint) : null;
   const dist = fix && target ? distanceM(fix, target) : null;
   // With a live target, frame both ends of the walk; otherwise centre on the agent.
   const autoCenter = fix && target ? { lat: (fix.lat + target.lat) / 2, lng: (fix.lng + target.lng) / 2 } : fix ?? nav ?? { lat: 12.9763, lng: 77.5929 };
@@ -165,11 +193,15 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       <GestureDetector gesture={gestures}>
       <View style={{ width, height }} collapsable={false}>
         <SatMap center={center} zoom={zoom} width={width} height={height}>
-          {(project) => (
-            <MapOverlay project={project} width={width} height={height} fix={fix} offers={offers} target={target ? { ...target, name: nav!.targetName, locked: !nav!.unlocked } : null}
+          {(project) => (projectRef.current = project) && (
+            <MapOverlay project={project} width={width} height={height} fix={fix} offers={field ? [] : offers} target={target ? { ...target, name: nav ? nav.targetName : selPoint!.name, locked: nav ? !nav.unlocked : false } : null}
               contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} />
           )}
         </SatMap>
+        {field && !mission && (
+          <FieldMarkers project={(p) => projectRef.current ? projectRef.current(p) : { x: -999, y: -999 }} width={width} height={height}
+            caches={field.caches} signals={field.signals} pins={field.pins} stronghold={field.stronghold} selected={sel} onSelect={setSel} factionId={factionId} />
+        )}
         <View style={s.zoomBox}>
           <Text style={s.zoomBtn} onPress={() => zoomBy(1)}>+</Text>
           <Text style={s.zoomBtn} onPress={() => zoomBy(-1)}>−</Text>
@@ -179,6 +211,18 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       </View>
       </GestureDetector>
 
+      {!mission && sel && (
+        <View style={{ marginTop: 8 }}>
+          <SelectionCard sel={sel} dist={selDist} factionId={factionId} busy={busy || spinning}
+            onSpin={async () => { if (!fix || sel.type !== "cache") return; setSpinning(true); try { const r = await api.spinCache(sel.item.id, { lat: fix.lat, lng: fix.lng, sim: fix.sim }); setSpinResult(r); await loadField(fix); } catch (e: any) { setSpinResult({ ok: false, reason: e.message }); } finally { setSpinning(false); } }}
+            onCapture={() => { setCaptureResult(null); setCapturing(true); }}
+            onAccept={async () => { if (sel.type !== "pin") return; setBusy(true); try { const r = await api.acceptMission(sel.item.offerId); setMission(r.mission); setSel(null); await refresh(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}
+            onDecline={async () => { if (sel.type !== "pin") return; try { await api.declineMission(sel.item.offerId); } catch { /* gone */ } setSel(null); await refresh(); }}
+            onNavigate={() => selPoint && openTurnByTurn({ lat: selPoint.lat, lng: selPoint.lng }, selPoint.name)}
+            onClose={() => setSel(null)} />
+        </View>
+      )}
+      {!mission && field && <NearbyTracker signals={field.signals} pins={field.pins} selected={sel} onSelect={setSel} />}
       {mission && nav && !completed && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
           <Text style={[s.mono, { color: C.cyan, flex: 1 }]}>{onSite ? "ON SITE" : route ? fmtWalk(route.distanceM, route.durationS).toUpperCase() : dist != null ? `${Math.round(dist)} M STRAIGHT LINE` : "LOCATING…"}</Text>
@@ -266,9 +310,17 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         </View>
       )}
       {err && <Body style={{ color: C.red }}>{err}</Body>}
+      {spinResult && <SpinSheetHost result={spinResult} onDone={() => setSpinResult(null)} />}
+      {capturing && sel?.type === "signal" && (
+        <CaptureRitual signal={sel.item} busy={busy} result={captureResult}
+          onAttempt={async (hold, flick) => { if (!fix) return; setBusy(true); try { const r = await api.captureSignal(sel.item.id, { lat: fix.lat, lng: fix.lng, hold, flick, sim: fix.sim }); setCaptureResult(r); if (r.result === "captured" || r.result === "fled" || r.result === "gone") await loadField(fix); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}
+          onRetry={() => setCaptureResult(null)}
+          onDone={() => { setCapturing(false); setCaptureResult(null); if (captureResult?.result === "captured") setSel(null); }} />
+      )}
     </Screen>
   );
 }
+import { SpinSheet as SpinSheetHost } from "./FieldLayer";
 
 // ---------- overlay ----------
 function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector, route }: {

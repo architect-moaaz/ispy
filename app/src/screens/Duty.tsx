@@ -20,6 +20,13 @@ export function Duty({ presence, devSim, onPresence, onHQ, onBoard, codename, fa
     const t = setInterval(() => setNow(Date.now()), 5000);
     return () => clearInterval(t);
   }, []);
+  // Map first: once past the first desk win, opening the app puts you in the field without a button.
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (autoTried.current || onDuty || xp <= 0) return;
+    autoTried.current = true;
+    void checkIn("field");
+  }, [onDuty, xp]);
 
   const checkIn = async (m: Mode) => {
     if (checking.current) return;
@@ -58,6 +65,7 @@ export function Duty({ presence, devSim, onPresence, onHQ, onBoard, codename, fa
       <Button title={rookie ? "Take the first intercept" : "Deploy to the intel desk"} kind={rookie ? undefined : "ghost"} onPress={() => checkIn("desk")} loading={busy} />
     </Dossier>
   );
+  if (busy && xp > 0 && !err) return <Screen><Display>Deploying</Display><Kicker>Finding your sector</Kicker><Body dim>Reading your position once. The map opens with everything near you: caches to spin, signals to capture, and your chief's orders as pins.</Body></Screen>;
   return (
     <Screen>
       {devSim && <DevPanel />}

@@ -6,7 +6,7 @@ import { bus, type Signal } from "./bus.ts";
  * world's public ones; never another operative's. Payloads are kept small; the app refetches what changed.
  */
 const MINE = new Set(["chief.message", "mission.offered", "mission.accepted", "mission.verified", "mission.expired", "mission.abandoned",
-  "desk_link.fulfilled", "desk_link.fallback", "reward", "rank_up", "evidence.found", "evidence.decoy_detected", "case.opened", "case.confirmed",
+  "desk_link.fulfilled", "desk_link.fallback", "reward", "rank_up", "signals.spawned", "signal.captured", "cache.spun", "evidence.found", "evidence.decoy_detected", "case.opened", "case.confirmed",
   "case.rejected", "case.exposed", "bounty.completed", "bounty.claimed", "world_event.fragment", "presence.check_in", "presence.check_out", "location.flagged"]);
 const PUBLIC = new Set(["world_event.published", "world_event.resolved", "director.dispatch", "admin.paused", "admin.resumed", "bounty.published", "contest.formed"]);
 

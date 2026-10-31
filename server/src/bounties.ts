@@ -69,7 +69,10 @@ export function board(playerId: string): BoardResponse {
   const items = parse<Record<string, number>>(p.items, {});
   const inventory: InventoryItem[] = [
     { id: "credits", name: "Intel credits", qty: p.credits, note: "Non-cash. Spend on wires, cosmetics and HQ themes." },
-    { id: "decoy", name: "Decoy artifact", qty: items.decoy ?? 0, note: "Plant one on a drop to mislead a rival. Earned from bounties." },
+    { id: "fragment", name: "Cipher fragment", qty: items.fragment ?? 0, note: "From caches. Three fragments buy a clue on any case." },
+    { id: "jammer", name: "Jammer", qty: items.jammer ?? 0, note: "Hides your blip from rivals for an hour." },
+    { id: "lens", name: "Lens", qty: items.lens ?? 0, note: "Reveals a site's inscription from a distance." },
+    { id: "decoy", name: "Decoy artifact", qty: items.decoy ?? 0, note: "Plant one on a drop to mislead a rival. Earned from bounties and caches." },
     { id: "cover", name: "Cover reset", qty: items.cover ?? 0, note: "Rotate your contact id early." },
   ];
   return { event: currentEvent(), bounties, credits: p.credits, inventory };

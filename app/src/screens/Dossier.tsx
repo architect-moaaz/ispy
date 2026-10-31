@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View, Image } from "react-native";
 import Svg, { Circle, Line, Polygon } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import type { AccuseResponse, CaseDetail, CaseSummary, FactionId } from "@ispy/shared";
 import { api } from "../api";
+import { ART } from "../art";
+import { artFor, RARITY_COLOR } from "./FieldLayer";
+import type { CollectionEntry } from "@ispy/shared";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Dossier as Panel, Screen, Spinner, Stamp } from "../ui";
@@ -14,6 +17,7 @@ const FACTION_NAME: Record<string, string> = { raven: "RAVEN", phantom: "PHANTOM
 /** Investigation dossier: evidence gathered in the field, an alignment radar, and the formal accusation. */
 export function DossierScreen() {
   const [cases, setCases] = useState<CaseSummary[] | null>(null);
+  const [collection, setCollection] = useState<CollectionEntry[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [accused, setAccused] = useState<FactionId | null>(null);
@@ -22,6 +26,7 @@ export function DossierScreen() {
   const [err, setErr] = useState<string | null>(null);
 
   const loadList = async () => {
+    api.collection().then((r) => setCollection(r.collection)).catch(() => {});
     try { const r = await api.cases(); setCases(r.cases); if (!selected && r.cases[0]) setSelected(r.cases[0].id); }
     catch (e: any) { setErr(e.message); setCases([]); }
   };
@@ -145,6 +150,17 @@ export function DossierScreen() {
         </>
       )}
       {err && <Body style={{ color: C.red, textAlign: "center" }}>{err}</Body>}
+      <Display size={26} style={{ marginTop: 18 }}>Field collection</Display>
+      <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 11.5, marginBottom: 8 }}>{collection.filter((c) => c.count > 0).length} OF {collection.length} SIGNAL TYPES CAPTURED</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        {collection.map((c) => (
+          <View key={c.kind} style={{ width: "31%", borderWidth: 1, borderColor: c.count ? (c.best ? RARITY_COLOR[c.best] : C.cyan) : C.line, backgroundColor: C.ink2, padding: 6, opacity: c.count ? 1 : 0.45 }}>
+            <Image source={artFor(c.art)} style={{ width: "100%", height: 64, marginBottom: 4 }} />
+            <Text style={{ color: c.count ? C.text : C.dim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1 }} numberOfLines={1}>{c.name.toUpperCase()}</Text>
+            <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 10 }}>{c.count ? `×${c.count} · best ${c.best}` : "not yet"}</Text>
+          </View>
+        ))}
+      </View>
     </Screen>
   );
 }

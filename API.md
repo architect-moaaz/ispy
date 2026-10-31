@@ -186,3 +186,20 @@ top of the board (`mission.offered` with `direct: true`) with the chief's reason
   log (assessment and actions), onboarding funnel (registered → assessed → recruited → first desk → first field
   → returned, active today, sector-hours today).
 - **Art.** Mission cards and the desk show painted art per template (`assets/art/mission-*.jpg`).
+
+## The ambient field layer (map-first play)
+
+The map is the home screen once a recruit has their first desk win: the app deploys you to the field on
+open. Around you, always, without orders:
+
+| Thing | What | How |
+|---|---|---|
+| Caches | real public places (the targets) | inside 40 m, `POST /v1/caches/:id/spin` once per 5 min per cache: cipher fragments, decoys, sometimes a jammer or lens, +15 XP, a few credits |
+| Signals | short-lived spawns near deployed operatives (courier, leaked page, planted bug, broker, sleeper asset, jammer) with rarity common/uncommon/rare/legendary and 6–20 min lifetimes | the Director keeps 4 within 450 m of every field operative (`field.spawnAround` each heartbeat); `POST /v1/signals/:id/capture { hold, flick }` inside 40 m rolls the catch from rarity and hold quality; three misses and it flees from you; captures go to your collection (`GET /v1/collection`) and pay XP by rarity; chiefs comment on rare ones |
+| Order pins | the chief's offers, drawn where they are | `pins` in `GET /v1/map?lat&lng`; accept or decline from the map card |
+| Stronghold | the sector's landmark | owned by the agency holding the most sites there; shown as a ring in the holder's colour |
+
+`GET /v1/map?lat=&lng=` returns caches, signals, pins and the stronghold around a point. The app shows a
+nearby tracker (nearest first, footprints for distance), a card for whatever you tap with the one action
+that fits (spin, capture, navigate, accept), a spin sheet, and the capture ritual (hold the drifting
+signal to build a lock, flick up to take it). The Missions tab keeps the mission log and the desk.

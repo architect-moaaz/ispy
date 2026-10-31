@@ -6,6 +6,7 @@ import { pick } from "./puzzles.ts";
 import { chiefSay, refreshPlans, refreshPool, startOperation, brewCrisis } from "./engine.ts";
 import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
+import * as field from "./field.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
@@ -195,6 +196,8 @@ class DirectorAgent {
             this.note("chief replanned", { chief: factionById(c.factionId).chief, idle: c.idleAgents });
           }
         }
+        // The ambient layer: keep signals alive around everyone in the field.
+        if (this.operatives.size > 0) field.spawnAround();
         // Routine upkeep the world needs regardless of who is online.
         if (t - this.lastHousekeeping > 60_000) {
           await refreshPlans(false);

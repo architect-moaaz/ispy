@@ -84,6 +84,13 @@ class ChiefAgent {
         for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", this.factionId, now())) chiefSay(o.player_id, text, "crisis outcome", true);
         return;
       }
+      case "signal.captured": {
+        if (!op) return;
+        const r = s.payload?.rarity;
+        remember(this.chief, "capture", op.codename, `${op.codename} captured a ${r} ${s.payload?.name}`);
+        if (r === "rare" || r === "legendary") await this.say(op.id, op.codename, `${op.codename} just captured a ${r} ${s.payload?.name} in the field.`, r === "legendary" ? `A ${String(s.payload?.name).toLowerCase()}. Those do not come twice. Bring it in quietly.` : `Good catch. ${s.payload?.name}s are useful; keep it off the wire.`, "capture", true);
+        return;
+      }
       case "mission.late": {
         if (!op) return;
         remember(this.chief, "late", op.codename, `${op.codename} arrived late at ${s.payload?.title}; ${factionById(s.payload?.heldBy).name} held the site`);

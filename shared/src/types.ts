@@ -312,3 +312,14 @@ export interface BoardResponse {
 
 // ---- Director dispatches (world news) ----
 export interface Dispatch { id: string; kind: string; headline: string; body: string; factionId: FactionId | null; at: string }
+
+// ---- Ambient field layer: caches, signals, strongholds ----
+export type Rarity = "common" | "uncommon" | "rare" | "legendary";
+export interface SignalView { id: string; kind: string; name: string; rarity: Rarity; art: string; blurb: string; lat: number; lng: number; distanceM: number; expiresAt: string; attemptsLeft: number }
+export interface CacheView { id: string; name: string; kind: string; lat: number; lng: number; distanceM: number; readyAt: string | null; inRange: boolean; heldBy: FactionId | null }
+export interface StrongholdView { targetId: string; name: string; lat: number; lng: number; holder: FactionId | null; control: Record<FactionId, number> }
+export interface OfferPin { offerId: string; missionId: string; lat: number; lng: number; title: string; templateId: TemplateId; targetName: string; walkM: number; rewardXp: number; acceptBy: string; chain?: { name: string; step: number; of: number } | null; crisis?: { name: string; stance: string; joint: string | null } | null }
+export interface MapResponse { caches: CacheView[]; signals: SignalView[]; stronghold: StrongholdView | null; pins: OfferPin[] }
+export interface SpinResult { ok: boolean; reason?: string; items?: { id: string; name: string; qty: number }[]; xp?: number; credits?: number; readyAt?: string }
+export interface CaptureResult { result: "captured" | "escaped" | "fled" | "too_far" | "gone"; distanceM?: number; xp?: number; rarity?: Rarity; name?: string; kind?: string; attemptsLeft?: number; collection?: { kind: string; count: number; best: Rarity } }
+export interface CollectionEntry { kind: string; name: string; art: string; blurb: string; count: number; best: Rarity | null; firstAt: string | null }
