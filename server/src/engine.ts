@@ -18,6 +18,7 @@ import * as crises from "./crises.ts";
 import * as rivalry from "./rivalry.ts";
 import * as tools from "./tools.ts";
 import * as archive from "./archive.ts";
+import * as distractions from "./distractions.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 /** Once an operative finishes a site, it is theirs (their agency's) for this long: nobody else can run it. */
@@ -30,7 +31,7 @@ export const lockOn = (targetId: string | null) => targetId ? get<LockRow>("SELE
 /** Collaborative work and intel extraction are open to everyone regardless of locks. */
 const exemptFromLocks = (m: { template_id: string; params: string }) => {
   const pr = parse<any>(m.params, {});
-  return m.template_id === "EXTRACTION" || !!pr?.crisisId || !!pr?.heistArtifactId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
+  return m.template_id === "EXTRACTION" || !!pr?.crisisId || !!pr?.heistArtifactId || !!pr?.distractionId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
 };
 /** Who holds how many sites in a sector right now. */
 export function sectorControl(areaId: string): Record<FactionId, number> {
@@ -225,7 +226,7 @@ const XP: Record<TemplateId, number> = { RECON: 120, DEAD_DROP: 180, EXTRACTION:
 function createMission(f: Faction, areaId: string, template: TemplateId, mode: Mode, target: TargetRow | null, params: Record<string, unknown>, seed: string, over?: { title?: string; brief?: string; reservedFor?: string }) {
   const id = uid();
   // Some packages are locked: the right tool, used on site through the dial, opens them. Never on extractions or crisis work.
-  if (mode === "field" && template !== "EXTRACTION" && !(params as any).crisisId && !(params as any).heistArtifactId && !(params as any).lock) {
+  if (mode === "field" && template !== "EXTRACTION" && !(params as any).crisisId && !(params as any).heistArtifactId && !(params as any).distractionId && !(params as any).lock) {
     const lock = tools.rollLock(rand(seed + ":lock"));
     if (lock) params = { ...params, lock };
   }
@@ -316,6 +317,15 @@ const spawnCrisisMission: crises.SpawnCrisisMission = (crisis, factionId, site, 
   return id;
 };
 export const brewCrisis = (areaId: string, opts?: { kind?: string; theme?: string; minutes?: number }) => crises.brew(areaId, spawnCrisisMission, opts);
+
+/** A distraction: for each rival agency, an ordinary-looking recon at the baited site. It carries no lock and no artifact. */
+distractions.registerSpawner((factionId, areaId, targetId, distractionId, brief) => {
+  const f = factionById(factionId);
+  const target = get<TargetRow>("SELECT * FROM targets WHERE id=?", targetId);
+  if (!target) return;
+  const id = createMission(f, areaId, "RECON", "field", target, { distractionId, needsObservation: false, crisisId: null }, `${distractionId}:${factionId}`, { brief });
+  run("UPDATE missions SET expires_at=? WHERE id=?", new Date(Date.now() + 2 * 60 * 60_000).toISOString(), id);
+});
 
 /** A heist: a presence-verified field mission at the site where a rival keeps a page; verifying it lifts the page. */
 archive.registerHeistSpawner((factionId, areaId, siteId, artifactId, title, brief) => {
@@ -620,6 +630,15 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     xp = contestOutcome === "won" ? Math.round(xp * 1.5) : Math.round(xp * 0.5);
   }
   const flagged = trust < 0.7;
+  // Bait: a rival's distraction. The walk happened; the mission never existed.
+  const bait = parse<any>(m.params, {}).distractionId ? distractions.onBite(parse<any>(m.params, {}).distractionId, player.id, player.factionId) : null;
+  if (bait) {
+    xp = Math.round(xp * 0.2);
+    run("UPDATE missions SET state='completed', completed_at=?, outcome='decoyed' WHERE id=?", now(), m.id);
+    logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: bait.planterFaction, distraction: true }, player.id);
+    award(player.id, xp, 0, `${m.title} (distraction)`);
+    return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `Nothing here. Somebody wanted you at ${bait.target} and not where it mattered. Walk it off.` };
+  }
   // A rival's decoy at this site: the scan goes through, but what you carried out is worthless.
   const sprung = m.target_id && !exemptFromLocks(m) ? tools.springDecoy(m.target_id, player.id, player.factionId) : null;
   if (sprung) {

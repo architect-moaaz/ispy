@@ -6,7 +6,7 @@ import { bus, type Signal } from "./bus.ts";
  * world's public ones; never another operative's. Payloads are kept small; the app refetches what changed.
  */
 const MINE = new Set(["chief.message", "mission.offered", "mission.accepted", "mission.verified", "mission.expired", "mission.abandoned",
-  "desk_link.fulfilled", "desk_link.fallback", "reward", "rank_up", "signals.spawned", "signal.captured", "cache.spun", "faceoff.started", "faceoff.resolved", "otw.named", "decoy.sprung", "tool.crafted", "artifact.recovered", "artifact.lost", "artifact.stolen", "dossier.assembled", "intel.deal", "evidence.found", "evidence.decoy_detected", "case.opened", "case.confirmed",
+  "desk_link.fulfilled", "desk_link.fallback", "reward", "rank_up", "signals.spawned", "signal.captured", "cache.spun", "faceoff.started", "faceoff.resolved", "otw.named", "decoy.sprung", "tool.crafted", "artifact.recovered", "artifact.lost", "distraction.planted", "distraction.sprung", "artifact.stolen", "dossier.assembled", "intel.deal", "evidence.found", "evidence.decoy_detected", "case.opened", "case.confirmed",
   "case.rejected", "case.exposed", "bounty.completed", "bounty.claimed", "world_event.fragment", "presence.check_in", "presence.check_out", "location.flagged"]);
 const PUBLIC = new Set(["world_event.published", "world_event.resolved", "director.dispatch", "admin.paused", "admin.resumed", "bounty.published", "contest.formed"]);
 
@@ -28,6 +28,8 @@ function publicPayload(s: Signal) {
     case "faceoff.resolved": return { faceoffId: p.faceoffId, target: p.target, outcome: p.outcome, rival: p.rival, rivalFaction: p.rivalFaction, winner: p.winner, winnerFaction: p.winnerFaction };
     case "otw.named": return { codename: p.codename, week: p.week };
     case "decoy.sprung": return { by: p.by };
+    case "distraction.planted": return { target: p.target, expiresAt: p.expiresAt };
+    case "distraction.sprung": return { target: p.target, by: p.by, byFaction: p.byFaction };
     case "artifact.recovered": return { name: p.name, kind: p.kind, site: p.site, dossier: p.dossier };
     case "artifact.lost": case "artifact.stolen": return { site: p.site, takenBy: p.takenBy ?? p.by };
     case "dossier.assembled": return { name: p.name, secret: p.secret, reveal: p.reveal };

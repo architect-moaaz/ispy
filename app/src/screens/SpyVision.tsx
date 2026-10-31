@@ -226,7 +226,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         </SatMap>
         {field && !mission && (
           <FieldMarkers project={(p) => projectRef.current ? projectRef.current(p) : { x: -999, y: -999 }} width={width} height={height}
-            caches={field.caches} signals={field.signals} pins={field.pins} stronghold={field.stronghold} selected={sel} onSelect={setSel} factionId={factionId} />
+            caches={field.caches} signals={field.signals} pins={field.pins} stronghold={field.stronghold} selected={sel} onSelect={setSel} factionId={factionId} bait={field.distractions ?? []} />
         )}
         <View style={s.zoomBox}>
           <Text style={s.zoomBtn} onPress={() => zoomBy(1)}>+</Text>
@@ -245,7 +245,9 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
             onAccept={async () => { if (sel.type !== "pin") return; setBusy(true); try { const r = await api.acceptMission(sel.item.offerId); setMission(r.mission); setSel(null); await refresh(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}
             onDecline={async () => { if (sel.type !== "pin") return; try { await api.declineMission(sel.item.offerId); } catch { /* gone */ } setSel(null); await refresh(); }}
             onNavigate={() => selPoint && openTurnByTurn({ lat: selPoint.lat, lng: selPoint.lng }, selPoint.name)}
-            onClose={() => setSel(null)} />
+            onClose={() => setSel(null)}
+            bait={field?.distractions ?? []} baitLeft={field?.distractionsLeft ?? 0}
+            onPlant={async () => { if (sel.type !== "cache") return; setBusy(true); try { const r = await api.plantDistraction(sel.item.id); setToolMsg(r.ok ? `BAIT SET AT ${sel.item.name.toUpperCase()} · ${r.left} LEFT TODAY · RIVALS NOW SEE A REAL ORDER THERE` : `BAIT · ${r.reason}`); await loadField(fix); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }} />
         </View>
       )}
       {!mission && field && <NearbyTracker signals={field.signals} pins={field.pins} selected={sel} onSelect={setSel} />}

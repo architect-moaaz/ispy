@@ -15,6 +15,7 @@ import * as field from "./field.ts";
 import * as rivalry from "./rivalry.ts";
 import * as tools from "./tools.ts";
 import * as archive from "./archive.ts";
+import * as distractions from "./distractions.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -205,8 +206,9 @@ app.get("/v1/map", async (req) => {
     const t = get<{ lat: number; lng: number }>("SELECT t.lat, t.lng FROM missions m JOIN targets t ON t.id=m.target_id WHERE m.id=?", o.mission.id);
     return t ? { offerId: o.offerId, missionId: o.mission.id, lat: t.lat, lng: t.lng, title: o.mission.title, templateId: o.mission.templateId, targetName: o.mission.targetName ?? "", walkM: o.mission.walkM ?? 0, rewardXp: o.mission.rewardXp, acceptBy: o.acceptBy, chain: o.mission.chain ?? null, crisis: o.mission.crisis ?? null, lock: o.mission.lock ?? null } : null;
   }).filter((x): x is NonNullable<typeof x> => !!x);
-  return { ...m, pins };
+  return { ...m, pins, distractions: distractions.mineInArea(p.id, p.factionId, areaId), distractionsLeft: distractions.leftToday(p.id) };
 });
+app.post("/v1/distractions", async (req) => { const p = need(req); return distractions.plant(p.id, p.factionId, z.object({ targetId: z.string() }).parse(req.body).targetId); });
 app.post<{ Params: { id: string } }>("/v1/caches/:id/spin", async (req) => {
   const p = need(req);
   const b = z.object({ lat: z.number(), lng: z.number(), sim: z.boolean().optional() }).parse(req.body);
@@ -369,7 +371,7 @@ app.get("/v1/admin/overview", async () => {
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
     sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
-    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(), tools: tools.toolsOverview(), archive: archive.archiveOverview(),
+    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(), tools: tools.toolsOverview(), archive: archive.archiveOverview(), distractions: distractions.overview(),
     funnel: {
       registered: get<{ n: number }>("SELECT COUNT(*) n FROM players")!.n,
       assessed: get<{ n: number }>("SELECT COUNT(*) n FROM assessments")!.n,

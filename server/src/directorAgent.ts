@@ -9,6 +9,7 @@ import * as crises from "./crises.ts";
 import * as field from "./field.ts";
 import * as rivalry from "./rivalry.ts";
 import * as archive from "./archive.ts";
+import * as distractions from "./distractions.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
@@ -213,6 +214,7 @@ class DirectorAgent {
           // The archive: keep artifacts lying in every sector with operatives; close deadlocks; let the chiefs deal, steal and spoil.
           for (const a of all<{ area_id: string }>("SELECT DISTINCT area_id FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL", now())) archive.seed(a.area_id);
           archive.sweepDeadlocks();
+          distractions.sweep();
           if (t - this.lastIntelMoves > 10 * 60_000) { const moves = await archive.chiefIntelMoves(false); if (moves.length) this.note("chief intel moves", moves); this.lastIntelMoves = t; }
           if (new Date().getDay() === 1 && new Date().getHours() >= 9) { const named = rivalry.operativeOfTheWeek(); if (named.length) this.note("operatives of the week named", named.map((n) => n.codename)); }
           // Chaos on the rules path: with operatives in the field and nothing live, brew something in the busiest sector.

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import type { CacheView, CaptureResult, OfferPin, Rarity, SignalView, SpinResult, StrongholdView } from "@ispy/shared";
+import type { CacheView, CaptureResult, DistractionView, OfferPin, Rarity, SignalView, SpinResult, StrongholdView } from "@ispy/shared";
 import { ART } from "../art";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Dossier, Stamp, Typed, fmtCountdown } from "../ui";
@@ -23,10 +23,11 @@ export const artFor = (key: string) => MISSION_ART[{ extraction: "EXTRACTION", r
 export const signalArt = (kind: string, artKey?: string) => ART.signal[kind] ?? artFor(artKey ?? "drop");
 
 /** Markers drawn at projected positions; taps select, the map's pan still works under them. */
-export function FieldMarkers({ project, width, height, caches, signals, pins, stronghold, selected, onSelect, factionId }: {
+export function FieldMarkers({ project, width, height, caches, signals, pins, stronghold, selected, onSelect, factionId, bait = [] }: {
   project: (p: { lat: number; lng: number }) => { x: number; y: number }; width: number; height: number; caches: CacheView[]; signals: SignalView[]; pins: OfferPin[]; stronghold: StrongholdView | null;
-  selected: Selection | null; onSelect: (s: Selection | null) => void; factionId: string | null;
+  selected: Selection | null; onSelect: (s: Selection | null) => void; factionId: string | null; bait?: DistractionView[];
 }) {
+  const baited = new Set(bait.map((b) => b.targetId));
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const a = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true }), Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.quad), useNativeDriver: true })]));
@@ -45,6 +46,7 @@ export function FieldMarkers({ project, width, height, caches, signals, pins, st
       {caches.map((c) => { const p = project({ lat: c.lat, lng: c.lng }); if (!inside(p)) return null; const ready = !c.readyAt; const col = c.heldBy ? factionColor(c.heldBy) : C.cyan; return (
         <Pressable key={c.id} onPress={() => onSelect({ type: "cache", item: c })} style={[s.hit, { left: p.x - 16, top: p.y - 16, width: 32, height: 32 }]} hitSlop={6}>
           <View style={[s.cache, { borderColor: col, opacity: ready ? 1 : 0.45 }, isSel("cache", c.id) && { backgroundColor: col + "55" }]} />
+          {baited.has(c.id) && <View style={s.baitRing} />}
         </Pressable>); })}
       {pins.map((o) => { const p = project({ lat: o.lat, lng: o.lng }); if (!inside(p)) return null; return (
         <Pressable key={o.offerId} onPress={() => onSelect({ type: "pin", item: o })} style={[s.hit, { left: p.x - 18, top: p.y - 40, width: 36, height: 44 }]} hitSlop={6}>
@@ -92,9 +94,10 @@ export function NearbyTracker({ signals, pins, selected, onSelect }: { signals: 
 }
 
 /** The card for whatever is selected on the map, with the one action that makes sense from here. */
-export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, onAccept, onDecline, onNavigate, onClose }: {
+export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, onAccept, onDecline, onNavigate, onClose, bait, baitLeft, onPlant }: {
   sel: Selection; dist: number | null; factionId: string | null; busy: boolean;
   onSpin: () => void; onCapture: () => void; onAccept: () => void; onDecline: () => void; onNavigate: () => void; onClose: () => void;
+  bait?: DistractionView[]; baitLeft?: number; onPlant?: () => void;
 }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
@@ -106,10 +109,14 @@ export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, o
         <Text style={s.title}>CACHE · {c.name.toUpperCase()}</Text>
         <Text style={s.mono}>{c.kind.toUpperCase()} · {dist != null ? `${Math.round(dist)} M` : `${c.distanceM} M`}{c.heldBy ? ` · HELD BY ${c.heldByCodename ? c.heldByCodename.toUpperCase() + " · " : ""}${c.heldBy.toUpperCase()}` : ""}{c.readyAt ? ` · COLD, READY IN ${fmtCountdown(c.readyAt, now)}` : " · READY"}</Text>
         <Body dim>Inside 40 m, spin it for intel: cipher fragments, decoys, sometimes a jammer or a lens. Every five minutes.</Body>
+        {(() => { const b = bait?.find((x) => x.targetId === c.id); return b ? <Text style={[s.mono, { color: C.amber }]}>BAIT · PLANTED BY {b.by.toUpperCase()} · RIVALS SEE A REAL ORDER HERE · {b.bites} BITE{b.bites === 1 ? "" : "S"} · FADES {fmtCountdown(b.expiresAt, now)}</Text> : null; })()}
         <View style={{ flexDirection: "row", gap: 8 }}>
           {near ? <Button title="Spin cache" onPress={onSpin} loading={busy} disabled={!!c.readyAt} style={{ flex: 1, marginTop: 0 }} /> : <Button title="Navigate" onPress={onNavigate} style={{ flex: 1, marginTop: 0 }} />}
           <Button title="Close" kind="ghost" onPress={onClose} style={{ marginTop: 0 }} />
         </View>
+        {onPlant && !bait?.some((x) => x.targetId === c.id) && (
+          <Button title={`Plant a distraction here · ${baitLeft ?? 0} left today`} kind="ghost" onPress={onPlant} disabled={(baitLeft ?? 0) <= 0 || busy} style={{ marginTop: 8, paddingVertical: 8 }} />
+        )}
       </Dossier>
     );
   }
@@ -260,6 +267,7 @@ const s = StyleSheet.create({
   hit: { position: "absolute", alignItems: "center", justifyContent: "center" },
   cache: { width: 14, height: 14, borderWidth: 2, transform: [{ rotate: "45deg" }], backgroundColor: "rgba(6,20,30,0.7)" },
   signal: { width: 12, height: 12, borderRadius: 6 },
+  baitRing: { position: "absolute", width: 30, height: 30, borderRadius: 15, borderWidth: 2, borderColor: C.amber, borderStyle: "dashed" },
   signalHalo: { position: "absolute", width: 28, height: 28, borderRadius: 14, borderWidth: 2 },
   pin: { width: 26, height: 26, borderRadius: 13, backgroundColor: C.amber, borderWidth: 2, borderColor: C.ink, alignItems: "center", justifyContent: "center" },
   pinText: { color: C.ink, fontSize: 12, fontFamily: F.displayMed },

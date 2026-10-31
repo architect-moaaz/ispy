@@ -98,6 +98,24 @@ class ChiefAgent {
           won ? `First in. ${s.payload?.rival} is explaining ${s.payload?.target} to their chief right now. Remember the name.` : `${s.payload?.rival} beat you to ${s.payload?.target}. I do not forget names; neither should you. Next time, be faster.`, "face-off result", true);
         return;
       }
+      case "distraction.planted": {
+        if (!op) return;
+        remember(this.chief, "bait", op.codename, `${op.codename} planted bait at ${s.payload?.target}`);
+        chiefSay(op.id, `Bait at ${s.payload?.target}, logged. Our people know it is nothing. Let us see who walks.`, "distraction", true);
+        return;
+      }
+      case "distraction.sprung": {
+        if (!op) return;
+        remember(this.chief, "bait", op.codename, `${op.codename}'s bait at ${s.payload?.target} caught ${s.payload?.by} (${factionById(s.payload?.byFaction).name})`);
+        chiefSay(op.id, `${s.payload?.by} of ${factionById(s.payload?.byFaction).name} walked all the way to ${s.payload?.target} for nothing. Your bait. Their afternoon.`, "distraction sprung", true);
+        return;
+      }
+      case "mission.decoyed": {
+        if (!op || !s.payload?.distraction) return;
+        remember(this.chief, "decoyed", op.codename, `${op.codename} walked into ${factionById(s.payload?.by).name}'s bait`);
+        chiefSay(op.id, `That was bait, and ${factionById(s.payload?.by).name} laid it. I do not like being walked. Neither should you. Next time, read the pattern first.`, "walked into bait", true);
+        return;
+      }
       case "artifact.recovered": {
         if (!op) return;
         remember(this.chief, "artifact", op.codename, `${op.codename} recovered ${s.payload?.name} at ${s.payload?.site}`);

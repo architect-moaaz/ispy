@@ -333,7 +333,8 @@ export interface SignalView { id: string; kind: string; name: string; rarity: Ra
 export interface CacheView { id: string; name: string; kind: string; lat: number; lng: number; distanceM: number; readyAt: string | null; inRange: boolean; heldBy: FactionId | null; heldByCodename: string | null }
 export interface StrongholdView { targetId: string; name: string; lat: number; lng: number; holder: FactionId | null; control: Record<FactionId, number> }
 export interface OfferPin { offerId: string; missionId: string; lat: number; lng: number; title: string; templateId: TemplateId; targetName: string; walkM: number; rewardXp: number; acceptBy: string; chain?: { name: string; step: number; of: number } | null; crisis?: { name: string; stance: string; joint: string | null } | null; lock?: { kind: LockKind; tool: ToolId; label: string } | null }
-export interface MapResponse { caches: CacheView[]; signals: SignalView[]; stronghold: StrongholdView | null; pins: OfferPin[] }
+export interface DistractionView { id: string; targetId: string; targetName: string; by: string; mine: boolean; expiresAt: string; bites: number }
+export interface MapResponse { caches: CacheView[]; signals: SignalView[]; stronghold: StrongholdView | null; pins: OfferPin[]; distractions?: DistractionView[]; distractionsLeft?: number }
 export interface SpinResult { ok: boolean; reason?: string; items?: { id: string; name: string; qty: number }[]; xp?: number; credits?: number; readyAt?: string }
 export interface CaptureResult { result: "captured" | "escaped" | "fled" | "too_far" | "gone"; distanceM?: number; xp?: number; rarity?: Rarity; name?: string; kind?: string; attemptsLeft?: number; collection?: { kind: string; count: number; best: Rarity } }
 export interface CollectionEntry { kind: string; name: string; art: string; blurb: string; count: number; best: Rarity | null; firstAt: string | null }
@@ -362,3 +363,5 @@ export interface ArchiveView {
   talks?: { from: string; to: string | null; kind: string; text: string; at: string }[];
 }
 export interface ArchiveActionResult { ok: boolean; reason?: string; genuine?: boolean; plantedBy?: string | null; note?: string; correct?: boolean; corruptedUntil?: string; secret?: SecretKind; reveal?: string }
+
+export interface PlantResult { ok: boolean; reason?: string; id?: string; left?: number; expiresAt?: string }

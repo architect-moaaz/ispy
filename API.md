@@ -300,3 +300,21 @@ Every artifact has a painted object (`art`: page, strip, map, card, key, identit
 plain-words `contents`, a `classification` (RESTRICTED, CONFIDENTIAL, SECRET, DISCREDITED for a found
 forgery) and the chief's `note` written at recovery in the chief's voice. The app opens a file on tap:
 object, stamp, provenance, contents, examination, the cipher with a decipher field when cleared, the note.
+
+## Distractions (fake missions for the rivals)
+
+A deployed field operative can plant a **distraction** at any cache in their sector. Each rival agency
+receives a real-looking RECON order at that site (same card, same cipher pool, no mark). Only the planter,
+their agency, their chief and the World Director know it is bait. A rival who completes it gets one fifth of
+the XP, a "decoyed" outcome and a debrief that names the place; the planter gets 60 XP and 10 credits per bite
+and a chief line. Bait fades after 2 hours. Cap: 3 per operative per rolling 24 hours (the monetisation hook
+lives in `DAILY_CAP` in `server/src/distractions.ts`).
+
+- `POST /v1/distractions` `{ targetId }` → `PlantResult { ok, left, distraction?, reason? }`. Rules: field-deployed,
+  target in your sector, no live bait at that site, cap not reached.
+- `GET /v1/map` now returns `distractions: DistractionView[]` (own agency only) and `distractionsLeft`.
+- Console overview `distractions` lists live bait per sector with planter, bites and expiry.
+- Stream: `distraction.planted` (planter's agency only), `distraction.sprung`. Chief lines on plant, bite, and on
+  being decoyed.
+- App: cache card → "Plant a distraction here · N left today"; own bait draws an amber dashed ring on the cache
+  and the card shows planter, bites and fade time.
