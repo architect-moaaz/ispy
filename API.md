@@ -212,3 +212,20 @@ survey replaces them with real public places (parks, gardens, monuments, artwork
 libraries, markets, squares, bus stops, stations). Signals spawn only at an active site, within a few
 steps of its centre. Legacy ring checkpoints are retired on boot and their signals expired
 (`sector.checkpoints_retired`, `sector.waypoints`). While a sector has no sites yet the board says so.
+
+## The winning layer
+
+- **Face-offs.** Two operatives of different agencies with active field missions on the same site, both
+  inside 300 m: the Arbiter starts a 90-second clock for both (`faceoff.started`, chief line, red ring and
+  countdown in the app). First clean scan wins (`faceoff.resolved` to both): +80 XP, a stamp naming the
+  loser, the site held; the other arrives late. One face-off per pair per site per hour.
+- **Rivalries and nemesis.** Face-off results build a head-to-head record; the rival you have met most is
+  your nemesis, shown in HQ's Today card with the score.
+- **Weekly sector ladder.** `GET /v1/ladder[?areaId]`: this week's top ten in a sector (sites held 5, face-off
+  and contest wins 8, captures 1/2/4/8 by rarity), your rank, and titles. Resets Monday.
+- **Titles.** Recomputed every minute for the week per sector: First Blood (first face-off win), Landlord
+  (most sites held), Ghost of <sector> (most recon, 3+), Night Shift (5+ captures after 20:00), Duellist
+  (3+ face-off wins); Keyholder (5+ desk ciphers) world-wide. `GET /v1/titles`; shown on the ladder, HQ and Me.
+- **Operative of the week.** Monday 09:00: each chief names last week's top operative of their agency
+  (`otw.named`), tells the agency, posts a dispatch; the title shows in HQ.
+- **Named holds.** `heldByCodename` on navigate and on caches: a held site shows who holds it.

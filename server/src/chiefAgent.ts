@@ -1,5 +1,5 @@
 import type { ChiefId, FactionId } from "@ispy/shared";
-import { all, get, now, parse, worldGet } from "./db.ts";
+import { all, get, now, parse, worldGet, run, uid } from "./db.ts";
 import { bus, type Signal } from "./bus.ts";
 import { FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { pick } from "./puzzles.ts";
@@ -82,6 +82,26 @@ class ChiefAgent {
         const won = (s.payload?.leaders ?? []).includes(this.factionId);
         const text = `${s.payload?.name} is ${s.payload?.verdict}. We held ${held} of 3 sites.${won ? " That is a result." : held ? " Not enough." : " We were not in it."}`;
         for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", this.factionId, now())) chiefSay(o.player_id, text, "crisis outcome", true);
+        return;
+      }
+      case "faceoff.started": {
+        if (!op) return;
+        remember(this.chief, "faceoff", op.codename, `${op.codename} in a face-off with ${s.payload?.rival} (${factionById(s.payload?.rivalFaction).name}) at ${s.payload?.target}`);
+        chiefSay(op.id, `${s.payload?.rival} of ${factionById(s.payload?.rivalFaction).name} is on ${s.payload?.target} too. Ninety seconds. First clean scan keeps it. Move.`, "face-off", true);
+        return;
+      }
+      case "faceoff.resolved": {
+        if (!op) return;
+        const won = s.payload?.outcome === "won";
+        remember(this.chief, "faceoff", op.codename, `${op.codename} ${won ? "won" : "lost"} a face-off vs ${s.payload?.rival} at ${s.payload?.target}`);
+        await this.say(op.id, op.codename, `${op.codename} just ${won ? "won" : "lost"} a ninety-second face-off against ${s.payload?.rival} of ${factionById(s.payload?.rivalFaction).name} at ${s.payload?.target}. One line, in character.`,
+          won ? `First in. ${s.payload?.rival} is explaining ${s.payload?.target} to their chief right now. Remember the name.` : `${s.payload?.rival} beat you to ${s.payload?.target}. I do not forget names; neither should you. Next time, be faster.`, "face-off result", true);
+        return;
+      }
+      case "otw.named": {
+        if (!op) return;
+        for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=?", this.factionId)) chiefSay(o.player_id, `Operative of the week: ${op.codename}. ${o.player_id === op.id ? "That is you. Keep it." : "Study how they work. Then beat it."}`, "operative of the week", true);
+        run("INSERT INTO dispatches(id,kind,headline,body,faction_id,source,at) VALUES(?,?,?,?,?,?,?)", uid(), "news", `${this.faction.name}: operative of the week`, `${this.faction.chiefName} names ${op.codename} operative of the week.`, this.factionId, "chief", now());
         return;
       }
       case "signal.captured": {

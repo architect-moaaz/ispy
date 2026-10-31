@@ -89,7 +89,7 @@ export function spawnAround() {
 }
 
 export interface SignalView { id: string; kind: string; name: string; rarity: Rarity; art: string; blurb: string; lat: number; lng: number; distanceM: number; expiresAt: string; attemptsLeft: number }
-export interface CacheView { id: string; name: string; kind: string; lat: number; lng: number; distanceM: number; readyAt: string | null; inRange: boolean; heldBy: FactionId | null }
+export interface CacheView { id: string; name: string; kind: string; lat: number; lng: number; distanceM: number; readyAt: string | null; inRange: boolean; heldBy: FactionId | null; heldByCodename: string | null }
 export interface StrongholdView { targetId: string; name: string; lat: number; lng: number; holder: FactionId | null; control: Record<FactionId, number> }
 
 /** Everything on the map around a point, for the operative's own agency view. */
@@ -100,8 +100,9 @@ export function mapAround(playerId: string, factionId: FactionId | null, areaId:
       const d = distanceM(lat, lng, t.lat, t.lng);
       const last = get<{ at: string }>("SELECT at FROM cache_spins WHERE player_id=? AND target_id=?", playerId, t.id);
       const readyAt = last && Date.parse(last.at) + CACHE_COOLDOWN_MS > Date.now() ? new Date(Date.parse(last.at) + CACHE_COOLDOWN_MS).toISOString() : null;
-      const lock = get<{ faction_id: FactionId }>("SELECT faction_id FROM target_locks WHERE target_id=? AND until>?", t.id, now());
-      return { id: t.id, name: t.name, kind: t.kind, lat: t.lat, lng: t.lng, distanceM: Math.round(d), readyAt, inRange: d <= CACHE_RADIUS_M, heldBy: lock?.faction_id ?? null };
+      const lock = get<{ faction_id: FactionId; player_id: string }>("SELECT faction_id, player_id FROM target_locks WHERE target_id=? AND until>?", t.id, now());
+      const heldByCodename = lock ? get<{ codename: string }>("SELECT codename FROM players WHERE id=?", lock.player_id)?.codename ?? null : null;
+      return { id: t.id, name: t.name, kind: t.kind, lat: t.lat, lng: t.lng, distanceM: Math.round(d), readyAt, inRange: d <= CACHE_RADIUS_M, heldBy: lock?.faction_id ?? null, heldByCodename };
     }).filter((c) => c.distanceM <= 900).sort((a, b) => a.distanceM - b.distanceM);
   const signals = all<{ id: string; kind: string; name: string; rarity: Rarity; lat: number; lng: number; expires_at: string; attempts: string }>(
     "SELECT id, kind, name, rarity, lat, lng, expires_at, attempts FROM signals WHERE state='live' AND area_id=?", areaId)

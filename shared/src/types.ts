@@ -165,6 +165,8 @@ export interface NavigateResponse {
   unlocked: boolean; // false while a desk link is still open
   steps: string[];
   heldBy?: FactionId | null;
+  heldByCodename?: string | null;
+  faceoff?: { id: string; rivalCodename: string; rivalFaction: FactionId; endsAt: string } | null;
 }
 
 export interface ScanRequest {
@@ -183,6 +185,7 @@ export interface ScanResponse {
   puzzle?: { prompt: string }; // when result = needs_code
   reward?: { xp: number; trust: number; contestOutcome?: "won" | "lost" | null };
   debrief?: string;
+  faceoff?: { won: boolean; rival: string; rivalFaction: FactionId; bonusXp: number } | null;
 }
 
 export interface DeskMissionDetail {
@@ -219,6 +222,9 @@ export interface Briefing {
     crisis: { name: string; endsAt: string; stance: CrisisStance | null; allies: string[] } | null;
     operation: { name: string; step: number; of: number } | null;
     hotWindow: string | null; firstTimer: boolean;
+    nemesis: { codename: string; factionId: FactionId; faction: string; wins: number; losses: number } | null;
+    titles: string[];
+    operativeOfTheWeek: string | null;
   };
 }
 
@@ -316,10 +322,15 @@ export interface Dispatch { id: string; kind: string; headline: string; body: st
 // ---- Ambient field layer: caches, signals, strongholds ----
 export type Rarity = "common" | "uncommon" | "rare" | "legendary";
 export interface SignalView { id: string; kind: string; name: string; rarity: Rarity; art: string; blurb: string; lat: number; lng: number; distanceM: number; expiresAt: string; attemptsLeft: number }
-export interface CacheView { id: string; name: string; kind: string; lat: number; lng: number; distanceM: number; readyAt: string | null; inRange: boolean; heldBy: FactionId | null }
+export interface CacheView { id: string; name: string; kind: string; lat: number; lng: number; distanceM: number; readyAt: string | null; inRange: boolean; heldBy: FactionId | null; heldByCodename: string | null }
 export interface StrongholdView { targetId: string; name: string; lat: number; lng: number; holder: FactionId | null; control: Record<FactionId, number> }
 export interface OfferPin { offerId: string; missionId: string; lat: number; lng: number; title: string; templateId: TemplateId; targetName: string; walkM: number; rewardXp: number; acceptBy: string; chain?: { name: string; step: number; of: number } | null; crisis?: { name: string; stance: string; joint: string | null } | null }
 export interface MapResponse { caches: CacheView[]; signals: SignalView[]; stronghold: StrongholdView | null; pins: OfferPin[] }
 export interface SpinResult { ok: boolean; reason?: string; items?: { id: string; name: string; qty: number }[]; xp?: number; credits?: number; readyAt?: string }
 export interface CaptureResult { result: "captured" | "escaped" | "fled" | "too_far" | "gone"; distanceM?: number; xp?: number; rarity?: Rarity; name?: string; kind?: string; attemptsLeft?: number; collection?: { kind: string; count: number; best: Rarity } }
 export interface CollectionEntry { kind: string; name: string; art: string; blurb: string; count: number; best: Rarity | null; firstAt: string | null }
+
+// ---- Ladder and titles ----
+export interface LadderRow { codename: string; factionId: FactionId; faction: string; score: number; held: number; captures: number; wins: number; title: string | null; you: boolean }
+export interface LadderResponse { week: string; sector: string | null; rows: LadderRow[]; yourRank: number | null }
+export interface TitleEntry { title: string; week: string; area: string | null }

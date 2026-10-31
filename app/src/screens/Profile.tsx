@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import type { Faction, Player, SkillKey } from "@ispy/shared";
+import type { Faction, Player, SkillKey, TitleEntry } from "@ispy/shared";
 import { api, setToken } from "../api";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Kicker, Meter, Panel, Screen, Typed } from "../ui";
 
 const SKILLS: SkillKey[] = ["observation", "reasoning", "cipher", "cooperation"];
 
+
 export function Profile({ player, faction, onSignOut }: { player: Player; faction: Faction | null; onSignOut: () => void }) {
   const [events, setEvents] = useState<{ at: string; text: string }[]>([]);
   useEffect(() => {
     api.history().then((r) => setEvents(r.events)).catch(() => {});
   }, [player.xp]);
+  const [titles, setTitles] = useState<TitleEntry[]>([]);
+  useEffect(() => { api.titles().then((r) => setTitles(r.titles)).catch(() => {}); }, [player.xp]);
   const color = factionColor(player.factionId);
 
   return (
@@ -23,6 +26,13 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
           <Stat label="rank" value={player.rank.replace("_", " ")} />
           <Stat label="XP" value={`${player.xp}`} />
           <Stat label="trust" value={`${player.trust}`} right />
+        </View>
+        {titles.length > 0 && (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+            {titles.map((t) => <Text key={t.title + t.week} style={{ color: C.amber, borderWidth: 1, borderColor: C.amber, paddingHorizontal: 8, paddingVertical: 3, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.2 }}>{t.title.toUpperCase()}{t.area ? ` · ${t.area.toUpperCase()}` : ""} · {t.week}</Text>)}
+          </View>
+        )}
+        <View style={{ display: "none" }}>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 14 }}>
           <Stat label="walk radius" value={`${player.walkRadiusM} m`} />

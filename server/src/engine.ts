@@ -15,6 +15,7 @@ import * as investigations from "./investigations.ts";
 import * as bounties from "./bounties.ts";
 import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
+import * as rivalry from "./rivalry.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 /** Once an operative finishes a site, it is theirs (their agency's) for this long: nobody else can run it. */
@@ -516,6 +517,8 @@ export function navigate(player: Player, missionId: string): NavigateResponse {
       : ["Walk to the site", "Scan on arrival", "Answer the observation question"];
   return {
     targetName: t.name, lat: t.lat, lng: t.lng, approachRadiusM: t.approach_radius_m, heldBy: lockOn(t.id)?.faction_id ?? null,
+    heldByCodename: (() => { const l = lockOn(t.id); return l ? get<{ codename: string }>("SELECT codename FROM players WHERE id=?", l.player_id)?.codename ?? null : null; })(),
+    faceoff: (() => { const f = rivalry.liveFaceoffFor(player.id, t.id); return f ? { id: f.id, rivalCodename: f.rivalCodename, rivalFaction: f.rivalFaction, endsAt: f.endsAt } : null; })(),
     hint: `${t.kind}: ${t.name}`, unlocked, steps,
   };
 }
@@ -607,6 +610,8 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: -1, contestOutcome: "lost" }, debrief: `${holder.id === player.factionId ? "One of ours" : holder.name} finished this site before you. It is closed for now. Partial credit for the walk; pick faster next time.` };
   }
   run("UPDATE missions SET state='completed', completed_at=?, outcome=? WHERE id=?", now(), contestOutcome ?? "ok", m.id);
+  const faceoff = m.target_id ? rivalry.onVerified(player.id, player.factionId, m.target_id) : null;
+  if (faceoff) xp += faceoff.bonusXp;
   if (m.target_id && !exemptFromLocks(m)) {
     const until = new Date(Date.now() + TARGET_LOCK_MS).toISOString();
     run("INSERT INTO target_locks(target_id,faction_id,player_id,mission_id,until,at) VALUES(?,?,?,?,?,?) ON CONFLICT(target_id) DO UPDATE SET faction_id=excluded.faction_id, player_id=excluded.player_id, mission_id=excluded.mission_id, until=excluded.until, at=excluded.at",
@@ -644,7 +649,8 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
       chiefSay(player.id, r.say, r.done ? `operation ${r.name} complete` : `operation ${r.name}: next link`, true);
     }
   }
-  return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: flagged ? 0 : 2, contestOutcome }, debrief };
+  if (faceoff) debrief = `First in. ${faceoff.rival} of ${factionById(faceoff.rivalFaction).name} watched you take it. ${debrief}`;
+  return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: flagged ? 0 : 2, contestOutcome: faceoff ? "won" : contestOutcome }, debrief, faceoff };
 }
 
 // ---------- desk ----------
@@ -755,6 +761,9 @@ export function briefing(player: Player): Briefing {
         operation: op ? chains.chainSummary(op.id) : null,
         hotWindow: hot || null,
         firstTimer: !get("SELECT 1 FROM missions WHERE assignee_id=? AND state='completed'", player.id),
+        nemesis: (() => { const n = rivalry.nemesisOf(player.id); return n ? { codename: n.codename, factionId: n.factionId, faction: n.faction, wins: n.wins, losses: n.losses } : null; })(),
+        titles: rivalry.titlesOf(player.id).map((t) => t.title),
+        operativeOfTheWeek: rivalry.currentOtw(f.id),
       };
     })(),
   };

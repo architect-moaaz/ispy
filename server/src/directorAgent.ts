@@ -7,6 +7,7 @@ import { chiefSay, refreshPlans, refreshPool, startOperation, brewCrisis } from 
 import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
 import * as field from "./field.ts";
+import * as rivalry from "./rivalry.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
@@ -196,8 +197,8 @@ class DirectorAgent {
             this.note("chief replanned", { chief: factionById(c.factionId).chief, idle: c.idleAgents });
           }
         }
-        // The ambient layer: keep signals alive around everyone in the field.
-        if (this.operatives.size > 0) field.spawnAround();
+        // The ambient layer: keep signals alive around everyone in the field, and start the clock when rivals meet.
+        if (this.operatives.size > 0) { field.spawnAround(); const n = rivalry.detectFaceoffs(); if (n) this.note("face-off started", { count: n }); }
         // Routine upkeep the world needs regardless of who is online.
         if (t - this.lastHousekeeping > 60_000) {
           await refreshPlans(false);
@@ -206,6 +207,8 @@ class DirectorAgent {
           await bounties.refreshEvent();
           await director.publishDispatches(false);
           await crises.sweep();
+          rivalry.awardTitles();
+          if (new Date().getDay() === 1 && new Date().getHours() >= 9) { const named = rivalry.operativeOfTheWeek(); if (named.length) this.note("operatives of the week named", named.map((n) => n.codename)); }
           // Chaos on the rules path: with operatives in the field and nothing live, brew something in the busiest sector.
           const field = all<{ area_id: string; n: number }>("SELECT area_id, COUNT(*) n FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL GROUP BY area_id ORDER BY n DESC", now());
           const last = crises.lastCrisisEndedAt();

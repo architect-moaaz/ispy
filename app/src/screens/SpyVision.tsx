@@ -42,6 +42,11 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [spinning, setSpinning] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captureResult, setCaptureResult] = useState<CaptureResult | null>(null);
+  const [duel, setDuel] = useState<{ outcome: "won" | "lost"; rival: string; rivalFaction: string; target: string } | null>(null);
+  useEffect(() => onLive((ty, data: any) => {
+    if (ty === "faceoff.started") { setNotice(null); refresh(); }
+    if (ty === "faceoff.resolved" && data?.outcome) { setDuel({ outcome: data.outcome, rival: data.rival, rivalFaction: data.rivalFaction, target: data.target }); refresh(); }
+  }), [mission?.id]);
   const fixRef = useRef<Fix | null>(null);
   const projectRef = useRef<Projector | null>(null);
   const loadField = async (f: Fix | null) => {
@@ -83,7 +88,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
     const off = onLive((ty) => { if (["mission.offered", "mission.expired", "desk_link.fulfilled", "desk_link.fallback", "contest.formed", "presence.check_in", "presence.check_out", "live.open"].includes(ty)) refresh(); });
     const hb = setInterval(async () => {
       try { const f = getSimFix() ?? (await currentFix()); await api.heartbeat({ lat: f.lat, lng: f.lng, sim: f.sim }); } catch { /* server expires presence */ }
-    }, 120000);
+    }, mission ? 20000 : 120000);
     return () => { clearInterval(p); clearInterval(hb); off(); };
   }, [mission?.id]);
 
@@ -194,7 +199,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       <View style={{ width, height }} collapsable={false}>
         <SatMap center={center} zoom={zoom} width={width} height={height}>
           {(project) => (projectRef.current = project) && (
-            <MapOverlay project={project} width={width} height={height} fix={fix} offers={field ? [] : offers} target={target ? { ...target, name: nav ? nav.targetName : selPoint!.name, locked: nav ? !nav.unlocked : false } : null}
+            <MapOverlay project={project} width={width} height={height} fix={fix} offers={field ? [] : offers} target={target ? { ...target, name: nav ? nav.targetName : selPoint!.name, locked: nav ? !nav.unlocked : false, duel: !!nav?.faceoff } : null}
               contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} />
           )}
         </SatMap>
@@ -252,8 +257,15 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         </Dossier>
       )}
 
+      {mission && nav?.faceoff && !completed && (
+        <View style={s.duelBar}>
+          <Text style={s.duelText}>FACE-OFF · {nav.faceoff.rivalCodename.toUpperCase()} OF {nav.faceoff.rivalFaction.toUpperCase()} IS ON {nav.targetName.toUpperCase()}</Text>
+          <Text style={[s.duelText, { fontSize: 22 }]}>{fmtCountdown(nav.faceoff.endsAt, now)}</Text>
+          <Text style={[s.mono, { color: C.text }]}>FIRST CLEAN SCAN KEEPS THE SITE</Text>
+        </View>
+      )}
       {mission && nav && !completed && (
-        <Dossier tab={mission.contested ? C.red : C.cyan} style={{ marginTop: 12 }}>
+        <Dossier tab={mission.contested || nav.faceoff ? C.red : C.cyan} style={{ marginTop: 12 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
             <Text style={[s.panelTitle, { flex: 1 }]}>{TEMPLATE_NAME[mission.templateId] ?? mission.title} · {nav.targetName}</Text>
             <Text style={[s.mono, { marginTop: 4 }]}>{fmtCountdown(mission.expiresAt, now)}</Text>
@@ -311,6 +323,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
       )}
       {err && <Body style={{ color: C.red }}>{err}</Body>}
       {spinResult && <SpinSheetHost result={spinResult} onDone={() => setSpinResult(null)} />}
+      {duel && (
+        <View style={s.duelModal}>
+          <Stamp text={duel.outcome === "won" ? "First in" : "Outrun"} size={46} color={duel.outcome === "won" ? C.red : C.dim} />
+          <Text style={[s.duelText, { marginTop: 14, textAlign: "center" }]}>{duel.outcome === "won" ? `${duel.rival.toUpperCase()} OF ${duel.rivalFaction.toUpperCase()} WATCHED YOU TAKE ${duel.target.toUpperCase()}` : `${duel.rival.toUpperCase()} OF ${duel.rivalFaction.toUpperCase()} TOOK ${duel.target.toUpperCase()} FIRST`}</Text>
+          <Text style={[s.mono, { marginTop: 8, textAlign: "center" }]}>{duel.outcome === "won" ? "+80 XP · THEY WILL REMEMBER YOUR NAME" : "THE SITE IS THEIRS FOR TWO HOURS · REMEMBER THE NAME"}</Text>
+          <Button title="Back to the map" onPress={() => setDuel(null)} />
+        </View>
+      )}
       {capturing && sel?.type === "signal" && (
         <CaptureRitual signal={sel.item} busy={busy} result={captureResult}
           onAttempt={async (hold, flick) => { if (!fix) return; setBusy(true); try { const r = await api.captureSignal(sel.item.id, { lat: fix.lat, lng: fix.lng, hold, flick, sim: fix.sim }); setCaptureResult(r); if (r.result === "captured" || r.result === "fled" || r.result === "gone") await loadField(fix); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}
@@ -325,7 +345,7 @@ import { SpinSheet as SpinSheetHost } from "./FieldLayer";
 // ---------- overlay ----------
 function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector, route }: {
   project: Projector; width: number; height: number; fix: Fix | null; offers: OfferCard[];
-  target: { lat: number; lng: number; name: string; locked: boolean } | null; contacts: Contact[];
+  target: { lat: number; lng: number; name: string; locked: boolean; duel?: boolean } | null; contacts: Contact[];
   bearing: number | null; dist: number | null; nearest: number | null; radius: number;
   sector: { lat: number; lng: number; radiusM: number } | null;
   route: WalkingRoute | null;
@@ -364,7 +384,7 @@ function MapOverlay({ project, width, height, fix, offers, target, contacts, bea
         {/* approach radius + reticle on the live target */}
         {tgt && (
           <G>
-            <Circle cx={tgt.x} cy={tgt.y} r={rPx} fill={C.cyan} fillOpacity={target!.locked ? 0.05 : 0.12} stroke={inRange ? C.ok : C.cyan} strokeWidth={1.5} strokeDasharray="6 4" />
+            <Circle cx={tgt.x} cy={tgt.y} r={rPx} fill={target!.duel ? C.red : C.cyan} fillOpacity={target!.locked ? 0.05 : target!.duel ? 0.18 : 0.12} stroke={target!.duel ? C.red : inRange ? C.ok : C.cyan} strokeWidth={target!.duel ? 3 : 1.5} strokeDasharray={target!.duel ? undefined : "6 4"} />
             <Reticle x={tgt.x} y={tgt.y} color={inRange ? C.ok : target!.locked ? C.amber : C.cyan} />
           </G>
         )}
@@ -476,6 +496,9 @@ const s = StyleSheet.create({
   zoomBox: { position: "absolute", right: 8, bottom: 26, borderWidth: 1, borderColor: C.cyanDim, backgroundColor: "rgba(6,20,30,0.75)" },
   zoomBtn: { color: C.cyan, fontFamily: F.displayMed, fontSize: 20, width: 34, height: 34, lineHeight: 34, textAlign: "center", borderBottomWidth: 1, borderBottomColor: C.line },
   cardArt: { width: 64, height: 64, borderWidth: 1, borderColor: C.line },
+  duelBar: { borderWidth: 2, borderColor: C.red, backgroundColor: "rgba(255,93,108,0.12)", padding: 10, marginTop: 8, alignItems: "center", gap: 2 },
+  duelText: { color: C.red, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 },
+  duelModal: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(4,10,14,0.96)", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 60 },
   zoomLevel: { position: "absolute", right: 48, bottom: 30, color: C.dim, fontFamily: F.typed, fontSize: 9, letterSpacing: 1 },
   sector: { color: C.text, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.2, backgroundColor: C.ink2, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.line },
   compass: { position: "absolute", left: 10, top: 10, width: 84, height: 84 },

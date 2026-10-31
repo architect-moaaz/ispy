@@ -54,6 +54,9 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           {briefing.today.hotWindow && <Body dim>Sector goes hot: {briefing.today.hotWindow}. Be deployed before it starts.</Body>}
           {briefing.today.crisis && <Body dim>Live crisis: {briefing.today.crisis.name}. Orders: {briefing.today.crisis.stance ?? "stand by"}{briefing.today.crisis.allies.length ? ` with ${briefing.today.crisis.allies.join(" + ")}` : ""}.</Body>}
           {briefing.today.operation && <Body dim>Your operation: {briefing.today.operation.name}, link {briefing.today.operation.step} of {briefing.today.operation.of}.</Body>}
+          {briefing.today.nemesis && <Text style={{ color: factionColor(briefing.today.nemesis.factionId), fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.4, marginTop: 4 }}>NEMESIS · {briefing.today.nemesis.codename.toUpperCase()} OF {briefing.today.nemesis.faction} · YOU {briefing.today.nemesis.wins} – {briefing.today.nemesis.losses} THEM</Text>}
+          {briefing.today.operativeOfTheWeek && <Text style={{ color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.4, marginTop: 4 }}>OPERATIVE OF THE WEEK · {briefing.today.operativeOfTheWeek.toUpperCase()}</Text>}
+          {briefing.today.titles.length > 0 && <Text style={{ color: C.cyan, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.4, marginTop: 4 }}>YOUR TITLES · {briefing.today.titles.map((t) => t.toUpperCase()).join(" · ")}</Text>}
           <Text style={{ fontFamily: F.typed, fontSize: 11.5, color: C.dim }}>
             SECTOR CONTROL · {Object.entries(briefing.today.control).map(([f, n]) => `${f.toUpperCase()} ${n}`).join(" · ")}
           </Text>

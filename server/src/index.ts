@@ -12,6 +12,7 @@ import * as bounties from "./bounties.ts";
 import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
 import * as field from "./field.ts";
+import * as rivalry from "./rivalry.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -216,6 +217,15 @@ app.post<{ Params: { id: string } }>("/v1/signals/:id/capture", async (req) => {
   return field.captureSignal(p.id, p.factionId, req.params.id, b.lat, b.lng, b.hold, b.flick);
 });
 app.get("/v1/collection", async (req) => ({ collection: field.collectionOf(need(req).id) }));
+app.get("/v1/ladder", async (req) => {
+  const p = need(req);
+  const q = z.object({ areaId: z.string().optional() }).parse(req.query ?? {});
+  const pres = getPresence(p.id);
+  const areaId = q.areaId ?? pres?.areaId ?? get<{ area_id: string }>("SELECT area_id FROM missions WHERE assignee_id=? ORDER BY created_at DESC LIMIT 1", p.id)?.area_id ?? get<{ id: string }>("SELECT id FROM areas ORDER BY id LIMIT 1")!.id;
+  const l = rivalry.ladder(areaId, p.id);
+  return { ...l, sector: get<{ name: string }>("SELECT name FROM areas WHERE id=?", areaId)?.name ?? null };
+});
+app.get("/v1/titles", async (req) => ({ titles: rivalry.titlesOf(need(req).id) }));
 app.post("/v1/admin/signals/spawn", async () => ({ spawned: field.spawnAround() }));
 // ---- investigations ----
 app.get("/v1/investigations", async (req) => ({ cases: investigations.listCases(need(req).id) }));
@@ -316,7 +326,7 @@ app.get("/v1/admin/overview", async () => {
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
     sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
-    field: field.fieldOverview(),
+    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(),
     funnel: {
       registered: get<{ n: number }>("SELECT COUNT(*) n FROM players")!.n,
       assessed: get<{ n: number }>("SELECT COUNT(*) n FROM assessments")!.n,

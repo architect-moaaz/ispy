@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import type { BoardResponse, BountyCard as BountyT, CrisisView, Dispatch, WorldStatus } from "@ispy/shared";
+import type { BoardResponse, BountyCard as BountyT, CrisisView, Dispatch, LadderResponse, WorldStatus } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
@@ -14,10 +14,11 @@ export function Board() {
   const [news, setNews] = useState<Dispatch[]>([]);
   const [crisis, setCrisis] = useState<CrisisView | null>(null);
   const [world, setWorld] = useState<WorldStatus | null>(null);
+  const [ladder, setLadder] = useState<LadderResponse | null>(null);
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {}), api.crisis().then((r) => setCrisis(r.crisis)).catch(() => {}), api.world().then(setWorld).catch(() => {})]).catch((e) => setErr(e.message));
+  const load = () => Promise.all([api.board().then(setData), api.dispatches().then((r) => setNews(r.dispatches)).catch(() => {}), api.crisis().then((r) => setCrisis(r.crisis)).catch(() => {}), api.world().then(setWorld).catch(() => {}), api.ladder().then(setLadder).catch(() => {})]).catch((e) => setErr(e.message));
   useEffect(() => {
     load();
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -63,6 +64,21 @@ export function Board() {
         </View>
       )}
 
+      {ladder && (
+        <View style={s.control}>
+          <Text style={s.eyebrow}>Sector ladder · {ladder.sector ?? "your sector"} · {ladder.week}{ladder.yourRank ? ` · you are #${ladder.yourRank}` : " · not on it yet"}</Text>
+          {ladder.rows.length === 0 && <Text style={[s.site, { color: C.dim, marginTop: 4 }]}>Nobody has scored this week. Hold a site, win a face-off, capture a signal.</Text>}
+          {ladder.rows.map((r, i) => (
+            <View key={r.codename} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5, backgroundColor: r.you ? "#12303c" : "transparent" }}>
+              <Text style={[s.site, { width: 22, color: C.dim }]}>{i + 1}</Text>
+              <Text style={[s.site, { flex: 1, color: factionColor(r.factionId), fontFamily: F.displayMed, letterSpacing: 1 }]} numberOfLines={1}>{r.codename.toUpperCase()}{r.title ? `  · ${r.title.toUpperCase()}` : ""}</Text>
+              <Text style={[s.site, { color: C.dim }]}>{r.held}h · {r.wins}w · {r.captures}c</Text>
+              <Text style={[s.site, { width: 34, textAlign: "right", color: C.text }]}>{r.score}</Text>
+            </View>
+          ))}
+          <Text style={[s.site, { color: C.dim, marginTop: 6 }]}>h sites held · w face-offs and contests won · c captures. Resets Monday.</Text>
+        </View>
+      )}
       {world?.control && Object.values(world.control).some((c) => Object.values(c).some((n) => n > 0)) && (
         <View style={s.control}>
           <Text style={s.eyebrow}>Sector control · a finished site is held for two hours</Text>

@@ -6,7 +6,7 @@ import { bus, type Signal } from "./bus.ts";
  * world's public ones; never another operative's. Payloads are kept small; the app refetches what changed.
  */
 const MINE = new Set(["chief.message", "mission.offered", "mission.accepted", "mission.verified", "mission.expired", "mission.abandoned",
-  "desk_link.fulfilled", "desk_link.fallback", "reward", "rank_up", "signals.spawned", "signal.captured", "cache.spun", "evidence.found", "evidence.decoy_detected", "case.opened", "case.confirmed",
+  "desk_link.fulfilled", "desk_link.fallback", "reward", "rank_up", "signals.spawned", "signal.captured", "cache.spun", "faceoff.started", "faceoff.resolved", "otw.named", "evidence.found", "evidence.decoy_detected", "case.opened", "case.confirmed",
   "case.rejected", "case.exposed", "bounty.completed", "bounty.claimed", "world_event.fragment", "presence.check_in", "presence.check_out", "location.flagged"]);
 const PUBLIC = new Set(["world_event.published", "world_event.resolved", "director.dispatch", "admin.paused", "admin.resumed", "bounty.published", "contest.formed"]);
 
@@ -24,6 +24,11 @@ function publicPayload(s: Signal) {
     case "bounty.completed": return { title: p.title, credits: p.credits };
     case "world_event.fragment": return { fragments: p.fragments, faction: p.faction };
     case "world_event.published": case "world_event.resolved": return { name: p.name, winner: p.winner ?? null };
+    case "faceoff.started": return { faceoffId: p.faceoffId, target: p.target, targetId: p.targetId, rival: p.rival, rivalFaction: p.rivalFaction, endsAt: p.endsAt };
+    case "faceoff.resolved": return { faceoffId: p.faceoffId, target: p.target, outcome: p.outcome, rival: p.rival, rivalFaction: p.rivalFaction, winner: p.winner, winnerFaction: p.winnerFaction };
+    case "otw.named": return { codename: p.codename, week: p.week };
+    case "signal.captured": return { kind: p.kind, name: p.name, rarity: p.rarity, xp: p.xp };
+    case "cache.spun": return { target: p.target };
     default: return {};
   }
 }

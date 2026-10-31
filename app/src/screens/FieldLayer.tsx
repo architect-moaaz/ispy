@@ -102,7 +102,7 @@ export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, o
     return (
       <Dossier tab={c.heldBy ? factionColor(c.heldBy) : C.cyan}>
         <Text style={s.title}>CACHE · {c.name.toUpperCase()}</Text>
-        <Text style={s.mono}>{c.kind.toUpperCase()} · {dist != null ? `${Math.round(dist)} M` : `${c.distanceM} M`}{c.heldBy ? ` · HELD BY ${c.heldBy.toUpperCase()}` : ""}{c.readyAt ? ` · COLD, READY IN ${fmtCountdown(c.readyAt, now)}` : " · READY"}</Text>
+        <Text style={s.mono}>{c.kind.toUpperCase()} · {dist != null ? `${Math.round(dist)} M` : `${c.distanceM} M`}{c.heldBy ? ` · HELD BY ${c.heldByCodename ? c.heldByCodename.toUpperCase() + " · " : ""}${c.heldBy.toUpperCase()}` : ""}{c.readyAt ? ` · COLD, READY IN ${fmtCountdown(c.readyAt, now)}` : " · READY"}</Text>
         <Body dim>Inside 40 m, spin it for intel: cipher fragments, decoys, sometimes a jammer or a lens. Every five minutes.</Body>
         <View style={{ flexDirection: "row", gap: 8 }}>
           {near ? <Button title="Spin cache" onPress={onSpin} loading={busy} disabled={!!c.readyAt} style={{ flex: 1, marginTop: 0 }} /> : <Button title="Navigate" onPress={onNavigate} style={{ flex: 1, marginTop: 0 }} />}
