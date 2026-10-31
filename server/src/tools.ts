@@ -144,3 +144,39 @@ export function toolsOverview() {
     liveDecoys: get<{ n: number }>("SELECT COUNT(*) n FROM decoys WHERE until>? AND sprung_by IS NULL", now())!.n,
   };
 }
+
+/** Package locks: which tool opens what. A lock is chosen at mission creation; the right tool on site opens it. */
+export type LockKind = "sealed" | "cipher" | "jammed" | "shadowed";
+export const LOCKS: Record<LockKind, { tool: ToolId; label: string; blurb: string }> = {
+  sealed: { tool: "lens", label: "Sealed", blurb: "A seal you cannot read by eye. A lens breaks it." },
+  cipher: { tool: "key", label: "Cipher-locked", blurb: "A combination in someone else's alphabet. A key opens it." },
+  jammed: { tool: "jammer", label: "Jammed", blurb: "Interference on the cache's beacon. A jammer of your own clears it." },
+  shadowed: { tool: "tracker", label: "Shadowed", blurb: "The package is not quite where it should be. A tracker finds it." },
+};
+export function rollLock(seed: number): LockKind | null {
+  if (seed < 0.6) return null;
+  return seed < 0.72 ? "sealed" : seed < 0.84 ? "cipher" : seed < 0.93 ? "jammed" : "shadowed";
+}
+export const lockView = (kind: LockKind | null | undefined) => kind ? { kind, tool: LOCKS[kind].tool, label: LOCKS[kind].label } : null;
+export const holdsTool = (playerId: string, tool: ToolId) => tool === "cipher_kit" || (inventoryOf(playerId)[tool] ?? 0) > 0;
+
+/** Use a tool on a locked package, on site. The right tool is consumed and the lock opens; the wrong one costs nothing but tells you. */
+export function unlockPackage(playerId: string, missionId: string, tool: string, lat: number, lng: number, distanceM: (a: number, b: number, c: number, d: number) => number): { ok: boolean; reason?: string; wrong?: boolean; detail?: string } {
+  const m = get<{ id: string; params: string; target_id: string | null; template_id: string }>("SELECT id, params, target_id, template_id FROM missions WHERE id=? AND assignee_id=? AND state='active'", missionId, playerId);
+  if (!m) return { ok: false, reason: "No active mission." };
+  const params = parse<any>(m.params, {});
+  const kind: LockKind | null = params.lock ?? null;
+  if (!kind) return { ok: true, detail: "Nothing to open." };
+  if (params.unlockedWith) return { ok: true, detail: "Already open." };
+  const target = m.template_id === "EXTRACTION" ? params.route?.[params.leg] : m.target_id;
+  const t = get<{ lat: number; lng: number; approach_radius_m: number }>("SELECT lat, lng, approach_radius_m FROM targets WHERE id=?", target);
+  if (!t) return { ok: false, reason: "No site." };
+  if (distanceM(lat, lng, t.lat, t.lng) > t.approach_radius_m) return { ok: false, reason: "Get inside the ring first." };
+  const need = LOCKS[kind].tool;
+  if (tool !== need) { logEvent("package.wrong_tool", "player", { missionId, lock: kind, tool }, playerId); return { ok: false, wrong: true, reason: `${LOCKS[kind].label}. That is not the tool for it.` }; }
+  if (!spend(playerId, need)) return { ok: false, reason: `You need a ${need} for this one.` };
+  params.unlockedWith = need;
+  run("UPDATE missions SET params=? WHERE id=?", json(params), m.id);
+  logEvent("package.unlocked", "player", { missionId, lock: kind, tool: need }, playerId);
+  return { ok: true, detail: `${LOCKS[kind].label} package opened with your ${need}.` };
+}

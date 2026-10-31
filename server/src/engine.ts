@@ -223,6 +223,11 @@ const XP: Record<TemplateId, number> = { RECON: 120, DEAD_DROP: 180, EXTRACTION:
 
 function createMission(f: Faction, areaId: string, template: TemplateId, mode: Mode, target: TargetRow | null, params: Record<string, unknown>, seed: string, over?: { title?: string; brief?: string; reservedFor?: string }) {
   const id = uid();
+  // Some packages are locked: the right tool, used on site through the dial, opens them. Never on extractions or crisis work.
+  if (mode === "field" && template !== "EXTRACTION" && !(params as any).crisisId && !(params as any).lock) {
+    const lock = tools.rollLock(rand(seed + ":lock"));
+    if (lock) params = { ...params, lock };
+  }
   const brief = over?.brief ?? flavour(f, template, target?.name ?? "the area", seed);
   run(`INSERT INTO missions(id,faction_id,area_id,template_id,mode,target_id,state,title,brief,params,reward_xp,expires_at,created_at,reserved_for)
        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -378,6 +383,7 @@ function summary(m: MissionRow, p?: Player, pres?: PresenceRow | null): MissionS
     deskLink: link ? { state: link.state as any, fallbackAt: link.started_at ? new Date(Date.parse(link.started_at) + link.fallback_after_s * 1000).toISOString() : "" } : null,
     chain: (() => { const c = chains.chainOf(m.params); return c ? chains.chainSummary(c.chainId) : null; })(),
     heldBy: m.target_id ? lockOn(m.target_id)?.faction_id ?? null : null,
+    lock: tools.lockView(parse<any>(m.params, {}).lock), unlocked: !parse<any>(m.params, {}).lock || !!parse<any>(m.params, {}).unlockedWith,
     crisis: (() => {
       const pr = parse<any>(m.params, {});
       if (!pr?.crisisId) return null;
@@ -423,14 +429,16 @@ export function offersFor(player: Player): OfferCard[] {
       // The next link of the operative's own operation goes to the front of the line.
       const link = m.reserved_for === player.id ? 2 : 0;
       const urgent = parse<any>(m.params, {})?.crisisId ? 1 : 0;
-      const score = link + urgent + waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
+      const lk = parse<any>(m.params, {})?.lock as tools.LockKind | undefined;
+      const openable = !lk || tools.holdsTool(player.id, tools.LOCKS[lk].tool) ? 0.4 : 0;
+      const score = link + urgent + openable + waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
       return { m, score };
     }).filter((x): x is { m: MissionRow; score: number } => !!x).sort((a, b) => b.score - a.score);
     // Rookie rule: until the first field verification, the board is one recon at the nearest site, so the
     // first real-world win comes within minutes and verifies by presence wherever that is possible.
     const rookie = pres.mode === "field" && !get("SELECT 1 FROM missions WHERE assignee_id=? AND mode='field' AND state='completed'", player.id);
     if (rookie && scored.length) {
-      const byWalk = [...scored].filter(({ m }) => m.template_id === "RECON").sort((a, b) => (summary(a.m, player, pres).walkM ?? 1e9) - (summary(b.m, player, pres).walkM ?? 1e9));
+      const byWalk = [...scored].filter(({ m }) => m.template_id === "RECON" && !parse<any>(m.params, {}).lock).sort((a, b) => (summary(a.m, player, pres).walkM ?? 1e9) - (summary(b.m, player, pres).walkM ?? 1e9));
       const presenceOnly = byWalk.find(({ m }) => !get<{ o: string }>("SELECT observation o FROM targets WHERE id=?", m.target_id)?.o);
       const first = presenceOnly ?? byWalk[0];
       if (first) { scored.length = 0; scored.push(first); }
@@ -518,6 +526,7 @@ export function navigate(player: Player, missionId: string): NavigateResponse {
       : ["Walk to the site", "Scan on arrival", "Answer the observation question"];
   return {
     targetId: t.id, targetName: t.name, lat: t.lat, lng: t.lng, approachRadiusM: t.approach_radius_m, heldBy: lockOn(t.id)?.faction_id ?? null,
+    lock: tools.lockView(params.lock), lockOpen: !params.lock || !!params.unlockedWith,
     heldByCodename: (() => { const l = lockOn(t.id); return l ? get<{ codename: string }>("SELECT codename FROM players WHERE id=?", l.player_id)?.codename ?? null : null; })(),
     faceoff: (() => { const f = rivalry.liveFaceoffFor(player.id, t.id); return f ? { id: f.id, rivalCodename: f.rivalCodename, rivalFaction: f.rivalFaction, endsAt: f.endsAt } : null; })(),
     hint: `${t.kind}: ${t.name}`, unlocked, steps,
@@ -557,11 +566,13 @@ export function scan(player: Player, missionId: string, body: ScanRequest): Scan
   if (distance > t.approach_radius_m) return { result: "too_far", distanceM: Math.round(distance) };
   const params = parse<any>(m.params, {});
   const link = m.desk_link_id ? get<DeskLinkRow>("SELECT * FROM desk_links WHERE id=?", m.desk_link_id) : undefined;
+  // A locked package stays shut until the right tool is used on it, on site.
+  if (params.lock && !params.unlockedWith) return { result: "locked", distanceM: Math.round(distance), lock: tools.lockView(params.lock) };
 
   // On-site code: pickup code (from the desk, or solo fallback) or the observation question.
   let prompt: string | null = null;
   let expected: string | null = null;
-  if (m.template_id === "DEAD_DROP") {
+  if (m.template_id === "DEAD_DROP" && params.unlockedWith !== "key") {
     if (link?.state === "open") return { result: "needs_code", puzzle: { prompt: "The drop is locked. Your analyst is still cracking the code. Wait, or enter it if they send it." } };
     const solo = link?.state === "fallback";
     prompt = solo ? `No word from the desk. Solo decode: ${makeCipherPrompt(params.pickupCode, m.id)}` : "Enter the pickup code from your analyst.";

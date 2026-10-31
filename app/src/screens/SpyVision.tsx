@@ -101,6 +101,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   }, [mission?.id]);
 
   useEffect(() => { fixRef.current = fix; }, [fix]);
+  useEffect(() => { if (scan?.result === "locked") setAr(true); }, [scan?.result]);
   // Refresh the ambient layer as you move (every ~25 m) and on live spawns.
   useEffect(() => { void loadField(fix); }, [fix ? Math.round(fix.lat * 4000) : 0, fix ? Math.round(fix.lng * 4000) : 0]);
   useEffect(() => onLive((ty) => { if (ty === "signals.spawned" || ty === "cache.spun" || ty === "signal.captured") void loadField(fixRef.current); }), []);
@@ -181,9 +182,21 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
     return (
       <ARScan codename={codename} factionId={factionId} rank={rank} targetName={nav.targetName}
         prompt={scan?.result === "needs_code" ? scan.puzzle?.prompt ?? null : null}
-        bearing={bearing} distanceM={dist} busy={busy}
+        bearing={bearing} distanceM={dist} busy={busy || toolBusy}
         error={scan?.result === "needs_code" ? scan.reason ?? null : scan?.result === "too_far" ? `Still ${Math.round(scan.distanceM ?? 0)} m out.` : scan?.result === "rejected" ? scan.reason ?? "Scan could not be verified." : err}
-        onSubmit={(c) => doScan(c || undefined)} onDisengage={() => setAr(false)} />
+        onSubmit={(c) => doScan(c || undefined)} onDisengage={() => setAr(false)}
+        lock={nav.lock ?? null} lockOpen={nav.lockOpen ?? true} unlockMsg={toolMsg}
+        tools={kit ? kit.tools.filter((t) => t.id !== "cipher_kit" && t.id !== "fragment").map((t) => ({ ...t, enabled: t.qty > 0 && !!fix && dist != null && dist <= (nav.approachRadiusM ?? 45), why: t.qty > 0 ? "Get inside the ring." : t.craft ? `Craft on Me · ${t.craft} fragments` : "Caches sometimes hold one." })) : []}
+        onUnlock={async (t) => {
+          if (!fix) return;
+          setToolBusy(true);
+          try {
+            const r = await api.unlock(mission.id, { tool: t.id, lat: fix.lat, lng: fix.lng, sim: fix.sim });
+            setToolMsg(r.ok ? `UNLOCKED · ${r.detail ?? ""}` : r.wrong ? `WRONG TOOL · ${r.reason}` : r.reason ?? "No.");
+            if (r.ok) { setNav(await api.navigate(mission.id)); setScan(null); }
+            await loadKit();
+          } catch (e: any) { setToolMsg(e.message); } finally { setToolBusy(false); }
+        }} />
     );
   }
 
@@ -251,7 +264,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           <Button title="HQ link" kind="ghost" onPress={onHQ} style={{ marginTop: 0, paddingVertical: 8 }} />
         </View>
       </View>
-      {mission && onSite && nav?.unlocked && !completed && <Button title="AR scan · camera view" kind="ghost" onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
+      {mission && onSite && nav?.unlocked && !completed && <Button title={nav.lock && !nav.lockOpen ? "AR scan · open the package" : "AR scan · camera view"} kind={nav.lock && !nav.lockOpen ? undefined : "ghost"} onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
       {kit && (() => {
         // What each tool can do from exactly here: the dial greys the rest and says why.
         const jam = kit.effects.find((e) => e.kind === "jammer"), trk = kit.effects.find((e) => e.kind === "tracker");
@@ -301,6 +314,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           {mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{mission.chain.name.toUpperCase()} · LINK {mission.chain.step} OF {mission.chain.of}</Text>}
           {mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {mission.crisis.name.toUpperCase()} · {mission.crisis.stance.toUpperCase()}{mission.crisis.joint ? ` · JOINT OP WITH ${mission.crisis.joint.toUpperCase()}` : ""}</Text>}
           {nav.heldBy && nav.heldBy !== factionId && <Text style={[s.mono, { color: C.red, letterSpacing: 1.2 }]}>SITE HELD BY A RIVAL · YOU WILL ARRIVE LATE</Text>}
+          {nav.lock && <Text style={[s.mono, { color: nav.lockOpen ? C.ok : C.amber, letterSpacing: 1.2 }]}>{nav.lockOpen ? `PACKAGE OPENED WITH ${nav.lock.tool.toUpperCase()}` : `${nav.lock.label.toUpperCase()} PACKAGE · BRING A ${nav.lock.tool.toUpperCase()} · OPEN IT IN AR SCAN ON SITE`}</Text>}
           {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
           <Typed>{mission.brief}</Typed>
           {nav.steps.map((st, i) => <Typed key={i} style={{ color: C.dim, marginBottom: 2 }}>{i + 1}. {st}</Typed>)}
@@ -337,6 +351,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
                 </View>
               </View>
               {o.mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{o.mission.chain.name.toUpperCase()} · LINK {o.mission.chain.step} OF {o.mission.chain.of}</Text>}
+              {o.mission.lock && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{o.mission.lock.label.toUpperCase()} · NEEDS A {o.mission.lock.tool.toUpperCase()}</Text>}
               {o.mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {o.mission.crisis.name.toUpperCase()} · {o.mission.crisis.stance.toUpperCase()}{o.mission.crisis.joint ? ` · JOINT OP WITH ${o.mission.crisis.joint.toUpperCase()}` : ""}</Text>}
               <Text style={s.mono}>{o.mission.targetName?.toUpperCase()}{o.mission.walkM != null ? ` · ${Math.round(o.mission.walkM)}M` : ""}{o.mission.contested ? " · RIVAL ACTIVITY" : ""}{o.mission.deskLink ? " · ANALYST LINK" : ""}</Text>
               <Typed style={{ marginTop: 4 }}>{o.mission.brief}</Typed>

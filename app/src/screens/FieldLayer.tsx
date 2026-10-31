@@ -139,6 +139,7 @@ export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, o
           <View style={{ flex: 1 }}>
             <Text style={[s.title, { color: C.amber }]}>ORDER · {o.title.toUpperCase()}</Text>
             {o.chain && <Text style={[s.mono, { color: C.amber }]}>{o.chain.name.toUpperCase()} · LINK {o.chain.step} OF {o.chain.of}</Text>}
+            {o.lock && <Text style={[s.mono, { color: C.amber }]}>{o.lock.label.toUpperCase()} · NEEDS A {o.lock.tool.toUpperCase()}</Text>}
             {o.crisis && <Text style={[s.mono, { color: C.amber }]}>CRISIS · {o.crisis.name.toUpperCase()} · {o.crisis.stance.toUpperCase()}{o.crisis.joint ? ` · JOINT OP WITH ${o.crisis.joint.toUpperCase()}` : ""}</Text>}
             <Text style={s.mono}>{o.targetName.toUpperCase()} · {Math.round(o.walkM)} M · {o.rewardXp} XP · ACCEPT WITHIN {fmtCountdown(o.acceptBy, now)}</Text>
           </View>

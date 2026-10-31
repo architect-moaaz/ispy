@@ -202,7 +202,7 @@ app.get("/v1/map", async (req) => {
   // Offers as pins: the chief's orders drawn where they are.
   const pins = offersFor(p).map((o) => {
     const t = get<{ lat: number; lng: number }>("SELECT t.lat, t.lng FROM missions m JOIN targets t ON t.id=m.target_id WHERE m.id=?", o.mission.id);
-    return t ? { offerId: o.offerId, missionId: o.mission.id, lat: t.lat, lng: t.lng, title: o.mission.title, templateId: o.mission.templateId, targetName: o.mission.targetName ?? "", walkM: o.mission.walkM ?? 0, rewardXp: o.mission.rewardXp, acceptBy: o.acceptBy, chain: o.mission.chain ?? null, crisis: o.mission.crisis ?? null } : null;
+    return t ? { offerId: o.offerId, missionId: o.mission.id, lat: t.lat, lng: t.lng, title: o.mission.title, templateId: o.mission.templateId, targetName: o.mission.targetName ?? "", walkM: o.mission.walkM ?? 0, rewardXp: o.mission.rewardXp, acceptBy: o.acceptBy, chain: o.mission.chain ?? null, crisis: o.mission.crisis ?? null, lock: o.mission.lock ?? null } : null;
   }).filter((x): x is NonNullable<typeof x> => !!x);
   return { ...m, pins };
 });
@@ -231,6 +231,12 @@ app.get("/v1/titles", async (req) => ({ titles: rivalry.titlesOf(need(req).id) }
 
 // ---- toolkit ----
 app.get("/v1/tools", async (req) => tools.toolkitOf(need(req).id));
+app.post<{ Params: { id: string } }>("/v1/missions/:id/unlock", async (req) => {
+  const p = need(req);
+  const b = z.object({ tool: z.string(), lat: z.number(), lng: z.number(), sim: z.boolean().optional() }).parse(req.body);
+  if (b.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
+  return tools.unlockPackage(p.id, req.params.id, b.tool, b.lat, b.lng, distanceM);
+});
 app.post("/v1/tools/craft", async (req) => tools.craft(need(req).id, z.object({ tool: z.string() }).parse(req.body).tool));
 app.post<{ Params: { tool: string } }>("/v1/tools/:tool/use", async (req) => {
   const p = need(req);

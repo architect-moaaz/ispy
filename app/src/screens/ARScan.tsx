@@ -3,7 +3,9 @@ import { Animated, Easing, Dimensions, StyleSheet, Text, View } from "react-nati
 import { CameraView, useCameraPermissions } from "expo-camera";
 import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
 import { C, F, factionColor } from "../theme";
-import { Button, Input } from "../ui";
+import { Button, Input, Stamp } from "../ui";
+import { ToolDial, type DialTool } from "./ToolDial";
+import type { LockKind, ToolId } from "@ispy/shared";
 import { FactionEmblem } from "../graphics";
 import { HoloCache3D } from "../effects/HoloCache3D";
 import { RadarSweep } from "../effects/RadarSweep";
@@ -14,11 +16,16 @@ import { RadarSweep } from "../effects/RadarSweep";
  * The camera is a backdrop only: nothing is recorded, uploaded or recognised.
  */
 export function ARScan({
-  codename, factionId, rank, targetName, prompt, bearing, distanceM, onSubmit, busy, error, onDisengage,
+  codename, factionId, rank, targetName, prompt, bearing, distanceM, onSubmit, busy, error, onDisengage, lock, lockOpen, tools, onUnlock, unlockMsg,
 }: {
   codename: string; factionId: string | null; rank: string; targetName: string; prompt: string | null;
   bearing: number | null; distanceM: number | null; onSubmit: (code: string) => void; busy: boolean; error: string | null; onDisengage: () => void;
+  lock?: { kind: LockKind; tool: ToolId; label: string } | null; lockOpen?: boolean; tools?: DialTool[]; onUnlock?: (tool: DialTool) => void; unlockMsg?: string | null;
 }) {
+  const [justOpened, setJustOpened] = useState(false);
+  const wasLocked = useRef(!!lock && !lockOpen);
+  useEffect(() => { if (wasLocked.current && lockOpen) { setJustOpened(true); const t = setTimeout(() => setJustOpened(false), 2200); return () => clearTimeout(t); } wasLocked.current = !!lock && !lockOpen; }, [lockOpen]);
+  const locked = !!lock && !lockOpen;
   const [perm, requestPerm] = useCameraPermissions();
   const [code, setCode] = useState("");
   const { width, height } = Dimensions.get("window");
@@ -72,13 +79,25 @@ export function ARScan({
 
       {/* 3D Holographic Virtual Dead-Drop Cache */}
       <View pointerEvents="none" style={{ position: "absolute", left: width / 2 - 80, top: height * 0.3, width: 160, alignItems: "center" }}>
-        <HoloCache3D factionId={factionId} targetName={targetName} distanceM={distanceM} locked={distanceM == null || distanceM > 45} size={150} />
+        <HoloCache3D factionId={factionId} targetName={targetName} distanceM={distanceM} locked={distanceM == null || distanceM > 45 || locked} size={150} />
+        {lock && (
+          <View style={[s.lockTag, { borderColor: locked ? C.red : C.ok }]}>
+            <Text style={[s.hud, { backgroundColor: "transparent", color: locked ? C.red : C.ok }]}>{locked ? `${lock.label.toUpperCase()} · NEEDS ${lock.tool.toUpperCase()}` : `OPENED WITH ${lock.tool.toUpperCase()}`}</Text>
+          </View>
+        )}
       </View>
+      {justOpened && <View pointerEvents="none" style={s.stampWrap}><Stamp text="Unlocked" size={44} color={C.red} /></View>}
 
       {/* cipher panel + actions */}
       <View style={s.sheet}>
-        <Text style={s.hud}>AR ANCHOR STATUS: {distanceM != null && distanceM <= 45 ? "LOCKED" : "ENCRYPTED"}</Text>
-        {prompt ? (
+        <Text style={s.hud}>AR ANCHOR STATUS: {distanceM != null && distanceM <= 45 ? (locked ? `${lock!.label.toUpperCase()} PACKAGE` : "LOCKED ON") : "ENCRYPTED"}</Text>
+        {locked && tools && onUnlock ? (
+          <>
+            <Text style={[s.mono, { marginTop: 4 }]}>{distanceM != null && distanceM <= 45 ? `Spin the dial to the right tool and use it on the package.` : `Get inside the ring, then open it with a ${lock!.tool}.`}</Text>
+            <ToolDial tools={tools} busy={busy} hint={unlockMsg ?? null} onUse={onUnlock} />
+            <Button title="Disengage" kind="ghost" onPress={onDisengage} style={{ marginTop: 0, paddingVertical: 9 }} />
+          </>
+        ) : prompt ? (
           <>
             <Text style={[s.mono, { marginTop: 6 }]}>{prompt}</Text>
             <Input value={code} onChangeText={setCode} placeholder="ANSWER" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={() => onSubmit(code)} style={{ marginTop: 8 }} />
@@ -88,10 +107,12 @@ export function ARScan({
         ) : (
           <Button title="Extract data" onPress={() => onSubmit("")} loading={busy} style={s.pill} />
         )}
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-          <Button title="Scan region" kind="ghost" onPress={() => onSubmit("")} disabled={busy} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
-          <Button title="Disengage" kind="ghost" onPress={onDisengage} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
-        </View>
+        {!(locked && tools && onUnlock) && (
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+            <Button title="Scan region" kind="ghost" onPress={() => onSubmit("")} disabled={busy} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
+            <Button title="Disengage" kind="ghost" onPress={onDisengage} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
+          </View>
+        )}
       </View>
       <View pointerEvents="none" style={[s.badgeRing, { borderColor: color }]} />
     </View>
@@ -107,5 +128,7 @@ const s = StyleSheet.create({
   side: { position: "absolute", color: C.cyan, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.6, transform: [{ rotate: "-90deg" }], width: 150, textAlign: "center", marginLeft: -62 },
   sheet: { position: "absolute", left: 14, right: 14, bottom: 22, backgroundColor: C.glass, borderWidth: 1, borderColor: C.cyan + "88", padding: 12 },
   pill: { borderRadius: 30, paddingVertical: 14 },
+  lockTag: { marginTop: 6, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: C.glass },
+  stampWrap: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   badgeRing: { position: "absolute", left: 10, top: 42, width: 58, height: 58, borderRadius: 29, borderWidth: 1, opacity: 0.5 },
 });

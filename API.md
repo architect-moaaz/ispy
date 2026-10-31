@@ -255,3 +255,13 @@ half-wheel (`ToolDial`): tools sit on an arc with their counts; drag left or rig
 tool at the top is in hand with its purpose and one Use button. Tools that cannot be used from here are
 greyed with the reason (desk-only, none left, already running, needs a recon, plant after a verify).
 Me shows the same icons in the toolkit list with crafting.
+
+### Locked packages (AR + dial)
+About 40% of field packages (never extractions or crisis work) carry a lock chosen at creation:
+sealed → lens, cipher-locked → key, jammed → jammer, shadowed → tracker. The lock shows on the offer card,
+the map pin and the mission panel. On site, a scan returns `locked`; the app opens AR scan, where the
+package floats with its lock tag and the tool dial sits in the sheet: spin to the tool and use it.
+`POST /v1/missions/:id/unlock { tool, lat, lng }` opens it only inside the ring and only with the right
+tool, which is consumed (`package.unlocked`); the wrong tool costs nothing and says so
+(`package.wrong_tool`). A dead drop opened with a key needs no analyst code. The matcher favours packages
+you can open, and a recruit's first mission is never locked.

@@ -133,7 +133,10 @@ export interface MissionSummary {
   chain?: { name: string; step: number; of: number } | null; // link of an operation composed by the Director
   crisis?: { name: string; stance: "intercept" | "sabotage" | "mitigate"; joint: string | null } | null; // crisis mission; joint = allied agency it belongs to
   heldBy?: FactionId | null; // agency currently holding the site (first finished keeps it for two hours)
+  lock?: { kind: LockKind; tool: ToolId; label: string } | null; // the package's lock, opened with the right tool on site
+  unlocked?: boolean; // lock opened (or no lock)
 }
+export type LockKind = "sealed" | "cipher" | "jammed" | "shadowed";
 
 // ---- Chaos: crises brewed by the Director ----
 export type CrisisStance = "intercept" | "sabotage" | "mitigate";
@@ -168,6 +171,8 @@ export interface NavigateResponse {
   heldBy?: FactionId | null;
   heldByCodename?: string | null;
   faceoff?: { id: string; rivalCodename: string; rivalFaction: FactionId; endsAt: string } | null;
+  lock?: { kind: LockKind; tool: ToolId; label: string } | null;
+  lockOpen?: boolean;
 }
 
 export interface ScanRequest {
@@ -179,7 +184,8 @@ export interface ScanRequest {
   onSiteCode?: string; // answer to the on-site puzzle, when asked
 }
 export interface ScanResponse {
-  result: "verified" | "rejected" | "needs_code" | "too_far" | "flagged";
+  result: "verified" | "rejected" | "needs_code" | "too_far" | "flagged" | "locked";
+  lock?: { kind: LockKind; tool: ToolId; label: string } | null; // when result = locked
   distanceM?: number;
   trustScore?: number;
   reason?: string;
@@ -325,7 +331,7 @@ export type Rarity = "common" | "uncommon" | "rare" | "legendary";
 export interface SignalView { id: string; kind: string; name: string; rarity: Rarity; art: string; blurb: string; lat: number; lng: number; distanceM: number; expiresAt: string; attemptsLeft: number }
 export interface CacheView { id: string; name: string; kind: string; lat: number; lng: number; distanceM: number; readyAt: string | null; inRange: boolean; heldBy: FactionId | null; heldByCodename: string | null }
 export interface StrongholdView { targetId: string; name: string; lat: number; lng: number; holder: FactionId | null; control: Record<FactionId, number> }
-export interface OfferPin { offerId: string; missionId: string; lat: number; lng: number; title: string; templateId: TemplateId; targetName: string; walkM: number; rewardXp: number; acceptBy: string; chain?: { name: string; step: number; of: number } | null; crisis?: { name: string; stance: string; joint: string | null } | null }
+export interface OfferPin { offerId: string; missionId: string; lat: number; lng: number; title: string; templateId: TemplateId; targetName: string; walkM: number; rewardXp: number; acceptBy: string; chain?: { name: string; step: number; of: number } | null; crisis?: { name: string; stance: string; joint: string | null } | null; lock?: { kind: LockKind; tool: ToolId; label: string } | null }
 export interface MapResponse { caches: CacheView[]; signals: SignalView[]; stronghold: StrongholdView | null; pins: OfferPin[] }
 export interface SpinResult { ok: boolean; reason?: string; items?: { id: string; name: string; qty: number }[]; xp?: number; credits?: number; readyAt?: string }
 export interface CaptureResult { result: "captured" | "escaped" | "fled" | "too_far" | "gone"; distanceM?: number; xp?: number; rarity?: Rarity; name?: string; kind?: string; attemptsLeft?: number; collection?: { kind: string; count: number; best: Rarity } }
@@ -341,3 +347,5 @@ export type ToolId = "cipher_kit" | "key" | "lens" | "jammer" | "tracker" | "dec
 export interface ToolView { id: ToolId; name: string; permanent: boolean; craft: number | null; blurb: string; use: string; qty: number }
 export interface ToolkitResponse { tools: ToolView[]; effects: { kind: string; until: string }[]; fragments: number }
 export interface ToolUseResult { ok: boolean; reason?: string; hint?: string; until?: string; detail?: string; qty?: number }
+
+export interface UnlockResult { ok: boolean; reason?: string; wrong?: boolean; detail?: string }
