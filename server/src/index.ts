@@ -20,7 +20,7 @@ import { openStream, streamClients } from "./stream.ts";
 import { registerPushToken, unregisterPushToken, startPush, pushStats } from "./push.ts";
 import { allParams } from "./params.ts";
 import { CONSOLE_HTML } from "./console.ts";
-import { openSector, settleSector, sectorSummary } from "./sectors.ts";
+import { openSector, settleSector, sectorSummary, layWaypoints, retireCheckpoints } from "./sectors.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
@@ -280,6 +280,7 @@ app.get("/v1/admin/director", async () => ({ ...directorAgent.status(), params: 
 app.post("/v1/admin/areas/open", async (req) => {
   const b = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }).parse(req.body);
   const a = openSector(b.lat, b.lng, null);
+  await layWaypoints(a.id);
   await refreshPlans(true, { areaId: a.id, reason: "a new sector was opened by survey" });
   refreshPool();
   const settled = await settleSector(a.id);
@@ -344,6 +345,7 @@ async function tick(force = false) {
 }
 await tick();
 startChiefAgents();
+retireCheckpoints().catch((e) => console.warn("[sectors] checkpoint migration failed:", (e as Error).message));
 startPush();
 directorAgent.start();
 

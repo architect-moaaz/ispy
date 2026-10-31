@@ -69,11 +69,11 @@ export function spawnAround() {
       const kinds = Object.entries(SIGNAL_KINDS).flatMap(([k, v]) => Array(Math.max(1, Math.round(v.weight * ((hour >= 20 || hour < 6) ? (k === "bug" || k === "jammer" ? 2 : 0.6) : 1)))).fill(k));
       const kind = pick(kinds, seed + ":k");
       const def = SIGNAL_KINDS[kind];
-      // Place it: near a site this kind likes when one is around, otherwise near any site, otherwise a short hop from the operative.
+      // Public ground only: a signal sits at a public place (a surveyed site or a footpath waypoint), a few steps off its centre.
       const liked = sites.filter((x) => def.likes.some((l) => x.t.kind.includes(l)));
       const base = (liked.length ? pick(liked, seed + ":s") : sites.length ? pick(sites, seed + ":s") : null)?.t;
-      const jitter = offsetM(base?.lat ?? o.lat, base?.lng ?? o.lng, (rand(seed + ":n") - 0.5) * 90, (rand(seed + ":e") - 0.5) * 90);
-      if (!base) { const far = 120 + rand(seed + ":f") * 200, a = rand(seed + ":a") * Math.PI * 2; const p = offsetM(o.lat, o.lng, far * Math.cos(a), far * Math.sin(a)); jitter.lat = p.lat; jitter.lng = p.lng; }
+      if (!base) break;
+      const jitter = offsetM(base.lat, base.lng, (rand(seed + ":n") - 0.5) * 30, (rand(seed + ":e") - 0.5) * 30);
       const rarity = kind === "asset" ? (rand(seed + ":r") < 0.5 ? "rare" : "legendary") : rollRarity(seed + ":r");
       const [lo, hi] = RARITY_TTL_MIN[rarity];
       const ttl = (lo + rand(seed + ":t") * (hi - lo)) * 60_000;

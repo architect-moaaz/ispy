@@ -14,14 +14,13 @@ import { rand } from "./puzzles.ts";
 export const SECTOR_RADIUS_M = 1200;
 const POI_RADIUS_M = 800;
 const CODEWORDS = ["AMBER", "COBALT", "SABLE", "IVORY", "OCHRE", "VIRIDIAN", "SLATE", "CRIMSON", "UMBER", "INDIGO", "SAFFRON", "ONYX", "PEWTER", "CORAL", "JADE", "RUST"];
-const RING = ["Drop point north", "Relay east", "Watch post south", "Cache west", "Signal corner", "Blind corner", "Inner ring", "Outer ring"];
 const UA = "ispy-a-spy/0.1 (world director; contact: moaazabir@gmail.com)";
 
 export function sectorIdFor(lat: number, lng: number) {
   return `sec-${lat.toFixed(2)}-${lng.toFixed(2)}`.replace(/[^a-z0-9-]/gi, "").replace(/-+/g, "-");
 }
 
-/** Synchronous: the area and its ring checkpoints exist when this returns. */
+/** Synchronous: the area exists when this returns. Objectives arrive from the survey (public places) and footpath waypoints. */
 export function openSector(lat: number, lng: number, openedFor: string | null): AreaRow {
   const id = sectorIdFor(lat, lng);
   const existing = get<AreaRow>("SELECT * FROM areas WHERE id=?", id);
@@ -29,16 +28,60 @@ export function openSector(lat: number, lng: number, openedFor: string | null): 
   const code = CODEWORDS[Math.floor(rand(id) * CODEWORDS.length)];
   const name = `Sector ${code}`;
   run("INSERT INTO areas(id,name,city,lat,lng,radius_m,merge_group) VALUES(?,?,?,?,?,?,?)", id, name, "Field", lat, lng, SECTOR_RADIUS_M, null);
-  RING.forEach((spot, i) => {
-    const r = 180 + (i % 4) * 90;
-    const a = (i * 45 * Math.PI) / 180;
-    const p = offsetM(lat, lng, r * Math.cos(a), r * Math.sin(a));
-    // No observation question: ring checkpoints verify by presence alone (nothing to read on site).
-    run(`INSERT INTO targets(id,area_id,name,kind,lat,lng,approach_radius_m,safe_start,safe_end,capacity,state,observation,observation_answer) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      `${id}-ring-${i}`, id, spot, "checkpoint", p.lat, p.lng, 45, 6, 21, 4, "ACTIVE", "", "");
-  });
   logEvent("sector.opened", "director", { areaId: id, name, lat, lng, radiusM: SECTOR_RADIUS_M, openedFor }, openedFor);
   return get<AreaRow>("SELECT * FROM areas WHERE id=?", id)!;
+}
+
+const OSRM_NEAREST = "https://router.project-osrm.org/nearest/v1/foot";
+/** Snap a point to the nearest public footpath or street (OSRM foot profile). null when unreachable or nothing within 120 m. */
+export async function snapToPath(lat: number, lng: number): Promise<{ lat: number; lng: number; name: string | null } | null> {
+  try {
+    const j = await fetchJson(`${OSRM_NEAREST}/${lng},${lat}?number=1`, {}, 6000);
+    const w = j?.waypoints?.[0];
+    if (!w || w.distance > 120) return null;
+    return { lat: w.location[1], lng: w.location[0], name: w.name || null };
+  } catch { return null; }
+}
+const COMPASS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+/**
+ * Waypoints: eight points on a ring, each snapped onto a public footpath or street, so there is always
+ * something to walk to that is on public ground. Nothing is created where no path can be found.
+ */
+export async function layWaypoints(areaId: string): Promise<number> {
+  const a = get<AreaRow>("SELECT * FROM areas WHERE id=?", areaId);
+  if (!a) return 0;
+  if (get("SELECT 1 FROM targets WHERE area_id=? AND state='ACTIVE'", areaId)) return 0;
+  const placed: { lat: number; lng: number }[] = [];
+  let n = 0;
+  for (let i = 0; i < 8; i++) {
+    const r = 180 + (i % 4) * 90;
+    const ang = (i * 45 * Math.PI) / 180;
+    const p = offsetM(a.lat, a.lng, r * Math.cos(ang), r * Math.sin(ang));
+    const snapped = await snapToPath(p.lat, p.lng);
+    if (!snapped) continue;
+    if (placed.some((q) => distanceM(q.lat, q.lng, snapped.lat, snapped.lng) < 60)) continue;
+    placed.push(snapped);
+    const name = `${snapped.name ? snapped.name : "Footpath"} · ${COMPASS[i]}`;
+    run(`INSERT INTO targets(id,area_id,name,kind,lat,lng,approach_radius_m,safe_start,safe_end,capacity,state,observation,observation_answer) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `${areaId}-wp-${i}`, areaId, name, "waypoint", snapped.lat, snapped.lng, 45, 6, 21, 4, "ACTIVE", "", "");
+    n++;
+  }
+  logEvent("sector.waypoints", "director", { areaId, placed: n }, null);
+  return n;
+}
+
+/** Legacy: arbitrary ring checkpoints from before the public-ground rule. Retire them and lay snapped waypoints instead. */
+export async function retireCheckpoints() {
+  const areas = all<{ area_id: string }>("SELECT DISTINCT area_id FROM targets WHERE kind='checkpoint' AND state='ACTIVE'");
+  for (const { area_id } of areas) {
+    run("UPDATE targets SET state='RETIRED' WHERE area_id=? AND kind='checkpoint' AND id NOT IN (SELECT target_id FROM missions WHERE target_id IS NOT NULL AND state IN ('accepted','active'))", area_id);
+    run("UPDATE missions SET state='expired', outcome='lost' WHERE area_id=? AND state IN ('pool','offered') AND target_id IN (SELECT id FROM targets WHERE kind='checkpoint')", area_id);
+    if (!get("SELECT 1 FROM targets WHERE area_id=? AND state='ACTIVE'", area_id)) await layWaypoints(area_id);
+    if (!get("SELECT 1 FROM targets WHERE area_id=? AND state='ACTIVE' AND kind NOT IN ('waypoint','checkpoint')", area_id)) settleSector(area_id).catch(() => {});
+  }
+  // Signals that were placed around retired points go with them.
+  run("UPDATE signals SET state='expired' WHERE state='live' AND near_target IN (SELECT id FROM targets WHERE state='RETIRED')");
+  if (areas.length) logEvent("sector.checkpoints_retired", "director", { areas: areas.map((a) => a.area_id) }, null);
 }
 
 interface Poi { name: string; kind: string; lat: number; lng: number }
@@ -161,15 +204,16 @@ export async function settleSector(areaId: string, attempt = 0): Promise<{ name:
     return { name, realTargets: 0, final: false };
   }
   let realTargets = 0;
-  if (pois && pois.length >= 3 && !get("SELECT 1 FROM targets WHERE area_id=? AND kind<>'checkpoint'", areaId)) {
+  if (pois && pois.length >= 3 && !get("SELECT 1 FROM targets WHERE area_id=? AND kind NOT IN ('checkpoint','waypoint')", areaId)) {
     for (const p of pois) {
       run(`INSERT OR IGNORE INTO targets(id,area_id,name,kind,lat,lng,approach_radius_m,safe_start,safe_end,capacity,state,observation,observation_answer) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         `${areaId}-${uid().slice(0, 8)}`, areaId, p.name, p.kind, p.lat, p.lng, 45, 6, 21, 4, "ACTIVE", "", "");
       realTargets++;
     }
-    // Retire ring checkpoints that are not already in play; real places are better fiction.
-    run("UPDATE targets SET state='RETIRED' WHERE area_id=? AND kind='checkpoint' AND id NOT IN (SELECT target_id FROM missions WHERE target_id IS NOT NULL AND state IN ('pool','offered','accepted','active'))", areaId);
+    // Retire waypoints that are not already in play; real places are better fiction.
+    run("UPDATE targets SET state='RETIRED' WHERE area_id=? AND kind IN ('checkpoint','waypoint') AND id NOT IN (SELECT target_id FROM missions WHERE target_id IS NOT NULL AND state IN ('pool','offered','accepted','active'))", areaId);
   }
+  if (!get("SELECT 1 FROM targets WHERE area_id=? AND state='ACTIVE'", areaId)) await layWaypoints(areaId);
   logEvent("sector.settled", "director", { areaId, name, realTargets, poisFound: pois?.length ?? null, attempt }, null);
   return { name, realTargets, final: true };
 }

@@ -203,3 +203,12 @@ open. Around you, always, without orders:
 nearby tracker (nearest first, footprints for distance), a card for whatever you tap with the one action
 that fits (spin, capture, navigate, accept), a spin sheet, and the capture ritual (hold the drifting
 signal to build a lock, flick up to take it). The Missions tab keeps the mission log and the desk.
+
+## Public ground only
+
+Every objective is on public ground by construction. A new sector gets no arbitrary points: eight
+waypoints are snapped onto public footpaths and streets (OSRM nearest, named after the street), then the
+survey replaces them with real public places (parks, gardens, monuments, artwork, viewpoints, fountains,
+libraries, markets, squares, bus stops, stations). Signals spawn only at an active site, within a few
+steps of its centre. Legacy ring checkpoints are retired on boot and their signals expired
+(`sector.checkpoints_retired`, `sector.waypoints`). While a sector has no sites yet the board says so.

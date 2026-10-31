@@ -5,7 +5,7 @@ import type {
 } from "@ispy/shared";
 import { all, get, run, tx, now, uid, json, parse, logEvent, worldGet, db } from "./db.ts";
 import { areaForPoint, bearingDeg, distanceM, offsetM, type AreaRow } from "./geo.ts";
-import { openSector, settleSector } from "./sectors.ts";
+import { openSector, settleSector, layWaypoints } from "./sectors.ts";
 import { FACTIONS, PERSONAS, RANKS, factionById } from "./content.ts";
 import { makeAnalysis, makeCipher, norm, pick, rand } from "./puzzles.ts";
 import { planArea, fallbackPlan, type AreaPlan } from "./chiefs.ts";
@@ -122,6 +122,8 @@ export function checkIn(player: Player, body: { mode: Mode; lat?: number; lng?: 
 /** After a sector opens: chiefs plan it right away so the pool fills; the survey of real places runs behind. The Director reacts to `sector.settled`. */
 async function furnishSector(areaId: string) {
   try {
+    // Public ground only: footpath waypoints first (seconds), then the survey of real public places.
+    await layWaypoints(areaId);
     await refreshPlans(true, { areaId, reason: "a new sector just opened with an operative already on the ground; keep the first walks short" });
     refreshPool();
     await settleSector(areaId);
@@ -197,6 +199,7 @@ export function boardNotice(player: Player, pres: Presence | null): string | nul
   if (paused()) return "The world is paused by the owner.";
   if (!pres) return null;
   if (!pres.areaId) return "You are outside a play area.";
+  if (!get("SELECT 1 FROM targets WHERE area_id=? AND state='ACTIVE'", pres.areaId)) return "Surveying this sector for public ground. Orders follow in a moment.";
   if (pres.mode === "field" && player.fieldToday >= player.dailyFieldCap) return "Daily field cap reached. Rest, or switch to the intel desk.";
   if (!openTargets(pres.areaId).length) return "Targets are closed for the night. Field play resumes at 06:00.";
   return null;
