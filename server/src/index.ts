@@ -14,6 +14,7 @@ import * as crises from "./crises.ts";
 import * as field from "./field.ts";
 import * as rivalry from "./rivalry.ts";
 import * as tools from "./tools.ts";
+import * as archive from "./archive.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -229,6 +230,14 @@ app.get("/v1/ladder", async (req) => {
 });
 app.get("/v1/titles", async (req) => ({ titles: rivalry.titlesOf(need(req).id) }));
 
+// ---- classified archive ----
+app.get("/v1/archive", async (req) => { const p = need(req); return { ...archive.archiveOf(p.id, p.rank, p.xp, p.factionId), talks: archive.recentTalks(p.factionId) }; });
+app.post<{ Params: { id: string } }>("/v1/archive/:id/examine", async (req) => { const p = need(req); return archive.examine(p.id, p.rank, p.factionId, req.params.id); });
+app.post<{ Params: { id: string } }>("/v1/archive/:id/decipher", async (req) => { const p = need(req); return archive.decipher(p.id, p.rank, p.factionId, req.params.id, z.object({ answer: z.string() }).parse(req.body).answer); });
+app.post<{ Params: { id: string } }>("/v1/archive/dossiers/:id/assemble", async (req) => { const p = need(req); return archive.assemble(p.id, p.rank, p.factionId, req.params.id); });
+app.post("/v1/admin/archive/seed", async (req) => { const b = z.object({ areaId: z.string().optional() }).parse(req.body ?? {}); const areaId = b.areaId ?? get<{ id: string }>("SELECT id FROM areas ORDER BY id LIMIT 1")!.id; return { placed: archive.seed(areaId) }; });
+app.post("/v1/admin/archive/moves", async () => ({ moves: await archive.chiefIntelMoves(true) }));
+
 // ---- toolkit ----
 app.get("/v1/tools", async (req) => tools.toolkitOf(need(req).id));
 app.post<{ Params: { id: string } }>("/v1/missions/:id/unlock", async (req) => {
@@ -360,7 +369,7 @@ app.get("/v1/admin/overview", async () => {
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
     sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
-    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(), tools: tools.toolsOverview(),
+    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(), tools: tools.toolsOverview(), archive: archive.archiveOverview(),
     funnel: {
       registered: get<{ n: number }>("SELECT COUNT(*) n FROM players")!.n,
       assessed: get<{ n: number }>("SELECT COUNT(*) n FROM assessments")!.n,

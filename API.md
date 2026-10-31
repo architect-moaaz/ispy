@@ -271,3 +271,26 @@ you can open, and a recruit's first mission is never locked.
 scan: the package floats in a ring that is grey out of range, red while locked, green when open, with the
 lock tag beneath. `assets/art/sig-*.jpg` (courier satchel, leaked page, bug, broker's bundle, sleeper
 asset in magenta, jammer box) are the signal objects in the tracker, the capture ritual and the collection.
+
+## The Classified Archive
+
+Field verifies recover **artifacts** lying at sites: dossier fragments (each a real cipher), keys,
+identities, devices, and duds. An artifact is **unique in the world**: the first agency to recover it
+holds it (`artifact.recovered`), rivals' chiefs learn only that something at that site is gone
+(`artifact.lost`). The Director keeps four artifacts lying in every sector with operatives (`seed`,
+22% duds) and opens dossiers of 3–4 fragments with a secret: location (a vault key appears at a site),
+name (a rival exposed to your contacts for a week), pattern (three pieces and your chief foresees
+crises), key (two keys in your toolkit), truth (CHIEF EYES ONLY, never explained).
+
+**Clearance** comes with rank: recruit = catalogue, field agent = examine and decipher, senior agent =
+assemble, handler+ = classified operations. `GET /v1/archive`, `POST /v1/archive/:id/examine`
+(reveals genuine or dud and who planted it), `POST /v1/archive/:id/decipher { answer }` (a wrong answer
+corrupts the fragment for an hour), `POST /v1/archive/dossiers/:id/assemble`. A dossier split between
+agencies is deadlocked; untouched for a day the Director closes it and opens another.
+
+**The chiefs deal, steal and spoil.** Every ten minutes, for each split dossier, the chief holding the
+most pages makes a move by persona (ORACLE shares, NEXUS trades, GHOST steals): share (ask for the page,
+secret read to both desks), trade (another artifact for it), heist (a 90-minute mission for its operatives
+at the site where the rival keeps the page; verifying it lifts the page, `artifact.stolen`), or spoil (a
+forged page planted for the rival's examiners, which when examined names the forger). The other chief
+answers in character. All of it is in the back-channel log, shown in the app's archive and the console.

@@ -17,6 +17,7 @@ import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
 import * as rivalry from "./rivalry.ts";
 import * as tools from "./tools.ts";
+import * as archive from "./archive.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 /** Once an operative finishes a site, it is theirs (their agency's) for this long: nobody else can run it. */
@@ -29,7 +30,7 @@ export const lockOn = (targetId: string | null) => targetId ? get<LockRow>("SELE
 /** Collaborative work and intel extraction are open to everyone regardless of locks. */
 const exemptFromLocks = (m: { template_id: string; params: string }) => {
   const pr = parse<any>(m.params, {});
-  return m.template_id === "EXTRACTION" || !!pr?.crisisId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
+  return m.template_id === "EXTRACTION" || !!pr?.crisisId || !!pr?.heistArtifactId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
 };
 /** Who holds how many sites in a sector right now. */
 export function sectorControl(areaId: string): Record<FactionId, number> {
@@ -224,7 +225,7 @@ const XP: Record<TemplateId, number> = { RECON: 120, DEAD_DROP: 180, EXTRACTION:
 function createMission(f: Faction, areaId: string, template: TemplateId, mode: Mode, target: TargetRow | null, params: Record<string, unknown>, seed: string, over?: { title?: string; brief?: string; reservedFor?: string }) {
   const id = uid();
   // Some packages are locked: the right tool, used on site through the dial, opens them. Never on extractions or crisis work.
-  if (mode === "field" && template !== "EXTRACTION" && !(params as any).crisisId && !(params as any).lock) {
+  if (mode === "field" && template !== "EXTRACTION" && !(params as any).crisisId && !(params as any).heistArtifactId && !(params as any).lock) {
     const lock = tools.rollLock(rand(seed + ":lock"));
     if (lock) params = { ...params, lock };
   }
@@ -315,6 +316,15 @@ const spawnCrisisMission: crises.SpawnCrisisMission = (crisis, factionId, site, 
   return id;
 };
 export const brewCrisis = (areaId: string, opts?: { kind?: string; theme?: string; minutes?: number }) => crises.brew(areaId, spawnCrisisMission, opts);
+
+/** A heist: a presence-verified field mission at the site where a rival keeps a page; verifying it lifts the page. */
+archive.registerHeistSpawner((factionId, areaId, siteId, artifactId, title, brief) => {
+  const f = factionById(factionId);
+  const target = get<TargetRow>("SELECT * FROM targets WHERE id=?", siteId);
+  if (!target) return;
+  const id = createMission(f, areaId, "RECON", "field", target, { heistArtifactId: artifactId, needsObservation: false, crisisId: null }, `${artifactId}:${now().slice(0, 13)}`, { title, brief });
+  run("UPDATE missions SET expires_at=? WHERE id=?", new Date(Date.now() + 90 * 60_000).toISOString(), id);
+});
 
 function buildMission(f: Faction, area: AreaRow, template: TemplateId, mode: Mode, targets: TargetRow[], plan: AreaPlan, seed: string,
   fixed?: { target: TargetRow; over: { title?: string; brief?: string; reservedFor?: string }; extraParams: Record<string, unknown> }): string | undefined {
@@ -633,6 +643,10 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
   run("UPDATE missions SET state='completed', completed_at=?, outcome=? WHERE id=?", now(), contestOutcome ?? "ok", m.id);
   const faceoff = m.target_id ? rivalry.onVerified(player.id, player.factionId, m.target_id) : null;
   if (faceoff) xp += faceoff.bonusXp;
+  // Whatever lay at this site is now this agency's, and nobody else's.
+  const artifact = m.target_id ? archive.recoverAt(m.target_id, player.id, player.factionId) : null;
+  if (artifact) xp += 40;
+  const heist = parse<any>(m.params, {}).heistArtifactId ? archive.onHeistVerified(parse<any>(m.params, {}).heistArtifactId, player.id, player.factionId) : null;
   if (m.target_id && !exemptFromLocks(m)) {
     const until = new Date(Date.now() + TARGET_LOCK_MS).toISOString();
     run("INSERT INTO target_locks(target_id,faction_id,player_id,mission_id,until,at) VALUES(?,?,?,?,?,?) ON CONFLICT(target_id) DO UPDATE SET faction_id=excluded.faction_id, player_id=excluded.player_id, mission_id=excluded.mission_id, until=excluded.until, at=excluded.at",
@@ -671,7 +685,9 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     }
   }
   if (faceoff) debrief = `First in. ${faceoff.rival} of ${factionById(faceoff.rivalFaction).name} watched you take it. ${debrief}`;
-  return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: flagged ? 0 : 2, contestOutcome: faceoff ? "won" : contestOutcome }, debrief, faceoff };
+  if (artifact) debrief = `${debrief} Recovered: ${artifact.name}. It is in the archive; nobody else will ever hold it.`;
+  if (heist) debrief = `Lifted. ${heist.name} is out of ${factionById(heist.victim).name}'s archive and into ours. ${debrief}`;
+  return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: flagged ? 0 : 2, contestOutcome: faceoff ? "won" : contestOutcome }, debrief, faceoff, artifact };
 }
 
 // ---------- desk ----------
@@ -806,7 +822,7 @@ export function contactsFor(player: Player): Contact[] {
       id: createHash("sha256").update(r.player_id + day).digest("hex").slice(0, 8),
       lat, lng,
       distanceM: Math.round(distanceM(me.last_lat!, me.last_lng!, lat, lng) / 10) * 10,
-      faction: r.faction_id === player.factionId ? r.faction_id : "unknown",
+      faction: r.faction_id === player.factionId || (player.factionId && archive.isExposedTo(r.player_id, player.factionId)) ? r.faction_id : "unknown",
     };
   });
 }

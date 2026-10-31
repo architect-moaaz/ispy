@@ -6,7 +6,8 @@ import type { AccuseResponse, CaseDetail, CaseSummary, FactionId } from "@ispy/s
 import { api } from "../api";
 import { ART } from "../art";
 import { signalArt, RARITY_COLOR } from "./FieldLayer";
-import type { CollectionEntry } from "@ispy/shared";
+import type { CollectionEntry, ArchiveView } from "@ispy/shared";
+import { Input } from "../ui";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Dossier as Panel, Screen, Spinner, Stamp } from "../ui";
@@ -18,6 +19,14 @@ const FACTION_NAME: Record<string, string> = { raven: "RAVEN", phantom: "PHANTOM
 export function DossierScreen() {
   const [cases, setCases] = useState<CaseSummary[] | null>(null);
   const [collection, setCollection] = useState<CollectionEntry[]>([]);
+  const [archive, setArchive] = useState<ArchiveView | null>(null);
+  const [archMsg, setArchMsg] = useState<string | null>(null);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [openArt, setOpenArt] = useState<string | null>(null);
+  const loadArchive = () => api.archive().then(setArchive).catch(() => {});
+  const archAct = async (fn: () => Promise<{ ok: boolean; reason?: string; note?: string; correct?: boolean; reveal?: string; corruptedUntil?: string }>) => {
+    try { const r = await fn(); setArchMsg(r.ok ? (r.reveal ?? r.note ?? (r.correct === false ? "Wrong. The fragment is corrupted for an hour." : r.correct ? "Deciphered." : "Done.")) : r.reason ?? "No."); await loadArchive(); } catch (e: any) { setArchMsg(e.message); }
+  };
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<CaseDetail | null>(null);
   const [accused, setAccused] = useState<FactionId | null>(null);
@@ -27,6 +36,7 @@ export function DossierScreen() {
 
   const loadList = async () => {
     api.collection().then((r) => setCollection(r.collection)).catch(() => {});
+    loadArchive();
     try { const r = await api.cases(); setCases(r.cases); if (!selected && r.cases[0]) setSelected(r.cases[0].id); }
     catch (e: any) { setErr(e.message); setCases([]); }
   };
@@ -53,7 +63,66 @@ export function DossierScreen() {
 
   return (
     <Screen>
-      <Display>Investigation dossier</Display>
+      <Display>Classified archive</Display>
+      {archive && (
+        <>
+          <Panel tab={C.amber}>
+            <Text style={s.eyebrowAmber}>{archive.clearanceName} CLEARANCE{archive.nextClearance ? ` · ${archive.nextClearance.name} AT ${archive.nextClearance.atXp} XP` : " · TOP CLEARANCE"}</Text>
+            <Body dim style={{ marginBottom: 0 }}>What the agency has recovered. Every artifact is unique in the world: once ours, gone for the rest. Examine needs field-agent clearance, assembling a dossier needs senior-agent.</Body>
+          </Panel>
+          {archive.dossiers.map((d) => (
+            <Panel key={d.id} tab={d.state === "assembled" ? C.ok : d.rivalHeld ? C.red : C.cyan}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={s.big}>{d.name}</Text>
+                <Text style={[s.mono, { color: C.cyan }]}>{d.held}/{d.fragments}</Text>
+              </View>
+              <Text style={s.mono}>SECRET · {d.secret.toUpperCase()}{d.rivalHeld ? ` · ${d.rivalHeld} PAGE${d.rivalHeld === 1 ? "" : "S"} HELD BY A RIVAL` : ""} · {d.deciphered} DECIPHERED</Text>
+              {d.reveal ? <Body style={{ marginTop: 6, marginBottom: 0 }}>{d.reveal}{d.assembledBy ? ` (assembled by ${d.assembledBy})` : ""}</Body>
+                : d.state === "open" && d.held >= d.fragments && d.deciphered >= d.fragments ? <Button title="Assemble the dossier" onPress={() => archAct(() => api.assemble(d.id))} /> : null}
+            </Panel>
+          ))}
+          {archive.artifacts.map((a) => (
+            <Pressable key={a.id} onPress={() => setOpenArt(openArt === a.id ? null : a.id)}>
+              <Panel tab={a.genuine === false ? C.dim : a.deciphered ? C.ok : C.cyanDim}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={[s.big, { fontSize: 16, flex: 1 }]} numberOfLines={1}>{a.name.toUpperCase()}</Text>
+                  <Text style={s.mono}>{a.kind.toUpperCase()}</Text>
+                </View>
+                <Text style={s.mono}>RECOVERED BY {a.recoveredBy?.toUpperCase() ?? "—"} AT {a.site?.toUpperCase() ?? "—"} · {a.examined ? (a.genuine ? "GENUINE" : `DUD · PLANTED BY ${String(a.plantedBy).toUpperCase()}`) : "UNEXAMINED"}{a.deciphered ? " · DECIPHERED" : ""}</Text>
+                {openArt === a.id && (
+                  <View style={{ marginTop: 8 }}>
+                    {!a.examined && <Button title="Examine" kind="ghost" onPress={() => archAct(() => api.examine(a.id))} style={{ marginTop: 0 }} />}
+                    {a.examined && a.genuine && a.kind === "fragment" && !a.deciphered && (
+                      a.prompt ? (
+                        <>
+                          <Text style={[s.mono, { color: C.text, marginTop: 6 }]}>{a.prompt}</Text>
+                          {a.corruptedUntil && Date.parse(a.corruptedUntil) > Date.now() && <Text style={[s.mono, { color: C.red }]}>CORRUPTED · SETTLES AT {new Date(a.corruptedUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>}
+                          <Input value={answers[a.id] ?? ""} onChangeText={(v) => setAnswers({ ...answers, [a.id]: v })} placeholder="PLAINTEXT" autoCapitalize="characters" autoCorrect={false} style={{ marginTop: 6 }} />
+                          <Button title="Decipher" onPress={() => archAct(() => api.decipherArtifact(a.id, answers[a.id] ?? ""))} style={{ marginTop: 6 }} />
+                        </>
+                      ) : <Text style={s.mono}>Reading the fragment needs field-agent clearance.</Text>
+                    )}
+                  </View>
+                )}
+              </Panel>
+            </Pressable>
+          ))}
+          {archive.lost.length > 0 && (
+            <Panel tab={C.red}>
+              <Text style={s.eyebrowAmber}>LOST TO RIVALS</Text>
+              {archive.lost.map((l, i) => <Text key={i} style={s.mono}>{l.takenBy.toUpperCase()} took whatever lay at {l.site?.toUpperCase() ?? "a site"} · {new Date(l.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>)}
+            </Panel>
+          )}
+          {(archive.talks ?? []).length > 0 && (
+            <Panel tab={C.cyanDim}>
+              <Text style={s.eyebrowAmber}>CHIEFS' BACK CHANNEL · INTEL</Text>
+              {(archive.talks ?? []).map((t, i) => <Text key={i} style={[s.mono, { marginBottom: 3 }]}><Text style={{ color: C.cyan }}>{t.from}</Text>{t.to ? ` → ${t.to}` : ""} · {t.text}</Text>)}
+            </Panel>
+          )}
+          {archMsg && <Body style={{ color: C.cyan }}>{archMsg}</Body>}
+        </>
+      )}
+      <Display size={26} style={{ marginTop: 18 }}>Investigation dossier</Display>
       {cases.length === 0 ? (
         <Panel tab={C.cyanDim}>
           <Text style={s.big}>No open cases</Text>
@@ -194,6 +263,8 @@ function AlignmentRadar({ data }: { data: { label: string; chief: string; value:
 }
 
 const s = StyleSheet.create({
+  eyebrowAmber: { color: C.amber, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.6, marginBottom: 4 },
+  mono: { color: C.dim, fontFamily: F.typed, fontSize: 11.5 },
   caseNo: { color: C.dim, fontFamily: F.typed, fontSize: 12, textAlign: "center", marginBottom: 10 },
   chip: { borderWidth: 1, borderColor: C.line, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: C.ink2 },
   chipText: { color: C.dim, fontFamily: F.displayMed, fontSize: 12, letterSpacing: 1.2 },

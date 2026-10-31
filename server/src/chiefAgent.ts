@@ -98,6 +98,31 @@ class ChiefAgent {
           won ? `First in. ${s.payload?.rival} is explaining ${s.payload?.target} to their chief right now. Remember the name.` : `${s.payload?.rival} beat you to ${s.payload?.target}. I do not forget names; neither should you. Next time, be faster.`, "face-off result", true);
         return;
       }
+      case "artifact.recovered": {
+        if (!op) return;
+        remember(this.chief, "artifact", op.codename, `${op.codename} recovered ${s.payload?.name} at ${s.payload?.site}`);
+        await this.say(op.id, op.codename, `${op.codename} just recovered an artifact, "${s.payload?.name}", at ${s.payload?.site}${s.payload?.dossier ? `, part of dossier ${s.payload.dossier}` : ""}. It is unique; the rivals have lost it. One line.`,
+          `${s.payload?.name} is ours now, and nobody else's. Get it examined; a dud tells us as much as the real thing.`, "artifact", true);
+        return;
+      }
+      case "artifact.lost": {
+        if (s.payload?.faction !== this.factionId) return;
+        remember(this.chief, "artifact", null, `lost whatever lay at ${s.payload?.site} to ${factionById(s.payload?.takenBy).name}`);
+        return;
+      }
+      case "artifact.stolen": {
+        if (s.payload?.victim === this.factionId) {
+          remember(this.chief, "artifact", null, `${factionById(s.payload?.by).name} stole ${s.payload?.name} from our archive`);
+          for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", this.factionId, now())) chiefSay(o.player_id, `${factionById(s.payload?.by).name} lifted ${s.payload?.name} out of our archive at ${s.payload?.site}. I want it back, and I want the name of whoever let it happen.`, "artifact stolen", true);
+        }
+        return;
+      }
+      case "dossier.assembled": {
+        if (s.payload?.faction !== this.factionId) return;
+        remember(this.chief, "dossier", null, `assembled ${s.payload?.name}: ${String(s.payload?.reveal).slice(0, 80)}`);
+        for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=?", this.factionId)) chiefSay(o.player_id, `${s.payload?.name} is assembled. ${s.payload?.reveal}`, "dossier", true);
+        return;
+      }
       case "decoy.sprung": {
         if (!op) return;
         remember(this.chief, "decoy", op.codename, `${op.codename}'s decoy caught ${s.payload?.by}`);

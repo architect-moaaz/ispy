@@ -193,6 +193,7 @@ export interface ScanResponse {
   reward?: { xp: number; trust: number; contestOutcome?: "won" | "lost" | null };
   debrief?: string;
   faceoff?: { won: boolean; rival: string; rivalFaction: FactionId; bonusXp: number } | null;
+  artifact?: { id: string; kind: string; name: string; dossier: string | null } | null; // recovered at this site; unique in the world
 }
 
 export interface DeskMissionDetail {
@@ -349,3 +350,15 @@ export interface ToolkitResponse { tools: ToolView[]; effects: { kind: string; u
 export interface ToolUseResult { ok: boolean; reason?: string; hint?: string; until?: string; detail?: string; qty?: number }
 
 export interface UnlockResult { ok: boolean; reason?: string; wrong?: boolean; detail?: string }
+
+// ---- Classified Archive ----
+export type ArtifactKind = "fragment" | "key" | "identity" | "device" | "dud";
+export type SecretKind = "location" | "name" | "pattern" | "key" | "truth";
+export interface ArchiveView {
+  clearance: number; clearanceName: string; nextClearance: { name: string; atXp: number } | null;
+  dossiers: { id: string; name: string; secret: SecretKind | "sealed"; fragments: number; held: number; deciphered: number; rivalHeld: number; state: string; reveal: string | null; assembledBy: string | null }[];
+  artifacts: { id: string; kind: ArtifactKind; name: string; site: string | null; recoveredBy: string | null; recoveredAt: string | null; examined: boolean; genuine: boolean | null; plantedBy: string | null; deciphered: boolean; corruptedUntil: string | null; prompt: string | null; system: string | null; dossier: string | null }[];
+  lost: { site: string | null; takenBy: string; at: string }[];
+  talks?: { from: string; to: string | null; kind: string; text: string; at: string }[];
+}
+export interface ArchiveActionResult { ok: boolean; reason?: string; genuine?: boolean; plantedBy?: string | null; note?: string; correct?: boolean; corruptedUntil?: string; secret?: SecretKind; reveal?: string }
