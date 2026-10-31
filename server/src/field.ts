@@ -4,6 +4,7 @@ import { FACTIONS, factionById } from "./content.ts";
 import { distanceM, offsetM } from "./geo.ts";
 import { rand, pick } from "./puzzles.ts";
 import { award } from "./rewards.ts";
+import { trackerRangeM } from "./tools.ts";
 
 /**
  * The ambient layer: what is on the map around you, always, without anyone ordering it.
@@ -107,7 +108,7 @@ export function mapAround(playerId: string, factionId: FactionId | null, areaId:
   const signals = all<{ id: string; kind: string; name: string; rarity: Rarity; lat: number; lng: number; expires_at: string; attempts: string }>(
     "SELECT id, kind, name, rarity, lat, lng, expires_at, attempts FROM signals WHERE state='live' AND area_id=?", areaId)
     .map((s) => ({ id: s.id, kind: s.kind, name: s.name, rarity: s.rarity, art: SIGNAL_KINDS[s.kind]?.art ?? "drop", blurb: SIGNAL_KINDS[s.kind]?.blurb ?? "", lat: s.lat, lng: s.lng, distanceM: Math.round(distanceM(lat, lng, s.lat, s.lng)), expiresAt: s.expires_at, attemptsLeft: Math.max(0, 3 - (parse<Record<string, number>>(s.attempts, {})[playerId] ?? 0)) }))
-    .filter((s) => s.distanceM <= 700).sort((a, b) => a.distanceM - b.distanceM);
+    .filter((s) => s.distanceM <= trackerRangeM(playerId)).sort((a, b) => a.distanceM - b.distanceM);
   return { caches, signals, stronghold: stronghold(areaId) };
 }
 

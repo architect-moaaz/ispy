@@ -157,6 +157,7 @@ export interface OfferCard {
 export type DeskLinkState = "open" | "fulfilled" | "fallback" | "closed";
 
 export interface NavigateResponse {
+  targetId?: string;
   targetName: string;
   lat: number;
   lng: number;
@@ -334,3 +335,9 @@ export interface CollectionEntry { kind: string; name: string; art: string; blur
 export interface LadderRow { codename: string; factionId: FactionId; faction: string; score: number; held: number; captures: number; wins: number; title: string | null; you: boolean }
 export interface LadderResponse { week: string; sector: string | null; rows: LadderRow[]; yourRank: number | null }
 export interface TitleEntry { title: string; week: string; area: string | null }
+
+// ---- Toolkit ----
+export type ToolId = "cipher_kit" | "key" | "lens" | "jammer" | "tracker" | "decoy" | "burner" | "fragment";
+export interface ToolView { id: ToolId; name: string; permanent: boolean; craft: number | null; blurb: string; use: string; qty: number }
+export interface ToolkitResponse { tools: ToolView[]; effects: { kind: string; until: string }[]; fragments: number }
+export interface ToolUseResult { ok: boolean; reason?: string; hint?: string; until?: string; detail?: string; qty?: number }

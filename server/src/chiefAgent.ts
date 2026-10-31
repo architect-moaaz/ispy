@@ -98,6 +98,12 @@ class ChiefAgent {
           won ? `First in. ${s.payload?.rival} is explaining ${s.payload?.target} to their chief right now. Remember the name.` : `${s.payload?.rival} beat you to ${s.payload?.target}. I do not forget names; neither should you. Next time, be faster.`, "face-off result", true);
         return;
       }
+      case "decoy.sprung": {
+        if (!op) return;
+        remember(this.chief, "decoy", op.codename, `${op.codename}'s decoy caught ${s.payload?.by}`);
+        chiefSay(op.id, `Your decoy caught ${s.payload?.by}. They walked away with nothing and a story. Well placed.`, "decoy sprung", true);
+        return;
+      }
       case "otw.named": {
         if (!op) return;
         for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=?", this.factionId)) chiefSay(o.player_id, `Operative of the week: ${op.codename}. ${o.player_id === op.id ? "That is you. Keep it." : "Study how they work. Then beat it."}`, "operative of the week", true);

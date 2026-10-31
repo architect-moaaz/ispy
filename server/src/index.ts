@@ -13,6 +13,7 @@ import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
 import * as field from "./field.ts";
 import * as rivalry from "./rivalry.ts";
+import * as tools from "./tools.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -22,6 +23,7 @@ import { registerPushToken, unregisterPushToken, startPush, pushStats } from "./
 import { allParams } from "./params.ts";
 import { CONSOLE_HTML } from "./console.ts";
 import { openSector, settleSector, sectorSummary, layWaypoints, retireCheckpoints } from "./sectors.ts";
+import { distanceM } from "./geo.ts";
 import {
   ApiError, DEV_SIM, abandon, boardNotice, contactsFor, acceptOffer, activeMission, briefing, checkIn, checkOut, declineOffer, deskActive,
   deskSubmit, getPresence, heartbeat, history, navigate, offersFor, playerFaction, playerView, refreshPlans, refreshPool,
@@ -226,6 +228,32 @@ app.get("/v1/ladder", async (req) => {
   return { ...l, sector: get<{ name: string }>("SELECT name FROM areas WHERE id=?", areaId)?.name ?? null };
 });
 app.get("/v1/titles", async (req) => ({ titles: rivalry.titlesOf(need(req).id) }));
+
+// ---- toolkit ----
+app.get("/v1/tools", async (req) => tools.toolkitOf(need(req).id));
+app.post("/v1/tools/craft", async (req) => tools.craft(need(req).id, z.object({ tool: z.string() }).parse(req.body).tool));
+app.post<{ Params: { tool: string } }>("/v1/tools/:tool/use", async (req) => {
+  const p = need(req);
+  const b = z.object({ missionId: z.string().optional(), targetId: z.string().optional(), lat: z.number().optional(), lng: z.number().optional(), sim: z.boolean().optional() }).parse(req.body ?? {});
+  if (b.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed");
+  switch (req.params.tool) {
+    case "key": return tools.useKey(p.id, b.missionId ?? "");
+    case "lens": return tools.useLens(p.id, b.missionId ?? "");
+    case "jammer": return tools.useJammer(p.id);
+    case "tracker": return tools.useTracker(p.id);
+    case "decoy": return tools.plantDecoy(p.id, p.factionId, b.targetId ?? "", b.lat ?? 0, b.lng ?? 0, distanceM);
+    case "burner": {
+      const inv = tools.inventoryOf(p.id);
+      if ((inv.burner ?? 0) < 1) return { ok: false, reason: "No burner. Craft one from a fragment." };
+      inv.burner -= 1; run("UPDATE players SET items=? WHERE id=?", json(inv), p.id);
+      for (const o of all<{ id: string }>("SELECT id FROM offers WHERE player_id=? AND state='open'", p.id)) declineOffer(p, o.id);
+      const fresh = offersFor(p);
+      logEvent("tool.used", "player", { tool: "burner", offers: fresh.length }, p.id);
+      return { ok: true, detail: `Re-dealt: ${fresh.length} fresh order${fresh.length === 1 ? "" : "s"} on the board.` };
+    }
+    default: throw new ApiError(404, "no such tool");
+  }
+});
 app.post("/v1/admin/signals/spawn", async () => ({ spawned: field.spawnAround() }));
 // ---- investigations ----
 app.get("/v1/investigations", async (req) => ({ cases: investigations.listCases(need(req).id) }));
@@ -326,7 +354,7 @@ app.get("/v1/admin/overview", async () => {
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
     sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
-    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(),
+    field: field.fieldOverview(), rivalry: rivalry.rivalryOverview(), tools: tools.toolsOverview(),
     funnel: {
       registered: get<{ n: number }>("SELECT COUNT(*) n FROM players")!.n,
       assessed: get<{ n: number }>("SELECT COUNT(*) n FROM assessments")!.n,

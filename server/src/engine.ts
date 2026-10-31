@@ -16,6 +16,7 @@ import * as bounties from "./bounties.ts";
 import * as chains from "./chains.ts";
 import * as crises from "./crises.ts";
 import * as rivalry from "./rivalry.ts";
+import * as tools from "./tools.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 /** Once an operative finishes a site, it is theirs (their agency's) for this long: nobody else can run it. */
@@ -516,7 +517,7 @@ export function navigate(player: Player, missionId: string): NavigateResponse {
       ? ["Walk to the drop", unlocked ? "Scan and enter the pickup code" : "Wait for your analyst to crack the code", "Leave quietly"]
       : ["Walk to the site", "Scan on arrival", "Answer the observation question"];
   return {
-    targetName: t.name, lat: t.lat, lng: t.lng, approachRadiusM: t.approach_radius_m, heldBy: lockOn(t.id)?.faction_id ?? null,
+    targetId: t.id, targetName: t.name, lat: t.lat, lng: t.lng, approachRadiusM: t.approach_radius_m, heldBy: lockOn(t.id)?.faction_id ?? null,
     heldByCodename: (() => { const l = lockOn(t.id); return l ? get<{ codename: string }>("SELECT codename FROM players WHERE id=?", l.player_id)?.codename ?? null : null; })(),
     faceoff: (() => { const f = rivalry.liveFaceoffFor(player.id, t.id); return f ? { id: f.id, rivalCodename: f.rivalCodename, rivalFaction: f.rivalFaction, endsAt: f.endsAt } : null; })(),
     hint: `${t.kind}: ${t.name}`, unlocked, steps,
@@ -598,6 +599,15 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     xp = contestOutcome === "won" ? Math.round(xp * 1.5) : Math.round(xp * 0.5);
   }
   const flagged = trust < 0.7;
+  // A rival's decoy at this site: the scan goes through, but what you carried out is worthless.
+  const sprung = m.target_id && !exemptFromLocks(m) ? tools.springDecoy(m.target_id, player.id, player.factionId) : null;
+  if (sprung) {
+    xp = Math.round(xp * 0.3);
+    run("UPDATE missions SET state='completed', completed_at=?, outcome='decoyed' WHERE id=?", now(), m.id);
+    logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: sprung.planterFaction }, player.id);
+    award(player.id, xp, 0, `${m.title} (decoy)`);
+    return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `A decoy. ${factionById(sprung.planterFaction).name} left this for you and you took it. Partial credit for the walk; look harder next time.` };
+  }
   // First done wins the site. Anyone else still walking to it arrives late, unless the work is collaborative or an extraction.
   const lock = m.target_id ? lockOn(m.target_id) : undefined;
   const late = !!lock && lock.player_id !== player.id && !exemptFromLocks(m);
@@ -778,7 +788,7 @@ export function contactsFor(player: Player): Contact[] {
     "SELECT p.*, pl.faction_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE p.area_id=? AND p.mode='field' AND p.expires_at>? AND p.player_id<>? AND p.last_lat IS NOT NULL",
     me.area_id, now(), player.id);
   const cell = 0.0009; // about 100 m
-  return rows.map((r) => {
+  return rows.filter((r) => !tools.jammed(r.player_id)).map((r) => {
     const lat = Math.round(r.last_lat! / cell) * cell;
     const lng = Math.round(r.last_lng! / cell) * cell;
     return {

@@ -229,3 +229,22 @@ steps of its centre. Legacy ring checkpoints are retired on boot and their signa
 - **Operative of the week.** Monday 09:00: each chief names last week's top operative of their agency
   (`otw.named`), tells the agency, posts a dispatch; the title shows in HQ.
 - **Named holds.** `heldByCodename` on navigate and on caches: a held site shows who holds it.
+
+## The toolkit (human intelligence vs. the Director's chaos)
+
+Operatives own tools and decide when to spend them. `GET /v1/tools` (toolkit, active effects, fragments),
+`POST /v1/tools/craft { tool }`, `POST /v1/tools/:tool/use`.
+
+| Tool | Source | Effect |
+|---|---|---|
+| Cipher kit | permanent | reference tables on the desk (indices, Atbash, Morse, Polybius, Vigenère, rail fence) |
+| Cipher fragment | caches | currency for crafting |
+| Key | craft 3 fragments | names the secret of the open intercept (shift, key shape, rails); you still decode |
+| Lens | caches | shape of a site's observation answer (length, pattern, first letter unless tiny) |
+| Jammer | caches | hidden from rivals' contacts for an hour (`effects`) |
+| Tracker | craft 2 | signal scope 1.5 km for 15 minutes |
+| Decoy | caches | planted on site after a verify; the next rival scan there finishes "decoyed" at 30% XP and pays the planter (`decoy.sprung`, chief line) |
+| Burner | craft 1 | re-deals your orders now |
+
+Shown on Me (toolkit, crafting, active effects), on the desk (kit, key) and under the map (jammer,
+tracker, burner, lens, plant decoy).

@@ -42,6 +42,8 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [spinning, setSpinning] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captureResult, setCaptureResult] = useState<CaptureResult | null>(null);
+  const [toolMsg, setToolMsg] = useState<string | null>(null);
+  const useTool = async (tool: string, body: any = {}) => { try { const r = await api.useTool(tool, { ...body, sim: fix?.sim }); setToolMsg(r.ok ? `${tool.toUpperCase()} · ${r.hint ?? r.detail ?? "done"}` : `${tool.toUpperCase()} · ${r.reason ?? "no"}`); await refresh(); } catch (e: any) { setToolMsg(e.message); } };
   const [duel, setDuel] = useState<{ outcome: "won" | "lost"; rival: string; rivalFaction: string; target: string } | null>(null);
   useEffect(() => onLive((ty, data: any) => {
     if (ty === "faceoff.started") { setNotice(null); refresh(); }
@@ -244,6 +246,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         </View>
       </View>
       {mission && onSite && nav?.unlocked && !completed && <Button title="AR scan · camera view" kind="ghost" onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
+      <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+        <Button title="Jammer" kind="ghost" onPress={() => useTool("jammer")} style={s.toolBtn} />
+        <Button title="Tracker" kind="ghost" onPress={() => useTool("tracker")} style={s.toolBtn} />
+        {!mission && <Button title="Burner" kind="ghost" onPress={() => useTool("burner")} style={s.toolBtn} />}
+        {mission && nav && mission.templateId === "RECON" && <Button title="Lens" kind="ghost" onPress={() => useTool("lens", { missionId: mission.id })} style={s.toolBtn} />}
+        {completed && nav && fix && <Button title="Plant decoy" kind="ghost" onPress={() => useTool("decoy", { targetId: nav.targetId, lat: fix.lat, lng: fix.lng })} style={s.toolBtn} />}
+      </View>
+      {toolMsg && <Text style={[s.mono, { color: C.cyan, marginTop: 6 }]}>{toolMsg}</Text>}
       <Text onPress={onOffDuty} style={[s.mono, { textAlign: "right", marginTop: 8, color: C.cyanDim, letterSpacing: 1.4 }]}>STAND DOWN</Text>
 
       {completed && (
@@ -496,6 +506,7 @@ const s = StyleSheet.create({
   zoomBox: { position: "absolute", right: 8, bottom: 26, borderWidth: 1, borderColor: C.cyanDim, backgroundColor: "rgba(6,20,30,0.75)" },
   zoomBtn: { color: C.cyan, fontFamily: F.displayMed, fontSize: 20, width: 34, height: 34, lineHeight: 34, textAlign: "center", borderBottomWidth: 1, borderBottomColor: C.line },
   cardArt: { width: 64, height: 64, borderWidth: 1, borderColor: C.line },
+  toolBtn: { marginTop: 0, paddingVertical: 6, paddingHorizontal: 10 },
   duelBar: { borderWidth: 2, borderColor: C.red, backgroundColor: "rgba(255,93,108,0.12)", padding: 10, marginTop: 8, alignItems: "center", gap: 2 },
   duelText: { color: C.red, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 },
   duelModal: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: "rgba(4,10,14,0.96)", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 60 },

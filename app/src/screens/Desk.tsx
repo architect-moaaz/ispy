@@ -8,6 +8,8 @@ import { C, F } from "../theme";
 import { Body, Button, Choice, Display, Dossier, Input, Kicker, Panel, Screen, Spinner, Stamp, Typed, fmtCountdown } from "../ui";
 
 export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
+  const [kitOpen, setKitOpen] = useState(false);
+  const [keyHint, setKeyHint] = useState<string | null>(null);
   const [detail, setDetail] = useState<DeskMissionDetail | null | undefined>(undefined);
   const [answer, setAnswer] = useState("");
   const [result, setResult] = useState<DeskSubmitResponse | null>(null);
@@ -74,6 +76,27 @@ export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
             <Image source={ART.mission[detail.mission.templateId] ?? ART.mission.CIPHER} style={{ width: "100%", height: 150, marginBottom: 10, borderWidth: 1, borderColor: C.line }} resizeMode="cover" />
             <Typed bold style={{ marginBottom: 0 }}>{detail.puzzle.prompt}</Typed>
             {detail.puzzle.system && <Typed onPaper style={{ marginTop: 6, opacity: 0.7 }}>System: {detail.puzzle.system}. Work it on paper; the answer is checked exactly.</Typed>}
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+              <Button title={kitOpen ? "Close cipher kit" : "Cipher kit"} kind="ink" onPress={() => setKitOpen((v) => !v)} style={{ flex: 1, marginTop: 0, paddingVertical: 8 }} />
+              <Button title="Use a key" kind="ink" onPress={async () => { try { const r = await api.useTool("key", { missionId: detail.mission.id }); setKeyHint(r.ok ? r.hint ?? "" : r.reason ?? "No key."); } catch (e: any) { setKeyHint(e.message); } }} style={{ flex: 1, marginTop: 0, paddingVertical: 8 }} />
+            </View>
+            {keyHint && <Typed bold style={{ marginTop: 8 }}>KEY · {keyHint}</Typed>}
+            {kitOpen && (
+              <View style={{ marginTop: 8 }}>
+                <Typed bold>LETTER INDEX (A=0 … Z=25)</Typed>
+                <Typed style={{ fontSize: 11 }}>{"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((c, i) => `${c}${i}`).join(" ")}</Typed>
+                <Typed bold style={{ marginTop: 6 }}>MIRROR (ATBASH)</Typed>
+                <Typed style={{ fontSize: 11 }}>{"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((c) => `${c}↔${String.fromCharCode(90 - (c.charCodeAt(0) - 65))}`).slice(0, 13).join("  ")}</Typed>
+                <Typed bold style={{ marginTop: 6 }}>MORSE</Typed>
+                <Typed style={{ fontSize: 11 }}>{Object.entries({ A: ".-", B: "-...", C: "-.-.", D: "-..", E: ".", F: "..-.", G: "--.", H: "....", I: "..", J: ".---", K: "-.-", L: ".-..", M: "--", N: "-.", O: "---", P: ".--.", Q: "--.-", R: ".-.", S: "...", T: "-", U: "..-", V: "...-", W: ".--", X: "-..-", Y: "-.--", Z: "--.." }).map(([k, v]) => `${k} ${v}`).join("   ")}</Typed>
+                <Typed bold style={{ marginTop: 6 }}>POLYBIUS (row, column; I and J share 24)</Typed>
+                <Typed style={{ fontSize: 11 }}>{"ABCDE FGHIK LMNOP QRSTU VWXYZ".split(" ").map((row, r) => `${r + 1}: ${row.split("").map((c, i) => `${c}${r + 1}${i + 1}`).join(" ")}`).join("\n")}</Typed>
+                <Typed bold style={{ marginTop: 6 }}>VIGENÈRE</Typed>
+                <Typed style={{ fontSize: 11 }}>Plain = (cipher − key letter) mod 26. Write the key under the message, repeating; subtract letter indices.</Typed>
+                <Typed bold style={{ marginTop: 6 }}>RAIL FENCE (3 rails)</Typed>
+                <Typed style={{ fontSize: 11 }}>Count the letters, mark the zigzag positions 1-2-3-2-1-2-3…, fill rail 1 first from the ciphertext, then rail 2, then rail 3, read the zigzag.</Typed>
+              </View>
+            )}
           </View>
           {result?.correct ? (
             <>

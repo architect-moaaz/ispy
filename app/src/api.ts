@@ -26,7 +26,7 @@ import type {
   Presence,
   ScanRequest,
   ScanResponse,
-  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry } from "@ispy/shared";
+  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry, ToolkitResponse, ToolUseResult } from "@ispy/shared";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
 const TOKEN_KEY = "ispy.token";
@@ -131,6 +131,9 @@ export const api = {
   captureSignal: (id: string, body: { lat: number; lng: number; hold: number; flick: boolean; sim?: boolean }) => post<CaptureResult>(`/v1/signals/${id}/capture`, body),
   collection: () => get<{ collection: CollectionEntry[] }>("/v1/collection"),
   ladder: () => get<LadderResponse>("/v1/ladder"),
+  tools: () => get<ToolkitResponse>("/v1/tools"),
+  craft: (tool: string) => post<ToolUseResult>("/v1/tools/craft", { tool }),
+  useTool: (tool: string, body: { missionId?: string; targetId?: string; lat?: number; lng?: number; sim?: boolean } = {}) => post<ToolUseResult>(`/v1/tools/${tool}/use`, body),
   titles: () => get<{ titles: TitleEntry[] }>("/v1/titles"),
   history: () => get<{ events: { at: string; text: string }[] }>("/v1/profile/history"),
   devTargets: () => get<{ targets: DevTarget[] }>("/v1/dev/targets"),
