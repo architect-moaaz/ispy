@@ -16,9 +16,8 @@ import { Duty } from "./src/screens/Duty";
 import { Profile } from "./src/screens/Profile";
 import { DossierScreen } from "./src/screens/Dossier";
 import { Board } from "./src/screens/Board";
-import { HoloShowcase } from "./src/screens/HoloShowcase";
 
-type Tab = "hq" | "duty" | "dossier" | "board" | "profile" | "holo";
+type Tab = "hq" | "duty" | "dossier" | "board" | "profile";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -105,12 +104,11 @@ function Shell() {
   else if (tab === "profile") body = <Profile player={player} faction={faction} onSignOut={signOut} />;
   else if (tab === "dossier") body = <DossierScreen />;
   else if (tab === "board") body = <Board />;
-  else if (tab === "holo") body = <HoloShowcase onBack={() => setTab("duty")} />;
   else body = <Duty presence={presence} devSim={!!world?.devSim} onPresence={(p) => { setPresence(p); refreshMe(); }} onHQ={() => setTab("hq")} onBoard={() => setTab("board")} codename={player.codename} factionId={player.factionId} rank={player.rank} xp={player.xp} />;
 
   const inGame = !!player?.factionId;
   const accent = factionColor(player?.factionId);
-  const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Missions"], ["dossier", "Dossier"], ["board", "Board"], ["profile", "Me"], ["holo", "3D Lab"]];
+  const tabs: [Tab, string][] = [["hq", "HQ"], ["duty", "Missions"], ["dossier", "Dossier"], ["board", "Board"], ["profile", "Me"]];
   return (
     <GestureHandlerRootView style={[s.root, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <StatusBar style="light" />

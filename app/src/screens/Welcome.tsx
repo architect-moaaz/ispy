@@ -37,7 +37,7 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
       </View>
 
       <View style={{ paddingHorizontal: 16, paddingBottom: 40, maxWidth: 560, width: "100%", alignSelf: "center" }}>
-        <Text style={s.lead}>Five intelligence agencies. Five AI chiefs commanding the shadow war. You work for one of them.</Text>
+        <Text style={s.lead}>Three intelligence agencies. Three chiefs you will never meet, commanding the shadow war. You work for one of them.</Text>
         <View style={{ alignItems: "center", marginVertical: 14 }}><FactionRow size={52} /></View>
         <Body dim style={{ textAlign: "center" }}>
           Pass the aptitude test, take an offer, and your chief sends you walking to real places on the satellite map. It is all fiction. Nothing here asks you to watch, follow or photograph anyone.

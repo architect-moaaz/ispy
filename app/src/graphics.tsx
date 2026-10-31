@@ -330,11 +330,10 @@ export function MissionMark({ template, size = 28, color = C.text }: { template:
 export function FactionRow({ size = 48 }: { size?: number }) {
   return (
     <View style={{ flexDirection: "row", gap: 12, alignItems: "center", justifyContent: "center" }}>
+      {/* Only the agencies that exist in the live world; SENTINEL and VIPER wait for their chiefs. */}
       <FactionEmblem id="raven" size={size} />
       <FactionEmblem id="phantom" size={size} />
-      <FactionEmblem id="sentinel" size={size} />
       <FactionEmblem id="cipher" size={size} />
-      <FactionEmblem id="viper" size={size} />
     </View>
   );
 }
