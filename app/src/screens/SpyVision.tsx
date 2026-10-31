@@ -254,13 +254,13 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
 
       {mission && nav && !completed && (
         <Dossier tab={mission.contested ? C.red : C.cyan} style={{ marginTop: 12 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={s.panelTitle}>{TEMPLATE_NAME[mission.templateId] ?? mission.title} · {nav.targetName}</Text>
-            {mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{mission.chain.name.toUpperCase()} · LINK {mission.chain.step} OF {mission.chain.of}</Text>}
-            {mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {mission.crisis.name.toUpperCase()} · {mission.crisis.stance.toUpperCase()}{mission.crisis.joint ? ` · JOINT OP WITH ${mission.crisis.joint.toUpperCase()}` : ""}</Text>}
-            {nav.heldBy && nav.heldBy !== factionId && <Text style={[s.mono, { color: C.red, letterSpacing: 1.2 }]}>SITE HELD BY A RIVAL · YOU WILL ARRIVE LATE</Text>}
-            <Text style={s.mono}>{fmtCountdown(mission.expiresAt, now)}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <Text style={[s.panelTitle, { flex: 1 }]}>{TEMPLATE_NAME[mission.templateId] ?? mission.title} · {nav.targetName}</Text>
+            <Text style={[s.mono, { marginTop: 4 }]}>{fmtCountdown(mission.expiresAt, now)}</Text>
           </View>
+          {mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{mission.chain.name.toUpperCase()} · LINK {mission.chain.step} OF {mission.chain.of}</Text>}
+          {mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {mission.crisis.name.toUpperCase()} · {mission.crisis.stance.toUpperCase()}{mission.crisis.joint ? ` · JOINT OP WITH ${mission.crisis.joint.toUpperCase()}` : ""}</Text>}
+          {nav.heldBy && nav.heldBy !== factionId && <Text style={[s.mono, { color: C.red, letterSpacing: 1.2 }]}>SITE HELD BY A RIVAL · YOU WILL ARRIVE LATE</Text>}
           {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
           <Typed>{mission.brief}</Typed>
           {nav.steps.map((st, i) => <Typed key={i} style={{ color: C.dim, marginBottom: 2 }}>{i + 1}. {st}</Typed>)}
