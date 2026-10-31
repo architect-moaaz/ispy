@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import type { BackChannelOptions, Briefing, ChatMessage } from "@ispy/shared";
 import { api } from "../api";
@@ -20,7 +20,10 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollViewInstance>(null);
+  // The chat is part of the page, newest at the bottom: the latest few are always in view and
+  // earlier ones unfold above on request, so the page scroll is the only scroll.
+  const [showAll, setShowAll] = useState(false);
+  const RECENT = 8;
 
   const load = async () => {
     try {
@@ -37,7 +40,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
     setMessages((m) => [...m, { id: `local-${Date.now()}`, role: "player", text: t, at: new Date().toISOString() }]);
     try { const r = await api.sendMessage(t); setMessages((m) => [...m, r.reply]); }
     catch (e: any) { setErr(e.message); }
-    finally { setBusy(false); setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50); }
+    finally { setBusy(false); }
   };
 
   const color = factionColor(factionId);
@@ -73,10 +76,14 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.cyan }} />
           <Label style={{ marginBottom: 0 }}>Encrypted link to {briefing.chiefName}</Label>
         </View>
-        <Text style={[s.eyebrow, { marginBottom: 6 }]}>{messages.length} on the link · scroll up for earlier</Text>
-        <ScrollView ref={scrollRef} nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 380 }} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
+        {messages.length > RECENT && (
+          <Pressable onPress={() => setShowAll((v) => !v)} style={{ paddingVertical: 8, alignItems: "center", borderBottomWidth: 1, borderBottomColor: C.hair, marginBottom: 8 }}>
+            <Text style={[s.eyebrow, { color: C.cyan }]}>{showAll ? "Hide earlier messages" : `Show ${messages.length - RECENT} earlier message${messages.length - RECENT === 1 ? "" : "s"}`}</Text>
+          </Pressable>
+        )}
+        <View>
           {messages.length === 0 && <Body dim>Nothing yet. Your chief is listening.</Body>}
-          {messages.map((m) => m.role === "leak" ? (
+          {(showAll ? messages : messages.slice(-RECENT)).map((m) => m.role === "leak" ? (
             <View key={m.id} style={{ marginBottom: 8, alignSelf: "stretch" }}>
               <Text style={[s.eyebrow, { color: C.amber }]}>Unknown source · no return path · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
               <View style={{ backgroundColor: "rgba(255,170,0,0.07)", borderWidth: 1, borderStyle: "dashed", borderColor: C.amber, borderRadius: 12, padding: 11 }}>
@@ -92,7 +99,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
               </View>
             </View>
           ))}
-        </ScrollView>
+        </View>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
           <Input value={text} onChangeText={setText} placeholder="Message your chief" style={{ flex: 1, marginBottom: 0 }} onSubmitEditing={send} />
           <Button title="Send" onPress={send} loading={busy} style={{ marginTop: 0 }} />
