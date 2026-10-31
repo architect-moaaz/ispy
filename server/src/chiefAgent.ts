@@ -107,7 +107,7 @@ class ChiefAgent {
       case "distraction.sprung": {
         if (!op) return;
         remember(this.chief, "bait", op.codename, `${op.codename}'s bait at ${s.payload?.target} caught ${s.payload?.by} (${factionById(s.payload?.byFaction).name})`);
-        chiefSay(op.id, `${s.payload?.by} of ${factionById(s.payload?.byFaction).name} walked all the way to ${s.payload?.target} for nothing. Your bait. Their afternoon.`, "distraction sprung", true);
+        chiefSay(op.id, `${s.payload?.by} of ${factionById(s.payload?.byFaction).name} walked all the way to ${s.payload?.target} for nothing${s.payload?.cost ? ` and lost ${s.payload.cost} XP doing it` : ""}. Your bait. Their afternoon.`, "distraction sprung", true);
         return;
       }
       case "mission.decoyed": {

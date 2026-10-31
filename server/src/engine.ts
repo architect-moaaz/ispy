@@ -631,22 +631,22 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
   }
   const flagged = trust < 0.7;
   // Bait: a rival's distraction. The walk happened; the mission never existed.
-  const bait = parse<any>(m.params, {}).distractionId ? distractions.onBite(parse<any>(m.params, {}).distractionId, player.id, player.factionId) : null;
+  const bait = parse<any>(m.params, {}).distractionId ? distractions.onBite(parse<any>(m.params, {}).distractionId, player.id, player.factionId, -baitPenalty(player, m.reward_xp)) : null;
   if (bait) {
-    xp = Math.round(xp * 0.2);
+    xp = baitPenalty(player, m.reward_xp);
     run("UPDATE missions SET state='completed', completed_at=?, outcome='decoyed' WHERE id=?", now(), m.id);
-    logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: bait.planterFaction, distraction: true }, player.id);
+    logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: bait.planterFaction, distraction: true, xp }, player.id);
     award(player.id, xp, 0, `${m.title} · bait`);
-    return { result: "verified", distanceM: distance, trustScore: trust, decoyed: true, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `Nothing here. Somebody wanted you at ${bait.target} and not where it mattered. Walk it off.` };
+    return { result: "verified", distanceM: distance, trustScore: trust, decoyed: true, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `Nothing here. Somebody wanted you at ${bait.target} and not where it mattered. That cost you ${-xp} XP and the walk.` };
   }
   // A rival's decoy at this site: the scan goes through, but what you carried out is worthless.
   const sprung = m.target_id && !exemptFromLocks(m) ? tools.springDecoy(m.target_id, player.id, player.factionId) : null;
   if (sprung) {
-    xp = Math.round(xp * 0.3);
+    xp = baitPenalty(player, m.reward_xp);
     run("UPDATE missions SET state='completed', completed_at=?, outcome='decoyed' WHERE id=?", now(), m.id);
-    logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: sprung.planterFaction }, player.id);
-    award(player.id, xp, 0, `${m.title} (decoy)`);
-    return { result: "verified", distanceM: distance, trustScore: trust, decoyed: true, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `A decoy. ${factionById(sprung.planterFaction).name} left this for you and you took it. Partial credit for the walk; look harder next time.` };
+    logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: sprung.planterFaction, xp }, player.id);
+    award(player.id, xp, 0, `${m.title} · decoy`);
+    return { result: "verified", distanceM: distance, trustScore: trust, decoyed: true, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `A decoy. ${factionById(sprung.planterFaction).name} left this for you and you took it. That cost you ${-xp} XP; look harder next time.` };
   }
   // First done wins the site. Anyone else still walking to it arrives late, unless the work is collaborative or an extraction.
   const lock = m.target_id ? lockOn(m.target_id) : undefined;
@@ -847,6 +847,12 @@ export function contactsFor(player: Player): Contact[] {
 }
 
 /** A chief speaks to one operative, unprompted. The Director's main engagement channel. */
+/** What a bite costs: half the mission's posted XP, taken from the victim, but never past the floor of their current rank. Returns a negative number (or 0). */
+function baitPenalty(player: { xp: number }, rewardXp: number): number {
+  const floor = rankFor(player.xp).at;
+  return -Math.max(0, Math.min(Math.round(rewardXp * 0.5), player.xp - floor));
+}
+
 export function chiefSay(playerId: string, text: string, why: string, force = false) {
   const p = get<{ faction_id: FactionId | null }>("SELECT faction_id FROM players WHERE id=?", playerId);
   if (!p?.faction_id) return;

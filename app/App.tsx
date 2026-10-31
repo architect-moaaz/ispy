@@ -86,7 +86,7 @@ function Shell() {
     connectLive();
     registerForPush();
     const off = onLive((type, data: any) => {
-      if (type === "reward" && data?.xp) { setToast(`+${data.xp} XP${data.credits ? ` · +${data.credits} CREDITS` : ""}${data.why ? ` · ${String(data.why).toUpperCase()}` : ""}`); setTimeout(() => setToast(null), 5000); }
+      if (type === "reward" && data?.xp) { setToast(`${data.xp > 0 ? "+" : ""}${data.xp} XP${data.credits ? ` · +${data.credits} CREDITS` : ""}${data.why ? ` · ${String(data.why).toUpperCase()}` : ""}`); setTimeout(() => setToast(null), 5000); }
       if (type === "rank_up" && data?.to) { setToast(`PROMOTED · ${String(data.to).replace("_", " ").toUpperCase()}`); setTimeout(() => setToast(null), 6000); }
       if (["chief.message", "reward", "rank_up", "presence.check_in", "presence.check_out", "live.open"].includes(type)) refreshMe();
       if (type === "admin.paused" || type === "admin.resumed") api.world().then(setWorld).catch(() => {});
@@ -114,7 +114,7 @@ function Shell() {
       <StatusBar style="light" />
       {offline && <Banner text="Can't reach the bureau. Retrying." color={C.stamp} />}
       {world?.paused && <Banner text="The world is paused." />}
-      {toast && <Banner text={toast} color={C.ok} />}
+      {toast && <Banner text={toast} color={toast.startsWith("-") ? C.red : C.ok} />}
       <View style={s.body}>{body}</View>
       {inGame && (
         <View style={[s.tabs, { paddingBottom: Math.max(12, insets.bottom) }]}>

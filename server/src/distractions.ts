@@ -47,12 +47,12 @@ export function plant(playerId: string, factionId: FactionId | null, targetId: s
 }
 
 /** A rival verified the bait: they get crumbs, the planter gets paid, both chiefs hear. */
-export function onBite(distractionId: string, victimId: string, victimFaction: FactionId | null): { planter: string; planterFaction: FactionId; target: string } | null {
+export function onBite(distractionId: string, victimId: string, victimFaction: FactionId | null, cost = 0): { planter: string; planterFaction: FactionId; target: string } | null {
   const d = get<{ id: string; player_id: string; faction_id: FactionId; target_name: string; state: string; expires_at: string }>("SELECT * FROM distractions WHERE id=?", distractionId);
   if (!d || d.faction_id === victimFaction) return null;
   run("UPDATE distractions SET bites=bites+1, sprung_by=COALESCE(sprung_by, ?), sprung_at=COALESCE(sprung_at, ?) WHERE id=?", victimId, now(), d.id);
   award(d.player_id, 60, 1, `distraction at ${d.target_name} took a bite`, 10);
-  logEvent("distraction.sprung", "arbiter", { distractionId: d.id, target: d.target_name, by: get<{ codename: string }>("SELECT codename FROM players WHERE id=?", victimId)?.codename, byFaction: victimFaction, planterFaction: d.faction_id }, d.player_id);
+  logEvent("distraction.sprung", "arbiter", { distractionId: d.id, target: d.target_name, by: get<{ codename: string }>("SELECT codename FROM players WHERE id=?", victimId)?.codename, byFaction: victimFaction, planterFaction: d.faction_id, cost }, d.player_id);
   return { planter: d.player_id, planterFaction: d.faction_id, target: d.target_name };
 }
 

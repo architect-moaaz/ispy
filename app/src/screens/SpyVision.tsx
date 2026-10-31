@@ -299,7 +299,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           </View>
           <Typed>{scan.debrief}</Typed>
           {scan.artifact && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2, marginTop: 4 }]}>ARTIFACT RECOVERED · {scan.artifact.name.toUpperCase()}{scan.artifact.dossier ? ` · DOSSIER ${scan.artifact.dossier.toUpperCase()}` : ""} · IN THE ARCHIVE</Text>}
-          <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: C.cyan, letterSpacing: 1 }}>+{scan.reward!.xp} XP   TRUST {scan.reward!.trust >= 0 ? "+" : ""}{scan.reward!.trust}</Text>
+          <Text style={{ fontFamily: F.displayMed, fontSize: 22, color: scan.reward!.xp < 0 ? C.red : C.cyan, letterSpacing: 1 }}>{scan.reward!.xp > 0 ? "+" : ""}{scan.reward!.xp} XP   TRUST {scan.reward!.trust >= 0 ? "+" : ""}{scan.reward!.trust}</Text>
           <Button title="Back to the board" onPress={finishMission} />
         </Dossier>
       )}
