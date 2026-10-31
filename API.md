@@ -318,3 +318,6 @@ lives in `DAILY_CAP` in `server/src/distractions.ts`).
   being decoyed.
 - App: cache card → "Plant a distraction here · N left today"; own bait draws an amber dashed ring on the cache
   and the card shows planter, bites and fade time.
+- Scan: a verified scan on bait returns `decoyed: true`. In AR the package shakes, crumbles to ash
+  (`effects/Disintegrate.tsx`), a DECOY stamp lands, and the view holds for ~3.5 s before the debrief. A real
+  package plays the opening burst and an EXTRACTED stamp in the same held window.

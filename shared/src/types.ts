@@ -194,6 +194,7 @@ export interface ScanResponse {
   debrief?: string;
   faceoff?: { won: boolean; rival: string; rivalFaction: FactionId; bonusXp: number } | null;
   artifact?: { id: string; kind: string; name: string; dossier: string | null } | null; // recovered at this site; unique in the world
+  decoyed?: boolean; // the package was bait: a rival's distraction or decoy. The AR view shows it crumble.
 }
 
 export interface DeskMissionDetail {

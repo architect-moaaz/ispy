@@ -636,8 +636,8 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     xp = Math.round(xp * 0.2);
     run("UPDATE missions SET state='completed', completed_at=?, outcome='decoyed' WHERE id=?", now(), m.id);
     logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: bait.planterFaction, distraction: true }, player.id);
-    award(player.id, xp, 0, `${m.title} (distraction)`);
-    return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `Nothing here. Somebody wanted you at ${bait.target} and not where it mattered. Walk it off.` };
+    award(player.id, xp, 0, `${m.title} · bait`);
+    return { result: "verified", distanceM: distance, trustScore: trust, decoyed: true, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `Nothing here. Somebody wanted you at ${bait.target} and not where it mattered. Walk it off.` };
   }
   // A rival's decoy at this site: the scan goes through, but what you carried out is worthless.
   const sprung = m.target_id && !exemptFromLocks(m) ? tools.springDecoy(m.target_id, player.id, player.factionId) : null;
@@ -646,7 +646,7 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     run("UPDATE missions SET state='completed', completed_at=?, outcome='decoyed' WHERE id=?", now(), m.id);
     logEvent("mission.decoyed", "authority", { missionId: m.id, title: m.title, by: sprung.planterFaction }, player.id);
     award(player.id, xp, 0, `${m.title} (decoy)`);
-    return { result: "verified", distanceM: distance, trustScore: trust, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `A decoy. ${factionById(sprung.planterFaction).name} left this for you and you took it. Partial credit for the walk; look harder next time.` };
+    return { result: "verified", distanceM: distance, trustScore: trust, decoyed: true, reward: { xp, trust: 0, contestOutcome: "lost" }, debrief: `A decoy. ${factionById(sprung.planterFaction).name} left this for you and you took it. Partial credit for the walk; look harder next time.` };
   }
   // First done wins the site. Anyone else still walking to it arrives late, unless the work is collaborative or an extraction.
   const lock = m.target_id ? lockOn(m.target_id) : undefined;

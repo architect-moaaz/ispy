@@ -159,12 +159,15 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
     setOffers((os) => os.filter((x) => x.offerId !== o.offerId));
     try { await api.declineMission(o.offerId); } catch { /* expires anyway */ }
   };
+  const [arHold, setArHold] = useState(false);
   const doScan = async (onSiteCode?: string) => {
     if (!mission) return refresh();
     setBusy(true); setErr(null);
     try {
       const f = fix ?? (await currentFix());
       const r = await api.scan(mission.id, { ...f, onSiteCode });
+      // Keep the AR view mounted through the opening (or the crumble, if this was bait) before the debrief.
+      if (ar && r.result === "verified" && r.reward) { setArHold(true); setTimeout(() => setArHold(false), r.decoyed ? 3600 : 2600); }
       setScan(r);
       if (r.result === "verified" && !r.reward) { setCode(""); setTimeout(refresh, 300); }
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
@@ -178,14 +181,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
 
   const completed = scan?.result === "verified" && scan.reward;
 
-  if (ar && mission && nav && !completed) {
+  if (ar && mission && nav && (!completed || arHold)) {
     return (
       <ARScan codename={codename} factionId={factionId} rank={rank} targetName={nav.targetName}
         prompt={scan?.result === "needs_code" ? scan.puzzle?.prompt ?? null : null}
         bearing={bearing} distanceM={dist} busy={busy || toolBusy}
         error={scan?.result === "needs_code" ? scan.reason ?? null : scan?.result === "too_far" ? `Still ${Math.round(scan.distanceM ?? 0)} m out.` : scan?.result === "rejected" ? scan.reason ?? "Scan could not be verified." : err}
         onSubmit={(c) => doScan(c || undefined)} onDisengage={() => setAr(false)}
-        lock={nav.lock ?? null} lockOpen={nav.lockOpen ?? true} unlockMsg={toolMsg} templateId={mission.templateId} crisis={!!mission.crisis} opened={scan?.result === "verified"}
+        lock={nav.lock ?? null} lockOpen={nav.lockOpen ?? true} unlockMsg={toolMsg} templateId={mission.templateId} crisis={!!mission.crisis} opened={scan?.result === "verified" && !scan.decoyed} decoyed={scan?.result === "verified" && !!scan.decoyed}
         tools={kit ? kit.tools.filter((t) => t.id !== "cipher_kit" && t.id !== "fragment").map((t) => ({ ...t, enabled: t.qty > 0 && !!fix && dist != null && dist <= (nav.approachRadiusM ?? 45), why: t.qty > 0 ? "Get inside the ring." : t.craft ? `Craft on Me · ${t.craft} fragments` : "Caches sometimes hold one." })) : []}
         onUnlock={async (t) => {
           if (!fix) return;
