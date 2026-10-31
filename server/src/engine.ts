@@ -474,9 +474,12 @@ export function offersFor(player: Player): OfferCard[] {
       if (first) { scored.length = 0; scored.push(first); }
     }
     // Two offers to the same site are one choice, not two: keep the best per target.
+    // Except the next link of the operative's own operation: that is always on the board, whatever else is.
     const seenTarget = new Set<string>(open.map((o) => get<{ target_id: string | null }>("SELECT target_id FROM missions WHERE id=?", o.mission_id)?.target_id ?? "").filter(Boolean));
-    const distinct = scored.filter(({ m }) => { if (!m.target_id) return true; if (seenTarget.has(m.target_id)) return false; seenTarget.add(m.target_id); return true; });
-    for (const { m } of distinct.slice(0, 2 - open.length)) {
+    const ownLink = scored.find(({ m }) => m.reserved_for === player.id);
+    const distinct = scored.filter(({ m }) => { if (m.reserved_for === player.id) return false; if (!m.target_id) return true; if (seenTarget.has(m.target_id)) return false; seenTarget.add(m.target_id); return true; });
+    const chosen = [...(ownLink ? [ownLink] : []), ...distinct.slice(0, Math.max(0, 2 - open.length - (ownLink ? 1 : 0)))];
+    for (const { m } of chosen) {
       const id = uid();
       run("INSERT INTO offers(id,mission_id,player_id,state,expires_at,created_at) VALUES(?,?,?,?,?,?)",
         id, m.id, player.id, "open", new Date(Date.now() + OFFER_TTL_MS()).toISOString(), now());
