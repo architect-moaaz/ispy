@@ -207,10 +207,10 @@ app.get("/v1/map", async (req) => {
     const t = get<{ lat: number; lng: number }>("SELECT t.lat, t.lng FROM missions m JOIN targets t ON t.id=m.target_id WHERE m.id=?", o.mission.id);
     return t ? { offerId: o.offerId, missionId: o.mission.id, lat: t.lat, lng: t.lng, title: o.mission.title, templateId: o.mission.templateId, targetName: o.mission.targetName ?? "", walkM: o.mission.walkM ?? 0, rewardXp: o.mission.rewardXp, acceptBy: o.acceptBy, chain: o.mission.chain ?? null, crisis: o.mission.crisis ?? null, lock: o.mission.lock ?? null } : null;
   }).filter((x): x is NonNullable<typeof x> => !!x);
-  return { ...m, pins, distractions: distractions.mineInArea(p.id, p.factionId, areaId), distractionsLeft: distractions.leftToday(p.id) };
+  return { ...m, pins, distractions: distractions.mineInArea(p.id, p.factionId, areaId), distractionsLeft: distractions.leftToday(p.id), distractionCost: distractions.DISTRACTION_COST };
 });
 // The back channel: an operative tips a rival chief anonymously. Sells a teammate's route for credits, or plants a false lead.
-app.get("/v1/backchannel", async (req) => { const p = need(req); return intrigue.backchannelOptions(p.id, p.factionId) ?? { left: 0, rivals: [], routes: [], sites: [], recent: [] }; });
+app.get("/v1/backchannel", async (req) => { const p = need(req); return intrigue.backchannelOptions(p.id, p.factionId) ?? { left: 0, credits: 0, costs: { distraction: distractions.DISTRACTION_COST, lead: distractions.LEAD_COST }, rivals: [], routes: [], sites: [], recent: [] }; });
 app.post("/v1/backchannel", async (req) => {
   const p = need(req);
   const b = z.object({ toFaction: z.enum(["raven", "phantom", "cipher"]), kind: z.enum(["sell", "plant"]), refId: z.string() }).parse(req.body);

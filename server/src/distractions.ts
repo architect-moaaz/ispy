@@ -18,6 +18,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS distractions (
 try { db.exec("ALTER TABLE distractions ADD COLUMN via TEXT NOT NULL DEFAULT 'plant'"); } catch { /* already there */ }
 
 export const DAILY_CAP = 3;
+/** Bait is tradecraft, not a free tap: a distraction costs credits, a false lead (one rival) costs less. */
+export const DISTRACTION_COST = 25;
+export const LEAD_COST = 15;
 const TTL_MS = 2 * 60 * 60_000;
 
 export type Spawner = (factionId: FactionId, areaId: string, targetId: string, distractionId: string, brief: string) => void;
@@ -47,6 +50,9 @@ export function plant(playerId: string, factionId: FactionId | null, targetId: s
   if (get("SELECT 1 FROM distractions WHERE target_id=? AND state='live' AND expires_at>?", targetId, now())) return { ok: false, reason: "There is already bait at that site." };
   const left = leftToday(playerId);
   if (left <= 0) return { ok: false, reason: "Three distractions a day. Tomorrow." };
+  const credits = get<{ credits: number }>("SELECT credits FROM players WHERE id=?", playerId)?.credits ?? 0;
+  if (credits < DISTRACTION_COST) return { ok: false, reason: `Bait costs ${DISTRACTION_COST} credits. You have ${credits}.` };
+  award(playerId, 0, 0, "bait planted", -DISTRACTION_COST);
   const id = uid();
   const expiresAt = new Date(Date.now() + TTL_MS).toISOString();
   run("INSERT INTO distractions(id,player_id,faction_id,area_id,target_id,target_name,created_at,expires_at) VALUES(?,?,?,?,?,?,?,?)", id, playerId, factionId, t.area_id, t.id, t.name, now(), expiresAt);

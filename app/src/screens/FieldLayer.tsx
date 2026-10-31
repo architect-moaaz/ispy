@@ -94,13 +94,11 @@ export function NearbyTracker({ signals, pins, selected, onSelect }: { signals: 
 }
 
 /** The card for whatever is selected on the map, with the one action that makes sense from here. */
-export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, onAccept, onDecline, onNavigate, onClose, bait, baitLeft, onPlant, rivals, tipsLeft, onFalseLead }: {
+export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, onAccept, onDecline, onNavigate, onClose, bait, baitLeft, onPlant, onTradecraft }: {
   sel: Selection; dist: number | null; factionId: string | null; busy: boolean;
   onSpin: () => void; onCapture: () => void; onAccept: () => void; onDecline: () => void; onNavigate: () => void; onClose: () => void;
-  bait?: DistractionView[]; baitLeft?: number; onPlant?: () => void;
-  rivals?: { id: string; chief: string; burned: boolean }[]; tipsLeft?: number; onFalseLead?: (toFaction: string) => void;
+  bait?: DistractionView[]; baitLeft?: number; onPlant?: () => void; onTradecraft?: () => void;
 }) {
-  const [leadOpen, setLeadOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
   const near = dist != null && dist <= 40;
@@ -116,19 +114,8 @@ export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, o
           {near ? <Button title="Spin cache" onPress={onSpin} loading={busy} disabled={!!c.readyAt} style={{ flex: 1, marginTop: 0 }} /> : <Button title="Navigate" onPress={onNavigate} style={{ flex: 1, marginTop: 0 }} />}
           <Button title="Close" kind="ghost" onPress={onClose} style={{ marginTop: 0 }} />
         </View>
-        {onPlant && !bait?.some((x) => x.targetId === c.id) && (
-          <Button title={`Plant a distraction here · ${baitLeft ?? 0} left today`} kind="ghost" onPress={onPlant} disabled={(baitLeft ?? 0) <= 0 || busy} style={{ marginTop: 8, paddingVertical: 8 }} />
-        )}
-        {onFalseLead && rivals && !bait?.some((x) => x.targetId === c.id) && (
-          !leadOpen ? <Button title={`Point one rival here · false lead · ${tipsLeft ?? 0} left`} kind="ghost" onPress={() => setLeadOpen(true)} disabled={(tipsLeft ?? 0) <= 0 || busy} style={{ marginTop: 6, paddingVertical: 8, borderColor: C.amber }} /> : (
-            <View style={{ marginTop: 6 }}>
-              <Text style={[s.mono, { color: C.amber }]}>AN UNSIGNED TIP TO ONE CHIEF. THEIR OPERATIVE WALKS HERE FOR NOTHING AND PAYS XP. TWO BURNS A DAY AND THAT CHIEF DROPS YOU.</Text>
-              <View style={{ flexDirection: "row", gap: 6 }}>
-                {rivals.map((r) => <Button key={r.id} title={`${r.chief}${r.burned ? " · burned" : ""}`} kind="ghost" disabled={r.burned || busy} onPress={() => { setLeadOpen(false); onFalseLead(r.id); }} style={{ flex: 1, paddingVertical: 8, marginTop: 4, borderColor: C.amber }} />)}
-                <Button title="Cancel" kind="ghost" onPress={() => setLeadOpen(false)} style={{ paddingVertical: 8, marginTop: 4 }} />
-              </View>
-            </View>
-          )
+        {onTradecraft && !bait?.some((x) => x.targetId === c.id) && (
+          <Button title="Tradecraft · bait at this site" kind="ghost" onPress={onTradecraft} disabled={busy} style={{ marginTop: 8, paddingVertical: 8, borderColor: C.amber }} />
         )}
       </Dossier>
     );

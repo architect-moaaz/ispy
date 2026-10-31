@@ -233,6 +233,8 @@ export function backchannelOptions(playerId: string, factionId: FactionId | null
   const burned = FACTIONS.filter((f) => f.id !== factionId && isBurned(playerId, f.id)).map((f) => f.id);
   return {
     left: Math.max(0, TIP_CAP - sent),
+    credits: get<{ credits: number }>("SELECT credits FROM players WHERE id=?", playerId)?.credits ?? 0,
+    costs: { distraction: distractions.DISTRACTION_COST, lead: distractions.LEAD_COST },
     rivals: FACTIONS.filter((f) => f.id !== factionId).map((f) => ({ id: f.id, name: f.name, chief: f.chiefName, burned: burned.includes(f.id) })),
     // Teammates' live routes, and your own: selling your own target lures a rival into a face-off there, cash up front.
     routes: all<{ id: string; codename: string; title: string; target: string; assignee_id: string }>("SELECT m.id, p.codename, m.title, t.name target, m.assignee_id FROM missions m JOIN players p ON p.id=m.assignee_id JOIN targets t ON t.id=m.target_id WHERE m.state='active' AND m.mode='field' AND m.faction_id=? ORDER BY (m.assignee_id=?) ASC, m.created_at DESC LIMIT 6", factionId, playerId)
@@ -270,8 +272,11 @@ export function sendTip(playerId: string, factionId: FactionId | null, toFaction
   }
   const t = get<{ id: string; name: string; area_id: string }>("SELECT id, name, area_id FROM targets WHERE id=? AND state='ACTIVE'", refId);
   if (!t) return { ok: false, reason: "Pick a real site." };
+  const credits = get<{ credits: number }>("SELECT credits FROM players WHERE id=?", playerId)?.credits ?? 0;
+  if (credits < distractions.LEAD_COST) return { ok: false, reason: `A false lead costs ${distractions.LEAD_COST} credits. You have ${credits}.` };
   const planted = distractions.plantFor(playerId, factionId, t.id, toFaction, `tip:${id}`);
   if (!planted.ok) return { ok: false, reason: planted.reason };
+  award(playerId, 0, 0, "false lead planted", -distractions.LEAD_COST);
   run("INSERT INTO tips(id,from_player,from_faction,to_faction,kind,ref_id,ref_name,outcome,created_at) VALUES(?,?,?,?,?,?,?,?,?)", id, playerId, factionId, toFaction, "plant", planted.id!, t.name, "open", now());
   for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", toFaction, now()))
     chiefSay(o.player_id, `Unsigned tip: something is sitting at ${t.name}. I have put an order on the board. Go and look, and if it is nothing, I want to know that too.`, "tip", true);

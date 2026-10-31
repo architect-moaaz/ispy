@@ -335,7 +335,7 @@ export interface CacheView { id: string; name: string; kind: string; lat: number
 export interface StrongholdView { targetId: string; name: string; lat: number; lng: number; holder: FactionId | null; control: Record<FactionId, number> }
 export interface OfferPin { offerId: string; missionId: string; lat: number; lng: number; title: string; templateId: TemplateId; targetName: string; walkM: number; rewardXp: number; acceptBy: string; chain?: { name: string; step: number; of: number } | null; crisis?: { name: string; stance: string; joint: string | null } | null; lock?: { kind: LockKind; tool: ToolId; label: string } | null }
 export interface DistractionView { id: string; targetId: string; targetName: string; by: string; mine: boolean; expiresAt: string; bites: number }
-export interface MapResponse { caches: CacheView[]; signals: SignalView[]; stronghold: StrongholdView | null; pins: OfferPin[]; distractions?: DistractionView[]; distractionsLeft?: number }
+export interface MapResponse { caches: CacheView[]; signals: SignalView[]; stronghold: StrongholdView | null; pins: OfferPin[]; distractions?: DistractionView[]; distractionsLeft?: number; distractionCost?: number }
 export interface SpinResult { ok: boolean; reason?: string; items?: { id: string; name: string; qty: number }[]; xp?: number; credits?: number; readyAt?: string }
 export interface CaptureResult { result: "captured" | "escaped" | "fled" | "too_far" | "gone"; distanceM?: number; xp?: number; rarity?: Rarity; name?: string; kind?: string; attemptsLeft?: number; collection?: { kind: string; count: number; best: Rarity } }
 export interface CollectionEntry { kind: string; name: string; art: string; blurb: string; count: number; best: Rarity | null; firstAt: string | null }
@@ -370,6 +370,8 @@ export interface PlantResult { ok: boolean; reason?: string; id?: string; left?:
 // ---------- the back channel (rogue operatives) ----------
 export interface BackChannelOptions {
   left: number;
+  credits: number;
+  costs: { distraction: number; lead: number };
   rivals: { id: FactionId; name: string; chief: string; burned: boolean }[];
   routes: { missionId: string; label: string }[]; // teammates' live routes you could sell
   sites: { id: string; name: string }[]; // sites you could point a rival at

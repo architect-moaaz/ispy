@@ -14,6 +14,7 @@ import { ART } from "../art";
 import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
 import { CaptureRitual, FieldMarkers, NearbyTracker, SelectionCard, type Selection } from "./FieldLayer";
+import { BaitSheet } from "./BaitSheet";
 import { ToolDial, type DialTool } from "./ToolDial";
 
 const TEMPLATE_NAME: Record<string, string> = { RECON: "RECON", DEAD_DROP: "VIRTUAL DEAD DROP", EXTRACTION: "EXTRACTION", ANALYSIS: "ANALYSIS", CIPHER: "CIPHER" };
@@ -38,8 +39,9 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [route, setRoute] = useState<WalkingRoute | null>(null);
   // Ambient layer: what is around you on the map, and what you have tapped.
   const [field, setField] = useState<MapResponse | null>(null);
-  const [bc, setBc] = useState<{ rivals: { id: string; chief: string; burned: boolean }[]; left: number } | null>(null);
-  const loadBc = async () => { try { const o = await api.backchannel(); setBc({ rivals: o.rivals, left: o.left }); } catch { /* no faction */ } };
+  const [bc, setBc] = useState<{ rivals: { id: string; chief: string; burned: boolean }[]; left: number; credits: number; costs: { distraction: number; lead: number } } | null>(null);
+  const loadBc = async () => { try { const o = await api.backchannel(); setBc({ rivals: o.rivals, left: o.left, credits: o.credits, costs: o.costs }); } catch { /* no faction */ } };
+  const [baitSite, setBaitSite] = useState<{ id: string; name: string } | null>(null);
   const [sel, setSel] = useState<Selection | null>(null);
   const [spinResult, setSpinResult] = useState<SpinResult | null>(null);
   const [spinning, setSpinning] = useState(false);
@@ -253,10 +255,20 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
             onNavigate={() => selPoint && openTurnByTurn({ lat: selPoint.lat, lng: selPoint.lng }, selPoint.name)}
             onClose={() => setSel(null)}
             bait={field?.distractions ?? []} baitLeft={field?.distractionsLeft ?? 0}
-            rivals={bc?.rivals} tipsLeft={bc?.left ?? 0}
-            onFalseLead={async (toFaction) => { if (sel.type !== "cache") return; setBusy(true); try { const r = await api.sendTip(toFaction, "plant", sel.item.id); setToolMsg(r.ok ? `FALSE LEAD SET AT ${sel.item.name.toUpperCase()} · ${r.left} TIP${r.left === 1 ? "" : "S"} LEFT TODAY` : `FALSE LEAD · ${r.reason}`); await loadField(fix); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }}
-            onPlant={async () => { if (sel.type !== "cache") return; setBusy(true); try { const r = await api.plantDistraction(sel.item.id); setToolMsg(r.ok ? `BAIT SET AT ${sel.item.name.toUpperCase()} · ${r.left} LEFT TODAY · RIVALS NOW SEE A REAL ORDER THERE` : `BAIT · ${r.reason}`); await loadField(fix); } catch (e: any) { setErr(e.message); } finally { setBusy(false); } }} />
+            onTradecraft={() => { if (sel.type === "cache") { void loadBc(); setBaitSite({ id: sel.item.id, name: sel.item.name }); } }}
+            />
         </View>
+      )}
+      {baitSite && bc && (
+        <BaitSheet site={baitSite.name} credits={bc.credits} costs={bc.costs} distractionsLeft={field?.distractionsLeft ?? 0} tipsLeft={bc.left} rivals={bc.rivals} busy={busy}
+          onClose={() => setBaitSite(null)}
+          onSend={async (move) => {
+            setBusy(true);
+            try {
+              if (move.kind === "distraction") { const r = await api.plantDistraction(baitSite.id); if (r.ok) { setToolMsg(`BAIT SET AT ${baitSite.name.toUpperCase()} · ${r.left} LEFT TODAY`); await loadField(fix); await loadBc(); return `Planted. Every rival chief now has an order for ${baitSite.name}. ${r.left} left today.`; } return `!${r.reason}`; }
+              const r = await api.sendTip(move.toFaction, "plant", baitSite.id); if (r.ok) { setToolMsg(`FALSE LEAD SET AT ${baitSite.name.toUpperCase()} · ${r.left} TIP${r.left === 1 ? "" : "S"} LEFT TODAY`); await loadField(fix); await loadBc(); return `Sent. ${r.left} tip${r.left === 1 ? "" : "s"} left today.`; } return `!${r.reason}`;
+            } catch (e: any) { return `!${e.message}`; } finally { setBusy(false); }
+          }} />
       )}
       {!mission && field && <NearbyTracker signals={field.signals} pins={field.pins} selected={sel} onSelect={setSel} />}
       {mission && nav && !completed && (

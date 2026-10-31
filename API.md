@@ -305,7 +305,8 @@ object, stamp, provenance, contents, examination, the cipher with a decipher fie
 
 A deployed field operative can plant a **distraction** at any cache in their sector. Each rival agency
 receives a real-looking RECON order at that site (same card, same cipher pool, no mark). Only the planter,
-their agency, their chief and the World Director know it is bait. A rival who completes it **loses** half the
+their agency, their chief and the World Director know it is bait. Planting costs 25 credits (a false lead to one chief, 15) and goes through a sealed-order sheet in the app:
+choose the move, read the cost, arm it over three seconds, confirm. A rival who completes it **loses** half the
 order's posted XP (never below the floor of their current rank, so bait cannot demote), gets a "decoyed"
 outcome and a debrief that names the place and the cost; the planter gets 60 XP and 10 credits per bite and a
 chief line quoting what the victim lost. A planted decoy tool costs its victim the same way. Bait fades after 2 hours. Cap: 3 per operative per rolling 24 hours (the monetisation hook
