@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { AccuseResponse, CaseDetail, CaseSummary, FactionId } from "@ispy/shared";
 import { api } from "../api";
 import { ART } from "../art";
-import { artFor, RARITY_COLOR } from "./FieldLayer";
+import { signalArt, RARITY_COLOR } from "./FieldLayer";
 import type { CollectionEntry } from "@ispy/shared";
 import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
@@ -155,7 +155,7 @@ export function DossierScreen() {
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {collection.map((c) => (
           <View key={c.kind} style={{ width: "31%", borderWidth: 1, borderColor: c.count ? (c.best ? RARITY_COLOR[c.best] : C.cyan) : C.line, backgroundColor: C.ink2, padding: 6, opacity: c.count ? 1 : 0.45 }}>
-            <Image source={artFor(c.art)} style={{ width: "100%", height: 64, marginBottom: 4 }} />
+            <Image source={signalArt(c.kind, c.art)} style={{ width: "100%", height: 64, marginBottom: 4 }} resizeMode="contain" />
             <Text style={{ color: c.count ? C.text : C.dim, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1 }} numberOfLines={1}>{c.name.toUpperCase()}</Text>
             <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 10 }}>{c.count ? `×${c.count} · best ${c.best}` : "not yet"}</Text>
           </View>

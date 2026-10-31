@@ -265,3 +265,9 @@ package floats with its lock tag and the tool dial sits in the sheet: spin to th
 tool, which is consumed (`package.unlocked`); the wrong tool costs nothing and says so
 (`package.wrong_tool`). A dead drop opened with a key needs no analyst code. The matcher favours packages
 you can open, and a recruit's first mission is never locked.
+
+### Painted objects in AR and captures
+`assets/art/pkg-*.jpg` (dead drop parcel, recon dossier, extraction case, crisis canister) front the AR
+scan: the package floats in a ring that is grey out of range, red while locked, green when open, with the
+lock tag beneath. `assets/art/sig-*.jpg` (courier satchel, leaked page, bug, broker's bundle, sleeper
+asset in magenta, jammer box) are the signal objects in the tracker, the capture ritual and the collection.

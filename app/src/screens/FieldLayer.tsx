@@ -19,6 +19,8 @@ export type Selection =
 export const RARITY_COLOR: Record<Rarity, string> = { common: C.cyan, uncommon: C.ok, rare: C.amber, legendary: "#ff6ad5" };
 const MISSION_ART: Record<string, number> = ART.mission;
 export const artFor = (key: string) => MISSION_ART[{ extraction: "EXTRACTION", recon: "RECON", intercept: "CIPHER", drop: "DEAD_DROP" }[key] ?? key] ?? ART.mission.DEAD_DROP;
+/** The painted object for a signal kind; falls back to the mission scene art. */
+export const signalArt = (kind: string, artKey?: string) => ART.signal[kind] ?? artFor(artKey ?? "drop");
 
 /** Markers drawn at projected positions; taps select, the map's pan still works under them. */
 export function FieldMarkers({ project, width, height, caches, signals, pins, stronghold, selected, onSelect, factionId }: {
@@ -79,7 +81,7 @@ export function NearbyTracker({ signals, pins, selected, onSelect }: { signals: 
         ))}
         {signals.map((sg) => (
           <Pressable key={sg.id} onPress={() => onSelect({ type: "signal", item: sg })} style={[s.tile, { borderColor: RARITY_COLOR[sg.rarity] }, selected?.type === "signal" && selected.item.id === sg.id && s.tileOn]}>
-            <Image source={artFor(sg.art)} style={s.tileArt} />
+            <Image source={signalArt(sg.kind, sg.art)} style={s.tileArt} />
             <Text style={[s.tileName, { color: RARITY_COLOR[sg.rarity] }]} numberOfLines={1}>{sg.name.toUpperCase()}</Text>
             <Text style={s.tileSub}>{sg.distanceM} m {feet(sg.distanceM)} · {fmtCountdown(sg.expiresAt, now)}</Text>
           </Pressable>
@@ -116,7 +118,7 @@ export function SelectionCard({ sel, dist, factionId, busy, onSpin, onCapture, o
     return (
       <Dossier tab={RARITY_COLOR[sg.rarity]}>
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <Image source={artFor(sg.art)} style={{ width: 64, height: 64, borderWidth: 1, borderColor: C.line }} />
+          <Image source={signalArt(sg.kind, sg.art)} style={{ width: 64, height: 64, borderWidth: 1, borderColor: C.line }} />
           <View style={{ flex: 1 }}>
             <Text style={[s.title, { color: RARITY_COLOR[sg.rarity] }]}>{sg.name.toUpperCase()} · {sg.rarity.toUpperCase()}</Text>
             <Text style={s.mono}>{dist != null ? `${Math.round(dist)} M` : `${sg.distanceM} M`} · FADES IN {fmtCountdown(sg.expiresAt, now)} · {sg.attemptsLeft} ATTEMPT{sg.attemptsLeft === 1 ? "" : "S"}</Text>
@@ -231,7 +233,7 @@ export function CaptureRitual({ signal, busy, onAttempt, result, onRetry, onDone
                 onPressOut={() => { holding.current = false; if (!armed) setSlips((x) => x + 1); }}
                 style={[s.blip, { backgroundColor: col, shadowColor: col }, armed && { borderWidth: 3, borderColor: C.text }]}
               >
-                <Image source={artFor(signal.art)} style={{ width: 84, height: 84, borderRadius: 42, opacity: 0.85 }} />
+                <Image source={signalArt(signal.kind, signal.art)} style={{ width: 84, height: 84, borderRadius: 42, opacity: 0.95 }} />
               </Pressable>
             </Animated.View>
           )}

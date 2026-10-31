@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Dimensions, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Dimensions, Image, StyleSheet, Text, View } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import Svg, { Circle, Line, Path, Rect } from "react-native-svg";
 import { C, F, factionColor } from "../theme";
@@ -7,7 +7,7 @@ import { Button, Input, Stamp } from "../ui";
 import { ToolDial, type DialTool } from "./ToolDial";
 import type { LockKind, ToolId } from "@ispy/shared";
 import { FactionEmblem } from "../graphics";
-import { HoloCache3D } from "../effects/HoloCache3D";
+import { ART } from "../art";
 import { RadarSweep } from "../effects/RadarSweep";
 
 /**
@@ -16,11 +16,12 @@ import { RadarSweep } from "../effects/RadarSweep";
  * The camera is a backdrop only: nothing is recorded, uploaded or recognised.
  */
 export function ARScan({
-  codename, factionId, rank, targetName, prompt, bearing, distanceM, onSubmit, busy, error, onDisengage, lock, lockOpen, tools, onUnlock, unlockMsg,
+  codename, factionId, rank, targetName, prompt, bearing, distanceM, onSubmit, busy, error, onDisengage, lock, lockOpen, tools, onUnlock, unlockMsg, templateId, crisis,
 }: {
   codename: string; factionId: string | null; rank: string; targetName: string; prompt: string | null;
   bearing: number | null; distanceM: number | null; onSubmit: (code: string) => void; busy: boolean; error: string | null; onDisengage: () => void;
   lock?: { kind: LockKind; tool: ToolId; label: string } | null; lockOpen?: boolean; tools?: DialTool[]; onUnlock?: (tool: DialTool) => void; unlockMsg?: string | null;
+  templateId?: string; crisis?: boolean;
 }) {
   const [justOpened, setJustOpened] = useState(false);
   const wasLocked = useRef(!!lock && !lockOpen);
@@ -77,9 +78,26 @@ export function ARScan({
       <Text style={[s.side, { right: 6, top: height * 0.5 }]}>DATA-TELEMETRY</Text>
       <Text style={[s.hud, { left: 16, top: 190 }]}>🔒 CAMERA VIEW · NOT RECORDED</Text>
 
-      {/* 3D Holographic Virtual Dead-Drop Cache */}
-      <View pointerEvents="none" style={{ position: "absolute", left: width / 2 - 80, top: height * 0.3, width: 160, alignItems: "center" }}>
-        <HoloCache3D factionId={factionId} targetName={targetName} distanceM={distanceM} locked={distanceM == null || distanceM > 45 || locked} size={150} />
+      {/* The package itself: a painted object floating in the camera view, dim and red-ringed while locked. */}
+      <View pointerEvents="none" style={{ position: "absolute", left: width / 2 - 90, top: height * 0.26, width: 180, alignItems: "center" }}>
+        {(() => {
+          const far = distanceM == null || distanceM > 45;
+          const ringColor = far ? C.dim : locked ? C.red : C.ok;
+          const art = crisis ? ART.pkg.CRISIS : ART.pkg[templateId ?? "DEAD_DROP"] ?? ART.pkg.DEAD_DROP;
+          return (
+            <>
+              <Text style={[s.eyebrow, { color: ringColor, marginBottom: 4 }]}>CONTAINMENT: {far ? "OUT OF RANGE" : locked ? "LOCKED" : "OPEN"}</Text>
+              <Animated.View style={{ transform: [{ translateY }, { rotate: spin.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: ["-4deg", "3deg", "-2deg", "4deg", "-4deg"] }) }] }}>
+                <View style={[s.pkgRing, { borderColor: ringColor, shadowColor: ringColor }]}>
+                  <Image source={art} style={[s.pkgImg, (far || locked) && { opacity: 0.55 }]} />
+                  {locked && !far && <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(255,93,108,0.18)", borderRadius: 80 }]} />}
+                </View>
+              </Animated.View>
+              <Text style={[s.mono, { marginTop: 6, fontFamily: F.displayMed, fontSize: 15, letterSpacing: 1 }]}>{targetName}</Text>
+              <Text style={s.eyebrow}>DISTANCE: {distanceM == null ? "--" : `${distanceM.toFixed(1)}M`}</Text>
+            </>
+          );
+        })()}
         {lock && (
           <View style={[s.lockTag, { borderColor: locked ? C.red : C.ok }]}>
             <Text style={[s.hud, { backgroundColor: "transparent", color: locked ? C.red : C.ok }]}>{locked ? `${lock.label.toUpperCase()} · NEEDS ${lock.tool.toUpperCase()}` : `OPENED WITH ${lock.tool.toUpperCase()}`}</Text>
@@ -128,6 +146,8 @@ const s = StyleSheet.create({
   side: { position: "absolute", color: C.cyan, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.6, transform: [{ rotate: "-90deg" }], width: 150, textAlign: "center", marginLeft: -62 },
   sheet: { position: "absolute", left: 14, right: 14, bottom: 22, backgroundColor: C.glass, borderWidth: 1, borderColor: C.cyan + "88", padding: 12 },
   pill: { borderRadius: 30, paddingVertical: 14 },
+  pkgRing: { width: 160, height: 160, borderRadius: 80, borderWidth: 2, overflow: "hidden", backgroundColor: "#000", shadowOpacity: 0.9, shadowRadius: 22 },
+  pkgImg: { width: 160, height: 160, borderRadius: 80 },
   lockTag: { marginTop: 6, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: C.glass },
   stampWrap: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
   badgeRing: { position: "absolute", left: 10, top: 42, width: 58, height: 58, borderRadius: 29, borderWidth: 1, opacity: 0.5 },

@@ -185,7 +185,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         bearing={bearing} distanceM={dist} busy={busy || toolBusy}
         error={scan?.result === "needs_code" ? scan.reason ?? null : scan?.result === "too_far" ? `Still ${Math.round(scan.distanceM ?? 0)} m out.` : scan?.result === "rejected" ? scan.reason ?? "Scan could not be verified." : err}
         onSubmit={(c) => doScan(c || undefined)} onDisengage={() => setAr(false)}
-        lock={nav.lock ?? null} lockOpen={nav.lockOpen ?? true} unlockMsg={toolMsg}
+        lock={nav.lock ?? null} lockOpen={nav.lockOpen ?? true} unlockMsg={toolMsg} templateId={mission.templateId} crisis={!!mission.crisis}
         tools={kit ? kit.tools.filter((t) => t.id !== "cipher_kit" && t.id !== "fragment").map((t) => ({ ...t, enabled: t.qty > 0 && !!fix && dist != null && dist <= (nav.approachRadiusM ?? 45), why: t.qty > 0 ? "Get inside the ring." : t.craft ? `Craft on Me · ${t.craft} fragments` : "Caches sometimes hold one." })) : []}
         onUnlock={async (t) => {
           if (!fix) return;

@@ -26,6 +26,22 @@ export const ART = {
     decoy: require("../assets/art/tool-decoy.jpg"),
     burner: require("../assets/art/tool-burner.jpg"),
   } as Record<string, number>,
+  // What you find: painted objects for AR scan (by mission template, crisis sites get the canister)...
+  pkg: {
+    DEAD_DROP: require("../assets/art/pkg-drop.jpg"),
+    RECON: require("../assets/art/pkg-recon.jpg"),
+    EXTRACTION: require("../assets/art/pkg-extraction.jpg"),
+    CRISIS: require("../assets/art/pkg-crisis.jpg"),
+  } as Record<string, number>,
+  // ...and the signal objects for captures, the tracker and the collection.
+  signal: {
+    courier: require("../assets/art/sig-courier.jpg"),
+    leak: require("../assets/art/sig-leak.jpg"),
+    bug: require("../assets/art/sig-bug.jpg"),
+    broker: require("../assets/art/sig-broker.jpg"),
+    asset: require("../assets/art/sig-asset.jpg"),
+    jammer: require("../assets/art/sig-jammer.jpg"),
+  } as Record<string, number>,
   emblem: {
     raven: require("../assets/art/emblem-raven.jpg"),
     phantom: require("../assets/art/emblem-phantom.jpg"),
