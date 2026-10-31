@@ -8,6 +8,7 @@ import { ToolDial, type DialTool } from "./ToolDial";
 import type { LockKind, ToolId } from "@ispy/shared";
 import { FactionEmblem } from "../graphics";
 import { ART } from "../art";
+import { OpenBurst } from "../effects/OpenBurst";
 import { RadarSweep } from "../effects/RadarSweep";
 
 /**
@@ -16,16 +17,34 @@ import { RadarSweep } from "../effects/RadarSweep";
  * The camera is a backdrop only: nothing is recorded, uploaded or recognised.
  */
 export function ARScan({
-  codename, factionId, rank, targetName, prompt, bearing, distanceM, onSubmit, busy, error, onDisengage, lock, lockOpen, tools, onUnlock, unlockMsg, templateId, crisis,
+  codename, factionId, rank, targetName, prompt, bearing, distanceM, onSubmit, busy, error, onDisengage, lock, lockOpen, tools, onUnlock, unlockMsg, templateId, crisis, opened,
 }: {
   codename: string; factionId: string | null; rank: string; targetName: string; prompt: string | null;
   bearing: number | null; distanceM: number | null; onSubmit: (code: string) => void; busy: boolean; error: string | null; onDisengage: () => void;
   lock?: { kind: LockKind; tool: ToolId; label: string } | null; lockOpen?: boolean; tools?: DialTool[]; onUnlock?: (tool: DialTool) => void; unlockMsg?: string | null;
-  templateId?: string; crisis?: boolean;
+  templateId?: string; crisis?: boolean; opened?: boolean;
 }) {
-  const [justOpened, setJustOpened] = useState(false);
+  // The opening: shake, burst, stamp. Plays when a lock opens and again when the package is extracted.
+  const [burst, setBurst] = useState(0);
+  const [stamp, setStamp] = useState<string | null>(null);
+  const shake = useRef(new Animated.Value(0)).current;
+  const pop = useRef(new Animated.Value(1)).current;
   const wasLocked = useRef(!!lock && !lockOpen);
-  useEffect(() => { if (wasLocked.current && lockOpen) { setJustOpened(true); const t = setTimeout(() => setJustOpened(false), 2200); return () => clearTimeout(t); } wasLocked.current = !!lock && !lockOpen; }, [lockOpen]);
+  const play = (label: string) => {
+    shake.setValue(0); pop.setValue(1);
+    Animated.sequence([
+      Animated.timing(shake, { toValue: 1, duration: 420, easing: Easing.linear, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.sequence([Animated.timing(pop, { toValue: 1.25, duration: 160, easing: Easing.out(Easing.back(2)), useNativeDriver: true }), Animated.timing(pop, { toValue: 1, duration: 500, easing: Easing.out(Easing.quad), useNativeDriver: true })]),
+      ]),
+    ]).start();
+    setTimeout(() => { setBurst((b) => b + 1); setStamp(label); }, 400);
+    setTimeout(() => setStamp(null), 2600);
+  };
+  useEffect(() => { if (wasLocked.current && lockOpen) play("Unlocked"); wasLocked.current = !!lock && !lockOpen; }, [lockOpen]);
+  const wasOpened = useRef(!!opened);
+  useEffect(() => { if (!wasOpened.current && opened) play("Extracted"); wasOpened.current = !!opened; }, [opened]);
+  const shakeX = shake.interpolate({ inputRange: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1], outputRange: [0, -6, 6, -8, 8, -6, 6, -4, 4, -2, 0] });
   const locked = !!lock && !lockOpen;
   const [perm, requestPerm] = useCameraPermissions();
   const [code, setCode] = useState("");
@@ -87,7 +106,7 @@ export function ARScan({
           return (
             <>
               <Text style={[s.eyebrow, { color: ringColor, marginBottom: 4 }]}>CONTAINMENT: {far ? "OUT OF RANGE" : locked ? "LOCKED" : "OPEN"}</Text>
-              <Animated.View style={{ transform: [{ translateY }, { rotate: spin.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: ["-4deg", "3deg", "-2deg", "4deg", "-4deg"] }) }] }}>
+              <Animated.View style={{ transform: [{ translateY }, { translateX: shakeX }, { scale: pop }, { rotate: spin.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: ["-4deg", "3deg", "-2deg", "4deg", "-4deg"] }) }] }}>
                 <View style={[s.pkgRing, { borderColor: ringColor, shadowColor: ringColor }]}>
                   <Image source={art} style={[s.pkgImg, (far || locked) && { opacity: 0.55 }]} />
                   {locked && !far && <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(255,93,108,0.18)", borderRadius: 80 }]} />}
@@ -104,7 +123,10 @@ export function ARScan({
           </View>
         )}
       </View>
-      {justOpened && <View pointerEvents="none" style={s.stampWrap}><Stamp text="Unlocked" size={44} color={C.red} /></View>}
+      <View pointerEvents="none" style={{ position: "absolute", left: width / 2 - 170, top: height * 0.26 - 80, width: 340, height: 340 }}>
+        <OpenBurst playKey={burst} color={stamp === "Extracted" ? C.ok : C.cyan} size={340} />
+      </View>
+      {stamp && <View pointerEvents="none" style={s.stampWrap}><Stamp text={stamp} size={46} color={C.red} /></View>}
 
       {/* cipher panel + actions */}
       <View style={s.sheet}>
