@@ -278,15 +278,10 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           {!onSite && <Button title="Navigate" kind="ghost" onPress={() => openTurnByTurn({ lat: nav.lat, lng: nav.lng }, nav.targetName)} style={{ marginTop: 0, paddingVertical: 6, paddingHorizontal: 12 }} />}
         </View>
       )}
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
-        <View style={{ flex: 1.4 }}>
-          <Button title={mission ? (onSite ? "Scan region" : nav?.unlocked ? "Scan on arrival" : "Site locked") : "Scan region"} onPress={() => doScan()} loading={busy} disabled={!!mission && (!nav?.unlocked || !onSite)} style={{ marginTop: 0, paddingVertical: 16 }} />
-        </View>
-        <View style={{ flex: 1, gap: 6 }}>
-          <Button title="Inventory" kind="ghost" onPress={onBoard} style={{ marginTop: 0, paddingVertical: 8 }} />
-          <Button title="HQ link" kind="ghost" onPress={onHQ} style={{ marginTop: 0, paddingVertical: 8 }} />
-        </View>
-      </View>
+      <Button title={mission ? (onSite ? "Scan the site" : nav?.unlocked ? "Scan on arrival" : "Site locked") : "Scan region"} onPress={() => doScan()} loading={busy} disabled={!!mission && (!nav?.unlocked || !onSite)} style={{ marginTop: 10, paddingVertical: 16 }} />
+      <Text style={[s.mono, { textAlign: "center", marginTop: 4 }]}>
+        {mission ? (onSite ? "You are inside the ring. Scan to verify the site." : nav?.unlocked ? "Walk to the ring, then scan." : "An intel analyst is unlocking this site.") : "Refreshes orders and signals around you. Tools are on Me; your chief is on HQ."}
+      </Text>
       {mission && onSite && nav?.unlocked && !completed && <Button title={nav.lock && !nav.lockOpen ? "AR scan · open the package" : "AR scan · camera view"} kind={nav.lock && !nav.lockOpen ? undefined : "ghost"} onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
       {kit && (() => {
         // What each tool can do from exactly here: the dial greys the rest and says why.
