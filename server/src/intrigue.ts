@@ -234,8 +234,9 @@ export function backchannelOptions(playerId: string, factionId: FactionId | null
   return {
     left: Math.max(0, TIP_CAP - sent),
     rivals: FACTIONS.filter((f) => f.id !== factionId).map((f) => ({ id: f.id, name: f.name, chief: f.chiefName, burned: burned.includes(f.id) })),
-    routes: all<{ id: string; codename: string; title: string; target: string }>("SELECT m.id, p.codename, m.title, t.name target FROM missions m JOIN players p ON p.id=m.assignee_id JOIN targets t ON t.id=m.target_id WHERE m.state='active' AND m.mode='field' AND m.faction_id=? AND m.assignee_id<>? ORDER BY m.created_at DESC LIMIT 6", factionId, playerId)
-      .map((m) => ({ missionId: m.id, label: `${m.codename} · ${m.title} at ${m.target}` })),
+    // Teammates' live routes, and your own: selling your own target lures a rival into a face-off there, cash up front.
+    routes: all<{ id: string; codename: string; title: string; target: string; assignee_id: string }>("SELECT m.id, p.codename, m.title, t.name target, m.assignee_id FROM missions m JOIN players p ON p.id=m.assignee_id JOIN targets t ON t.id=m.target_id WHERE m.state='active' AND m.mode='field' AND m.faction_id=? ORDER BY (m.assignee_id=?) ASC, m.created_at DESC LIMIT 6", factionId, playerId)
+      .map((m) => ({ missionId: m.id, label: `${m.assignee_id === playerId ? "Your own route" : m.codename} · ${m.title} at ${m.target}` })),
     sites: pres?.area_id ? all<{ id: string; name: string }>("SELECT id, name FROM targets WHERE area_id=? AND state='ACTIVE' ORDER BY name LIMIT 12", pres.area_id) : [],
     recent: all<{ kind: string; ref_name: string; to_faction: FactionId; outcome: string; created_at: string }>("SELECT kind, ref_name, to_faction, outcome, created_at FROM tips WHERE from_player=? ORDER BY created_at DESC LIMIT 5", playerId)
       .map((t) => ({ kind: t.kind, about: t.ref_name, to: factionById(t.to_faction).name, outcome: t.outcome, at: t.created_at })),
@@ -254,9 +255,9 @@ export function sendTip(playerId: string, factionId: FactionId | null, toFaction
   const id = uid();
   const rival = factionById(toFaction);
   if (kind === "sell") {
-    const m = get<{ id: string; area_id: string; target_id: string; codename: string; target: string; title: string }>("SELECT m.id, m.area_id, m.target_id, p.codename, t.name target, m.title FROM missions m JOIN players p ON p.id=m.assignee_id JOIN targets t ON t.id=m.target_id WHERE m.id=? AND m.state='active' AND m.faction_id=? AND m.assignee_id<>?", refId, factionId, playerId);
+    const m = get<{ id: string; area_id: string; target_id: string; codename: string; target: string; title: string; assignee_id: string }>("SELECT m.id, m.area_id, m.target_id, p.codename, t.name target, m.title, m.assignee_id FROM missions m JOIN players p ON p.id=m.assignee_id JOIN targets t ON t.id=m.target_id WHERE m.id=? AND m.state='active' AND m.faction_id=?", refId, factionId);
     if (!m) return { ok: false, reason: "That route is not live any more." };
-    run("INSERT INTO tips(id,from_player,from_faction,to_faction,kind,ref_id,ref_name,outcome,created_at) VALUES(?,?,?,?,?,?,?,?,?)", id, playerId, factionId, toFaction, "sell", m.id, `${m.codename}'s route to ${m.target}`, "sold", now());
+    run("INSERT INTO tips(id,from_player,from_faction,to_faction,kind,ref_id,ref_name,outcome,created_at) VALUES(?,?,?,?,?,?,?,?,?)", id, playerId, factionId, toFaction, "sell", m.id, `${m.assignee_id === playerId ? "their own" : m.codename + "'s"} route to ${m.target}`, "sold", now());
     const brief = pick(PERSONAS[rival.chief].lines.RECON, id).replace("{target}", m.target);
     spawnTipMission(toFaction, m.area_id, m.target_id, id, brief);
     for (const o of all<{ player_id: string }>("SELECT p.player_id FROM presence p JOIN players pl ON pl.id=p.player_id WHERE pl.faction_id=? AND p.expires_at>?", toFaction, now()))

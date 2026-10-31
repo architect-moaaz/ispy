@@ -144,7 +144,7 @@ function BackChannel() {
   const [ref, setRef] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const load = async () => { try { setOpts(await api.backchannel()); } catch { /* not deployed or no faction */ } };
+  const load = async () => { try { const o = await api.backchannel(); setOpts(o); setTo((t) => t ?? o.rivals.find((r) => !r.burned)?.id ?? null); } catch { /* not deployed or no faction */ } };
   useEffect(() => { if (open) load(); }, [open]);
   const send = async () => {
     if (!to || !ref) return;
@@ -156,7 +156,7 @@ function BackChannel() {
   return (
     <Dossier tab={C.amber} style={{ marginTop: 8 }}>
       <Text style={{ color: C.amber, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.6 }}>BACK CHANNEL · UNSIGNED</Text>
-      <Body dim>A wire to a rival chief that does not carry your name. Sell a teammate's route for credits, or send a rival somewhere empty.</Body>
+      <Body dim>A wire to a rival chief that does not carry your name. Sell a live route (a teammate's, or your own) for credits, or send a rival somewhere empty.</Body>
       {!open ? <Button title="Open the wire" kind="ghost" onPress={() => setOpen(true)} /> : !opts ? <Spinner /> : (
         <>
           <Text style={[s.eyebrow, { marginTop: 6 }]}>To · {opts.left} tip{opts.left === 1 ? "" : "s"} left today</Text>
@@ -169,7 +169,7 @@ function BackChannel() {
             <Button title="Plant a false lead" kind={kind === "plant" ? "primary" : "ghost"} onPress={() => { setKind("plant"); setRef(null); }} style={{ flex: 1, paddingVertical: 8, marginTop: 4 }} />
           </View>
           <Text style={[s.eyebrow, { marginTop: 8 }]}>{kind === "sell" ? "Whose route" : "Which site"}</Text>
-          {choices.length === 0 ? <Body dim>{kind === "sell" ? "No teammate is walking a route right now." : "Deploy to the field to see sites."}</Body> : choices.map((c) => (
+          {choices.length === 0 ? <Body dim>{kind === "sell" ? "Nobody in your agency is walking a route right now, you included. Accept an order on the Missions tab, then come back and sell it: the rival turns up at your target, and you are paid either way." : "Deploy to the field to see sites in your sector."}</Body> : choices.map((c) => (
             <Button key={c.id} title={c.label} kind={ref === c.id ? "primary" : "ghost"} onPress={() => setRef(c.id)} style={{ paddingVertical: 8, marginTop: 4 }} />
           ))}
           <Button title={kind === "sell" ? "Sell it" : "Send them"} onPress={send} loading={busy} disabled={!to || !ref || opts.left <= 0} style={{ marginTop: 8 }} />
