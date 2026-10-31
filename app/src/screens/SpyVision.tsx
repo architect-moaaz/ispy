@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Dimensions, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Dimensions, Easing, Image, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-native-svg";
 import type { Contact, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse } from "@ispy/shared";
@@ -10,6 +10,7 @@ import { C, F, factionColor } from "../theme";
 import { Body, Button, Dossier, Input, Screen, Stamp, Typed, fmtCountdown } from "../ui";
 import { Projector, SatMap } from "../SatMap";
 import { walkingRoute, openTurnByTurn, fmtWalk, type WalkingRoute } from "../route";
+import { ART } from "../art";
 import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
 
@@ -242,9 +243,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           {offers.length === 0 && <Dossier tab={C.cyanDim}><Body dim style={{ marginBottom: 0 }}>{notice ?? "Your chief is choosing. Orders land within seconds when the sector has open targets."}</Body></Dossier>}
           {offers.map((o) => (
             <Dossier key={o.offerId} tab={o.mission.contested ? C.red : C.cyan}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={s.panelTitle}>{TEMPLATE_NAME[o.mission.templateId] ?? o.mission.title}</Text>
-                <Text style={[s.mono, { color: C.cyan }]}>{o.mission.rewardXp} XP</Text>
+              <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
+                <Image source={ART.mission[o.mission.templateId]} style={s.cardArt} />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={s.panelTitle}>{TEMPLATE_NAME[o.mission.templateId] ?? o.mission.title}</Text>
+                    <Text style={[s.mono, { color: C.cyan }]}>{o.mission.rewardXp} XP</Text>
+                  </View>
+                </View>
               </View>
               {o.mission.chain && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>{o.mission.chain.name.toUpperCase()} · LINK {o.mission.chain.step} OF {o.mission.chain.of}</Text>}
               {o.mission.crisis && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>CRISIS · {o.mission.crisis.name.toUpperCase()} · {o.mission.crisis.stance.toUpperCase()}{o.mission.crisis.joint ? ` · JOINT OP WITH ${o.mission.crisis.joint.toUpperCase()}` : ""}</Text>}
@@ -417,6 +423,7 @@ const s = StyleSheet.create({
   mono: { color: C.dim, fontFamily: F.typed, fontSize: 11.5 },
   zoomBox: { position: "absolute", right: 8, bottom: 26, borderWidth: 1, borderColor: C.cyanDim, backgroundColor: "rgba(6,20,30,0.75)" },
   zoomBtn: { color: C.cyan, fontFamily: F.displayMed, fontSize: 20, width: 34, height: 34, lineHeight: 34, textAlign: "center", borderBottomWidth: 1, borderBottomColor: C.line },
+  cardArt: { width: 64, height: 64, borderWidth: 1, borderColor: C.line },
   zoomLevel: { position: "absolute", right: 48, bottom: 30, color: C.dim, fontFamily: F.typed, fontSize: 9, letterSpacing: 1 },
   sector: { color: C.text, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.2, backgroundColor: C.ink2, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: C.line },
   compass: { position: "absolute", left: 10, top: 10, width: 84, height: 84 },

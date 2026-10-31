@@ -284,6 +284,16 @@ app.get("/v1/admin/overview", async () => {
     director: { ...directorAgent.status(), params: allParams() },
     push: { ...pushStats(), streamClients: streamClients() },
     sectors, targets, operatives, missions, chat, events, operations: chains.chainsOverview(), crises: crises.overview(),
+    funnel: {
+      registered: get<{ n: number }>("SELECT COUNT(*) n FROM players")!.n,
+      assessed: get<{ n: number }>("SELECT COUNT(*) n FROM assessments")!.n,
+      recruited: get<{ n: number }>("SELECT COUNT(*) n FROM players WHERE faction_id IS NOT NULL")!.n,
+      firstDesk: get<{ n: number }>("SELECT COUNT(DISTINCT assignee_id) n FROM missions WHERE mode='desk' AND state='completed'")!.n,
+      firstField: get<{ n: number }>("SELECT COUNT(DISTINCT assignee_id) n FROM missions WHERE mode='field' AND state='completed'")!.n,
+      returned: get<{ n: number }>("SELECT COUNT(*) n FROM (SELECT player_id FROM events WHERE player_id IS NOT NULL GROUP BY player_id HAVING COUNT(DISTINCT substr(at,1,10))>=2)")!.n,
+      activeToday: get<{ n: number }>("SELECT COUNT(DISTINCT player_id) n FROM events WHERE player_id IS NOT NULL AND at>=?", now().slice(0, 10))!.n,
+      sectorHoursToday: get<{ n: number }>("SELECT COUNT(DISTINCT area_id || substr(at,12,2)) n FROM (SELECT json_extract(payload,'$.areaId') area_id, at FROM events WHERE type='presence.check_in' AND at>=?)", now().slice(0, 10))!.n,
+    },
   };
 });
 app.get("/console", async (_req, reply) => reply.type("text/html; charset=utf-8").send(CONSOLE_HTML));

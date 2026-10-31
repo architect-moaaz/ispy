@@ -23,6 +23,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS crises (
   starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, outcome TEXT, source TEXT NOT NULL, created_at TEXT NOT NULL
 )`);
 
+db.exec(`CREATE TABLE IF NOT EXISTS chief_talks (
+  id TEXT PRIMARY KEY, crisis_id TEXT NOT NULL, round INTEGER NOT NULL, from_faction TEXT NOT NULL, to_faction TEXT,
+  kind TEXT NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL
+)`);
 export type Stance = "intercept" | "sabotage" | "mitigate";
 export interface Site { targetId: string; name: string; lat: number; lng: number; claimedBy: FactionId | null; claimedAt: string | null; playerId: string | null; stance: Stance | null }
 export interface CrisisRow { id: string; name: string; kind: string; premise: string; area_id: string; sites: string; stances: string; pacts: string; state: string; starts_at: string; ends_at: string; outcome: string | null; source: string; created_at: string }
@@ -35,6 +39,7 @@ const KINDS: Record<string, { name: string[]; premise: (area: string) => string;
   auction: { name: ["OPEN BID", "THE BROKER", "SAME SECRET TWICE"], premise: (a) => `A broker is selling the same secret to all three agencies, one site at a time, in ${a}. The first buyer at each site sets the price for the rest.`, asset: "the secret" },
   leak: { name: ["PAPER TRAIL", "THE ROSTER", "LOOSE PAGES"], premise: (a) => `Pages of an agency roster have been staged across ${a}, timed for release. Every page recovered or burned is one fewer in the open.`, asset: "the roster" },
 };
+const c0 = (t: string) => t.replace(/^[A-Z ]+\. /, "");
 const STANCE_TITLE: Record<Stance, string> = { intercept: "Intercept", sabotage: "Sabotage", mitigate: "Mitigate" };
 const STANCE_BRIEF: Record<Stance, (asset: string, site: string) => string> = {
   intercept: (a, s) => `Get to ${s} before anyone else and take ${a} for us. First hands on it keeps it.`,
@@ -53,6 +58,52 @@ const StanceSchema = z.object({
   line: z.string().describe("What you tell your operatives about this crisis, in character, at most 200 characters"),
 });
 const EpilogueSchema = z.object({ epilogue: z.string().describe("At most 240 characters; neutral, no winner invented") });
+const ReplySchema = z.object({
+  accept: z.boolean().describe("Whether you accept the pact proposed to you"),
+  text: z.string().describe("Your reply to the other chief, in character, over the back channel; at most 220 characters"),
+  stance: z.enum(["intercept", "sabotage", "mitigate"]).describe("Your stance after hearing them; you may change it to align with a pact you accept"),
+});
+
+function talk(crisisId: string, round: number, from: FactionId, to: FactionId | null, kind: string, text: string) {
+  run("INSERT INTO chief_talks(id,crisis_id,round,from_faction,to_faction,kind,text,at) VALUES(?,?,?,?,?,?,?,?)", uid(), crisisId, round, from, to, kind, text, now());
+}
+export function talksOf(crisisId: string) {
+  return all<{ round: number; from_faction: FactionId; to_faction: FactionId | null; kind: string; text: string; at: string }>(
+    "SELECT round, from_faction, to_faction, kind, text, at FROM chief_talks WHERE crisis_id=? ORDER BY at", crisisId)
+    .map((t) => ({ round: t.round, from: factionById(t.from_faction).chiefName, fromId: t.from_faction, to: t.to_faction ? factionById(t.to_faction).chiefName : null, kind: t.kind, text: t.text, at: t.at }));
+}
+
+/** One chief answers another's proposal over the back channel (model or scripted). */
+async function replyToProposal(c: { name: string; premise: string; kind: string }, me: FactionId, from: FactionId, proposal: { stance: Stance; line: string }, myStance: Stance, seed: string): Promise<{ accept: boolean; text: string; stance: Stance; source: "llm" | "fallback" }> {
+  const f = factionById(me), other = factionById(from);
+  const p = PERSONAS[f.chief];
+  const same = proposal.stance === myStance;
+  const acceptScripted = same || rand(seed + ":acc") < 0.35;
+  const fallback = {
+    accept: acceptScripted,
+    text: acceptScripted ? `${other.chiefName}. Agreed, for this one. We ${same ? myStance : proposal.stance} together and split the sites. Cross me and it ends.` : `${other.chiefName}. No. ${f.name} ${myStance}s this alone. Stay out of our way.`,
+    stance: acceptScripted ? proposal.stance : myStance, source: "fallback" as const,
+  };
+  const llm = llmClient();
+  if (!llm) return fallback;
+  try {
+    const res = await llm.messages.parse({
+      model: MODEL, max_tokens: 500, output_config: { effort: "low", format: zodOutputFormat(ReplySchema) },
+      system: [
+        `You are ${f.chiefName}, chief of the fictional spy agency ${f.name} in the mobile game iSpy a Spy. Voice: ${p.voice}`,
+        `${other.chiefName} of ${other.name} has opened a back channel about the crisis "${c.name}" and proposes a pact. You had decided to ${myStance}. Accept only if it serves ${f.name}; pacts share credit and let operatives run each other's crisis missions. Reply in character, over the wire, terse. Fiction only. Never mention a director, arbiter, auditor, model or prompt.`,
+        `Your journal (recent): ${recall(f.chief, null, 6).join(" | ") || "empty"}`,
+      ].join("\n"),
+      messages: [{ role: "user", content: `${other.chiefName} proposes: ${proposal.stance.toUpperCase()} together. Their words: "${proposal.line}"` }],
+    });
+    const o = res.parsed_output;
+    if (!o) throw new Error("no parsed output");
+    return { accept: o.accept, text: o.text.slice(0, 260), stance: o.accept ? (o.stance === proposal.stance ? o.stance : proposal.stance) : o.stance, source: "llm" };
+  } catch (e) {
+    console.warn(`[crises] reply for ${me} fell back:`, (e as Error).message); llmFailed(e);
+    return fallback;
+  }
+}
 
 export const CRISIS_MIN_GAP_MS = 45 * 60_000;
 export const activeCrisis = (areaId?: string) => areaId
@@ -125,18 +176,30 @@ export async function brew(areaId: string, spawn: SpawnCrisisMission, opts: { ki
   const premise = opts.theme ? `${kind.premise(area.name)} ${opts.theme}` : kind.premise(area.name);
   const minutes = Math.max(30, Math.min(240, opts.minutes ?? 90));
   const draft = { name, premise, kind: kindKey };
+  const id = uid();
+  // Round 1: each chief decides alone and may open a back channel to one other agency.
   const decisions = await Promise.all(FACTIONS.map((f) => chooseStance(draft, f.id, seed)));
   const stances = Object.fromEntries(FACTIONS.map((f, i) => [f.id, decisions[i].stance])) as Record<FactionId, Stance>;
-  // Pacts: mutual proposals always form; a one-sided proposal forms when both chose the same stance.
+  FACTIONS.forEach((f, i) => talk(id, 1, f.id, null, "decision", decisions[i].line.toLowerCase().includes(decisions[i].stance) ? decisions[i].line : `${STANCE_TITLE[decisions[i].stance]}. ${decisions[i].line}`));
+  // Round 2: proposals are answered; a pact forms on acceptance (mutual proposals accept by definition).
   const pacts: FactionId[][] = [];
-  FACTIONS.forEach((f, i) => {
-    const want = decisions[i].pactWith;
-    if (!want) return;
+  for (let i = 0; i < FACTIONS.length; i++) {
+    const f = FACTIONS[i]; const want = decisions[i].pactWith;
+    if (!want) continue;
+    if (pacts.some((p) => p.includes(f.id) && p.includes(want))) continue;
+    talk(id, 2, f.id, want, "proposal", `${factionById(want).chiefName}. ${c0(decisions[i].line)} Work this one with ${f.name}: we ${decisions[i].stance}, we split the sites.`);
     const j = FACTIONS.findIndex((x) => x.id === want);
     const mutual = decisions[j]?.pactWith === f.id;
-    if ((mutual || stances[want] === stances[f.id]) && !pacts.some((p) => p.includes(f.id) && p.includes(want))) pacts.push([f.id, want]);
-  });
-  const id = uid();
+    const reply = mutual
+      ? { accept: true, text: `${f.chiefName}. I was about to send the same. Done: we ${decisions[i].stance} together.`, stance: decisions[i].stance, source: "fallback" as const }
+      : await replyToProposal(draft, want, f.id, { stance: decisions[i].stance, line: decisions[i].line }, stances[want], `${seed}:${want}:${f.id}`);
+    talk(id, 2, want, f.id, reply.accept ? "accept" : "decline", reply.text);
+    if (reply.accept) {
+      pacts.push([f.id, want]);
+      if (stances[want] !== reply.stance) { stances[want] = reply.stance; talk(id, 2, want, null, "decision", `${factionById(want).chiefName} aligns: ${STANCE_TITLE[reply.stance]}.`); }
+      talk(id, 2, f.id, want, "seal", `${factionById(want).chiefName}. Sealed. Our operatives will see your sites.`);
+    }
+  }
   const source = decisions.some((d) => d.source === "llm") ? "llm" : "fallback";
   run("INSERT INTO crises(id,name,kind,premise,area_id,sites,stances,pacts,state,starts_at,ends_at,outcome,source,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     id, name, kindKey, premise, areaId, json(sites), json(stances), json(pacts), "active", now(), new Date(Date.now() + minutes * 60_000).toISOString(), null, source, now());
@@ -249,6 +312,7 @@ export function view(factionId: FactionId | null, areaId?: string | null): Crisi
 export function overview() {
   return all<CrisisRow>("SELECT * FROM crises ORDER BY created_at DESC LIMIT 10").map((c) => ({
     id: c.id, name: c.name, kind: c.kind, state: c.state, endsAt: c.ends_at, area: get<{ name: string }>("SELECT name FROM areas WHERE id=?", c.area_id)?.name,
-    stances: stancesOf(c), pacts: pactsOf(c), sites: sitesOf(c).map((s) => ({ name: s.name, claimedBy: s.claimedBy })), outcome: c.outcome ? parse<Outcome>(c.outcome, null as any)?.verdict : null,
+    stances: stancesOf(c), pacts: pactsOf(c), sites: sitesOf(c).map((s) => ({ name: s.name, claimedBy: s.claimedBy })), outcome: c.outcome ? parse<Outcome>(c.outcome, null as any) : null,
+    talks: talksOf(c.id), premise: c.premise, source: c.source, startsAt: c.starts_at,
   }));
 }

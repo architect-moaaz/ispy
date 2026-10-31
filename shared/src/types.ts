@@ -187,7 +187,7 @@ export interface ScanResponse {
 
 export interface DeskMissionDetail {
   mission: MissionSummary;
-  puzzle: { kind: "cipher" | "analysis"; prompt: string; options?: string[] };
+  puzzle: { kind: "cipher" | "analysis"; prompt: string; options?: string[]; system?: string };
   linkedFieldAgent?: string; // codename
 }
 export interface DeskSubmitRequest {
@@ -214,6 +214,12 @@ export interface Briefing {
   headline: string;
   standing: { rank: Rank; xp: number; trust: number; nextRankAt: number };
   recent: string[];
+  today?: {
+    sector: string | null; control: Record<FactionId, number>;
+    crisis: { name: string; endsAt: string; stance: CrisisStance | null; allies: string[] } | null;
+    operation: { name: string; step: number; of: number } | null;
+    hotWindow: string | null; firstTimer: boolean;
+  };
 }
 
 // ---- World / admin ----

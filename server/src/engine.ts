@@ -421,6 +421,15 @@ export function offersFor(player: Player): OfferCard[] {
       const score = link + urgent + waiting + 0.6 * dist + 0.3 * skillFit(player.skills, m.template_id) + 0.1 * rand(m.id + player.id);
       return { m, score };
     }).filter((x): x is { m: MissionRow; score: number } => !!x).sort((a, b) => b.score - a.score);
+    // Rookie rule: until the first field verification, the board is one recon at the nearest site, so the
+    // first real-world win comes within minutes and verifies by presence wherever that is possible.
+    const rookie = pres.mode === "field" && !get("SELECT 1 FROM missions WHERE assignee_id=? AND mode='field' AND state='completed'", player.id);
+    if (rookie && scored.length) {
+      const byWalk = [...scored].filter(({ m }) => m.template_id === "RECON").sort((a, b) => (summary(a.m, player, pres).walkM ?? 1e9) - (summary(b.m, player, pres).walkM ?? 1e9));
+      const presenceOnly = byWalk.find(({ m }) => !get<{ o: string }>("SELECT observation o FROM targets WHERE id=?", m.target_id)?.o);
+      const first = presenceOnly ?? byWalk[0];
+      if (first) { scored.length = 0; scored.push(first); }
+    }
     // Two offers to the same site are one choice, not two: keep the best per target.
     const seenTarget = new Set<string>(open.map((o) => get<{ target_id: string | null }>("SELECT target_id FROM missions WHERE id=?", o.mission_id)?.target_id ?? "").filter(Boolean));
     const distinct = scored.filter(({ m }) => { if (!m.target_id) return true; if (seenTarget.has(m.target_id)) return false; seenTarget.add(m.target_id); return true; });
@@ -644,7 +653,7 @@ export function deskActive(player: Player): DeskMissionDetail | null {
   const fieldAgent = link ? get<{ codename: string }>("SELECT codename FROM players WHERE id=(SELECT assignee_id FROM missions WHERE id=?)", link.field_mission_id) : undefined;
   return {
     mission: summary(m, player),
-    puzzle: { kind: params.puzzle.kind, prompt: params.puzzle.prompt, options: params.puzzle.options },
+    puzzle: { kind: params.puzzle.kind, prompt: params.puzzle.prompt, options: params.puzzle.options, system: params.puzzle.system },
     linkedFieldAgent: fieldAgent?.codename,
   };
 }
@@ -729,6 +738,22 @@ export function briefing(player: Player): Briefing {
     headline: plan?.headline ?? pick(PERSONAS[f.chief].lines.idle, player.id),
     standing: { rank: player.rank, xp: player.xp, trust: player.trust, nextRankAt: next?.at ?? player.xp },
     recent: history(player.id, 6).map((h) => h.text),
+    today: (() => {
+      const areaId = pres?.areaId ?? get<{ area_id: string }>("SELECT area_id FROM missions WHERE assignee_id=? ORDER BY created_at DESC LIMIT 1", player.id)?.area_id ?? get<AreaRow>("SELECT * FROM areas LIMIT 1")!.id;
+      const area = get<AreaRow>("SELECT * FROM areas WHERE id=?", areaId);
+      const crisis = crises.view(f.id, areaId);
+      const op = chains.activeChain(player.id);
+      const ctl = sectorControl(areaId);
+      const hot = worldGet("hot_window", "");
+      return {
+        sector: area?.name ?? null,
+        control: ctl,
+        crisis: crisis && crisis.state === "active" ? { name: crisis.name, endsAt: crisis.endsAt, stance: crisis.yourStance, allies: crisis.allies } : null,
+        operation: op ? chains.chainSummary(op.id) : null,
+        hotWindow: hot || null,
+        firstTimer: !get("SELECT 1 FROM missions WHERE assignee_id=? AND state='completed'", player.id),
+      };
+    })(),
   };
 }
 

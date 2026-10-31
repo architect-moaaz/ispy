@@ -36,11 +36,14 @@ table{width:100%;border-collapse:collapse}td,th{padding:3px 6px;text-align:left;
 <button id="b-pause" class="warn">PAUSE</button><button id="b-tick">FORCE TICK</button><button id="b-dispatch">DISPATCH</button><button id="b-key">KEY</button></header>
 <main>
 <div style="display:grid;gap:10px"><div id="map"></div>
-<section><h2>World Director</h2><div class="row" id="balance"></div><div class="thought" id="thought">…</div><div class="feed" id="decisions" style="max-height:22vh"></div></section>
+<section><h2>World Director</h2><div class="row" id="balance"></div><div class="thought" id="thought">…</div><div class="feed" id="decisions" style="max-height:40vh"></div></section>
+<section><h2>Chaos · crises and back-channel talks</h2><div id="crises" class="feed" style="max-height:60vh"></div></section>
+<section><h2>Funnel</h2><div class="row" id="funnel"></div></section>
 <section><h2>Parameters</h2><table id="params"></table></section></div>
 <div style="display:grid;gap:10px">
 <section><h2>Sectors</h2><table id="sectors"></table><div class="muted" style="margin-top:6px">Click the map to open a sector there (owner action).</div></section>
 <section><h2>Operatives</h2><table id="ops"></table></section>
+<section><h2>Operations</h2><table id="operations"></table></section>
 <section><h2>Live missions</h2><table id="missions"></table></section>
 <section><h2>Chief traffic</h2><div class="feed" id="chat" style="max-height:24vh"></div></section>
 <section><h2>Event feed</h2><div class="feed" id="events"></div></section>
@@ -76,7 +79,22 @@ function render(o){
  // director
  const d=o.director;$('thought').textContent=d.brain.lastThought||(d.brain.mode==='rules'?'Rules mode: no model configured.':'No thought yet. The brain thinks when operatives act.');
  $('balance').innerHTML=d.balance?d.balance.factions.map(f=>'<span class="pill">'+esc(f.name)+' <b>'+f.power+'</b> · '+f.fragments+' frag · '+f.verifiedHour+'/h</span>').join('')+'<span class="pill">leader <b>'+esc(d.balance.leader)+'</b> gap '+d.balance.gap+'</span>':'<span class="muted">no assessment yet</span>';
- $('decisions').innerHTML=d.recent.map(r=>'<div><span class="t">'+t(r.at)+'</span><span class="k">'+esc(r.what)+'</span>'+(r.detail?' <span class="muted">'+esc(typeof r.detail==='string'?r.detail:JSON.stringify(r.detail)).slice(0,220)+'</span>':'')+'</div>').join('');
+ $('decisions').innerHTML=d.recent.map(r=>{const det=r.detail;let body='';
+  if(det&&typeof det==='object'&&det.assessment){body='<div class="muted" style="margin:2px 0 2px 8px">'+esc(det.assessment)+'</div>'+((det.applied||[]).length?'<div style="margin-left:8px">'+det.applied.map(a=>'<div>→ '+esc(a)+'</div>').join('')+'</div>':'<div class="muted" style="margin-left:8px">→ no action</div>')}
+  else if(det){body=' <span class="muted">'+esc(typeof det==='string'?det:JSON.stringify(det)).slice(0,240)+'</span>'}
+  return '<div><span class="t">'+t(r.at)+'</span><span class="k">'+esc(r.what)+'</span>'+body+'</div>'}).join('');
+ // crises with stances, pacts, sites, verdict and the chiefs' back-channel transcript
+ const FN={raven:'RAVEN',phantom:'PHANTOM',cipher:'CIPHER'};
+ $('crises').innerHTML=(o.crises||[]).map(c=>'<div style="padding:8px 0"><div><span class="a">'+esc(c.name)+'</span> <span class="muted">· '+esc(c.kind)+' · '+esc(c.area||'')+' · '+(c.state==='active'?'<span class="g">live, ends '+t(c.endsAt)+'</span>':esc(c.state)+(c.outcome?' · <b>'+esc(c.outcome.verdict)+'</b>':''))+' · '+esc(c.source)+'</span></div>'
+  +'<div class="muted" style="margin:2px 0 4px">'+esc(c.premise||'')+'</div>'
+  +'<div>'+Object.entries(c.stances||{}).map(([f,st])=>'<span class="pill" style="color:'+(FCOL[f]||'#fff')+'">'+FN[f]+' · '+esc(st)+'</span>').join(' ')+(c.pacts&&c.pacts.length?' <span class="pill a">pact: '+esc(c.pacts.map(p=>p.map(f=>FN[f]).join('+')).join(', '))+'</span>':'')+'</div>'
+  +'<div style="margin-top:4px">'+(c.sites||[]).map(s=>'<span class="pill">'+esc(s.name)+' · <span style="color:'+(s.claimedBy?FCOL[s.claimedBy]:'var(--dim)')+'">'+(s.claimedBy?FN[s.claimedBy]:'open')+'</span></span>').join(' ')+'</div>'
+  +(c.outcome&&c.outcome.epilogue?'<div class="thought" style="margin:6px 0">'+esc(c.outcome.epilogue)+'</div>':'')
+  +((c.talks&&c.talks.length)?'<div style="margin-top:6px;border-left:2px solid #1d3a4a;padding-left:8px">'+c.talks.map(k=>'<div><span class="t">'+t(k.at)+'</span><span style="color:'+(FCOL[k.fromId]||'#fff')+'">'+esc(k.from)+'</span>'+(k.to?' <span class="muted">→ '+esc(k.to)+'</span>':'')+' <span class="muted">['+esc(k.kind)+']</span> '+esc(k.text)+'</div>').join('')+'</div>':'')
+  +'</div>').join('')||'<div class="muted">no crisis yet; the Director brews one when operatives are in the field</div>';
+ const fu=o.funnel||{};
+ $('funnel').innerHTML=[['registered',fu.registered],['assessed',fu.assessed],['recruited',fu.recruited],['first desk win',fu.firstDesk],['first field win',fu.firstField],['returned (2+ days)',fu.returned],['active today',fu.activeToday],['sector-hours today',fu.sectorHoursToday]].map(([k,v])=>'<span class="pill">'+k+' <b>'+(v??0)+'</b></span>').join('');
+ $('operations').innerHTML='<tr><th>operation</th><th>operative</th><th>agency</th><th>link</th><th>state</th><th>age</th></tr>'+((o.operations||[]).map(c=>'<tr><td>'+esc(c.name)+'</td><td>'+esc(c.codename)+'</td><td>'+esc(c.faction)+'</td><td>'+c.step+'/'+c.of+'</td><td>'+esc(c.state)+' <span class="muted">'+esc(c.source)+'</span></td><td class="muted">'+ago(c.createdAt)+'</td></tr>').join('')||'<tr><td class="muted" colspan="6">none yet</td></tr>');
  $('params').innerHTML=Object.entries(d.params).map(([k,v])=>'<tr><td class="muted">'+esc(k)+'</td><td>'+esc(v)+'</td></tr>').join('');
  $('sectors').innerHTML='<tr><th>sector</th><th>city</th><th>targets</th><th>pool</th><th>ops</th></tr>'+o.sectors.map(a=>'<tr><td>'+esc(a.name)+'</td><td class="muted">'+esc(a.city)+'</td><td>'+a.targets+'</td><td>'+a.pool+'</td><td>'+a.operatives+'</td></tr>').join('');
  $('ops').innerHTML='<tr><th>codename</th><th>agency</th><th>mode</th><th>sector</th><th>deployed</th><th>fix</th><th>work</th></tr>'+(o.operatives.map(p=>'<tr><td style="color:'+(FCOL[p.factionId]||'#fff')+'">'+esc(p.codename)+'</td><td>'+esc(p.faction)+'</td><td>'+esc(p.mode)+'</td><td>'+esc(p.area||'—')+'</td><td>'+ago(p.checkedInAt)+'</td><td class="muted">'+(p.lastFixAt?ago(p.lastFixAt):'—')+'</td><td>'+(p.activeMission?'<span class="a">'+esc(p.activeMission)+'</span>':p.openOffers?p.openOffers+' offers':'<span class="muted">idle</span>')+'</td></tr>').join('')||'<tr><td class="muted" colspan="7">nobody deployed</td></tr>');

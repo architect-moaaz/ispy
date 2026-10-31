@@ -167,3 +167,22 @@ the pattern of past crises (what each rival tends to do with that kind, which si
 and dispatches its deployed operatives directly: nearest open site each, far from rivals, hot sites first
 when rivals race, pact allies coordinated so they do not double up. Direct orders arrive as offers at the
 top of the board (`mission.offered` with `direct: true`) with the chief's reasoning in HQ chat.
+
+## Onboarding, negotiation, puzzles, console (31 Oct)
+
+- **Desk first.** A recruit's first assignment is the intel desk (no location permission); the first field
+  board is a single recon at the nearest site, presence-verified where possible (`offersFor` rookie rule).
+- **Today block** on `GET /v1/chief/briefing`: sector, control, live crisis and your stance, your operation,
+  the evening hot window, and `firstTimer`.
+- **Evening window.** At 09:00 local the Director announces tonight's hot sector (dispatch, `hot_window`);
+  at 18:00 it brews a 2-hour crisis there if none is live. The brain may still brew at other times.
+- **Negotiation.** At every crisis the chiefs decide alone (round 1) and may open a back channel: a proposal
+  is answered in character (model or scripted), a pact forms on acceptance, and the accepting chief may align
+  its stance. Transcripts live in `chief_talks` and appear in the console overview (`crises[].talks`).
+- **Real puzzles.** Desk ciphers are classical systems named in the prompt (Caesar, Atbash, Vigenère with the
+  key, Morse, Polybius, keyword substitution with a crib, 3-rail fence); analysis puzzles are three-person,
+  three-site deductions generated with a solver so the answer is unique. `puzzle.system` names the system.
+- **Console.** Chaos panel (stances, pacts, sites, verdict, talks), Operations table, fuller Director decision
+  log (assessment and actions), onboarding funnel (registered → assessed → recruited → first desk → first field
+  → returned, active today, sector-hours today).
+- **Art.** Mission cards and the desk show painted art per template (`assets/art/mission-*.jpg`).

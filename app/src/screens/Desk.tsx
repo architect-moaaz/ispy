@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Text, View, Image } from "react-native";
 import type { DeskMissionDetail, DeskSubmitResponse } from "@ispy/shared";
 import { api } from "../api";
+import { ART } from "../art";
 import { onLive } from "../live";
 import { C, F } from "../theme";
 import { Body, Button, Choice, Display, Dossier, Input, Kicker, Panel, Screen, Spinner, Stamp, Typed, fmtCountdown } from "../ui";
@@ -70,7 +71,9 @@ export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
           {detail.linkedFieldAgent && <Typed bold style={{ color: C.stamp }}>{detail.linkedFieldAgent} is in the field waiting on you.</Typed>}
           <Typed style={{ color: C.onPaperDim }}>{detail.mission.brief}</Typed>
           <View style={{ backgroundColor: C.paper2, padding: 10, borderRadius: 3, marginBottom: 10 }}>
+            <Image source={ART.mission[detail.mission.templateId] ?? ART.mission.CIPHER} style={{ width: "100%", height: 150, marginBottom: 10, borderWidth: 1, borderColor: C.line }} resizeMode="cover" />
             <Typed bold style={{ marginBottom: 0 }}>{detail.puzzle.prompt}</Typed>
+            {detail.puzzle.system && <Typed onPaper style={{ marginTop: 6, opacity: 0.7 }}>System: {detail.puzzle.system}. Work it on paper; the answer is checked exactly.</Typed>}
           </View>
           {result?.correct ? (
             <>

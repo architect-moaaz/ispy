@@ -7,6 +7,14 @@ export const ART = {
     phantom: require("../assets/art/ghost.jpg"),
     cipher: require("../assets/art/nexus.jpg"),
   } as Record<string, number>,
+  // Mission-card art by template; the package art also fronts dead drops in the inventory.
+  mission: {
+    RECON: require("../assets/art/mission-recon.jpg"),
+    DEAD_DROP: require("../assets/art/mission-drop.jpg"),
+    EXTRACTION: require("../assets/art/mission-extraction.jpg"),
+    ANALYSIS: require("../assets/art/mission-intercept.jpg"),
+    CIPHER: require("../assets/art/mission-intercept.jpg"),
+  } as Record<string, number>,
   emblem: {
     raven: require("../assets/art/emblem-raven.jpg"),
     phantom: require("../assets/art/emblem-phantom.jpg"),

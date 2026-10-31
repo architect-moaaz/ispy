@@ -47,6 +47,18 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
   return (
     <Screen>
       <Display color={color}>{briefing.chiefName} HQ ({briefing.factionName} faction)</Display>
+      {briefing.today && (
+        <Dossier tab={C.amber}>
+          <Text style={{ fontFamily: F.displayMed, fontSize: 13, color: C.amber, letterSpacing: 1.6 }}>TODAY{briefing.today.sector ? ` · ${briefing.today.sector.toUpperCase()}` : ""}</Text>
+          {briefing.today.firstTimer && <Body dim>Your first assignment is on the Missions tab: break one intercept, then the nearest site in the field.</Body>}
+          {briefing.today.hotWindow && <Body dim>Sector goes hot: {briefing.today.hotWindow}. Be deployed before it starts.</Body>}
+          {briefing.today.crisis && <Body dim>Live crisis: {briefing.today.crisis.name}. Orders: {briefing.today.crisis.stance ?? "stand by"}{briefing.today.crisis.allies.length ? ` with ${briefing.today.crisis.allies.join(" + ")}` : ""}.</Body>}
+          {briefing.today.operation && <Body dim>Your operation: {briefing.today.operation.name}, link {briefing.today.operation.step} of {briefing.today.operation.of}.</Body>}
+          <Text style={{ fontFamily: F.typed, fontSize: 11.5, color: C.dim }}>
+            SECTOR CONTROL · {Object.entries(briefing.today.control).map(([f, n]) => `${f.toUpperCase()} ${n}`).join(" · ")}
+          </Text>
+        </Dossier>
+      )}
       <Dossier tab={color} style={{ marginTop: 8 }}>
         <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
           <FactionEmblem id={factionId} size={52} />

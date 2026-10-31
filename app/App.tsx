@@ -92,7 +92,7 @@ function Shell() {
   else if (tab === "dossier") body = <DossierScreen />;
   else if (tab === "board") body = <Board />;
   else if (tab === "holo") body = <HoloShowcase onBack={() => setTab("duty")} />;
-  else body = <Duty presence={presence} devSim={!!world?.devSim} onPresence={(p) => { setPresence(p); refreshMe(); }} onHQ={() => setTab("hq")} onBoard={() => setTab("board")} codename={player.codename} factionId={player.factionId} rank={player.rank} />;
+  else body = <Duty presence={presence} devSim={!!world?.devSim} onPresence={(p) => { setPresence(p); refreshMe(); }} onHQ={() => setTab("hq")} onBoard={() => setTab("board")} codename={player.codename} factionId={player.factionId} rank={player.rank} xp={player.xp} />;
 
   const inGame = !!player?.factionId;
   const accent = factionColor(player?.factionId);

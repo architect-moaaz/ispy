@@ -1,5 +1,5 @@
 import type { FactionId } from "@ispy/shared";
-import { all, get, run, now, uid, parse, logEvent, worldGet } from "./db.ts";
+import { all, get, run, now, uid, parse, logEvent, worldGet, worldSet } from "./db.ts";
 import { bus, type Signal } from "./bus.ts";
 import { FACTIONS, PERSONAS, factionById } from "./content.ts";
 import { pick } from "./puzzles.ts";
@@ -206,7 +206,28 @@ class DirectorAgent {
           // Chaos on the rules path: with operatives in the field and nothing live, brew something in the busiest sector.
           const field = all<{ area_id: string; n: number }>("SELECT area_id, COUNT(*) n FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL GROUP BY area_id ORDER BY n DESC", now());
           const last = crises.lastCrisisEndedAt();
-          // With the model brain on, chaos is its call; the rules only step in as a floor after a long quiet spell.
+          // The sector goes hot every evening: announced in the morning, brewed at 18:00 local in the busiest
+          // sector (or the one with the most players lately), so the few players there meet each other.
+          const localHour = new Date().getHours();
+          const today = now().slice(0, 10);
+          const pickArea = () => field[0]?.area_id ?? get<{ area_id: string }>("SELECT json_extract(payload,'$.areaId') area_id FROM events WHERE type='presence.check_in' AND at>? GROUP BY area_id ORDER BY COUNT(*) DESC LIMIT 1", new Date(Date.now() - 7 * 86_400_000).toISOString())?.area_id ?? get<{ id: string }>("SELECT id FROM areas ORDER BY id LIMIT 1")?.id;
+          if (localHour >= 9 && worldGet("hot_announced", "") !== today) {
+            const areaId = pickArea();
+            const name = areaId ? get<{ name: string }>("SELECT name FROM areas WHERE id=?", areaId)?.name : null;
+            if (name) {
+              worldSet("hot_window", `${name} · 18:00–20:00`);
+              run("INSERT INTO dispatches(id,kind,headline,body,faction_id,source,at) VALUES(?,?,?,?,?,?,?)", uid(), "news", `Tonight: ${name} goes hot`, `Something moves through ${name} between 18:00 and 20:00. All three agencies will be there. Be deployed before it starts.`, null, "director", now());
+              this.note("evening window announced", { sector: name });
+            }
+            worldSet("hot_announced", today);
+          }
+          if (localHour >= 18 && localHour < 20 && worldGet("hot_brewed", "") !== today && !crises.activeCrisis()) {
+            const areaId = pickArea();
+            const c = areaId ? await brewCrisis(areaId, { minutes: 120 }) : null;
+            if (c) this.note("evening crisis brewed", { name: c.name, kind: c.kind });
+            worldSet("hot_brewed", today);
+          }
+          // Outside the window the model brain decides; the rules only step in as a floor after a long quiet spell.
           const gap = brain.brainEnabled() ? 2 * crises.CRISIS_MIN_GAP_MS : crises.CRISIS_MIN_GAP_MS;
           if (field.length && !crises.activeCrisis() && (!last || Date.now() - Date.parse(last) > gap)) {
             const c = await brewCrisis(field[0].area_id);
