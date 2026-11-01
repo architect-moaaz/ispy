@@ -2,6 +2,15 @@
 export const ART = {
   icon: require("../assets/art/icon.png"),
   splash: require("../assets/art/splash.jpg"),
+  // The opening story, in order: Earth 686, chaos, everyone targeted, secrets, the entity, the heroes.
+  story: {
+    earth: require("../assets/art/story-1.jpg"),
+    chaos: require("../assets/art/story-2.jpg"),
+    targeted: require("../assets/art/story-3.jpg"),
+    secrets: require("../assets/art/story-4.jpg"),
+    entity: require("../assets/art/story-5.jpg"),
+    heroes: require("../assets/art/story-6.jpg"),
+  },
   portrait: {
     raven: require("../assets/art/oracle.jpg"),
     phantom: require("../assets/art/ghost.jpg"),
