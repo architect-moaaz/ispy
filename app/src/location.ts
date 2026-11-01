@@ -1,6 +1,6 @@
 import * as Location from "expo-location";
 
-export type Fix = { lat: number; lng: number; accuracyM?: number; mock?: boolean; sim?: boolean };
+export type Fix = { lat: number; lng: number; accuracyM?: number; mock?: boolean; sim?: boolean; speedMps?: number | null; headingDeg?: number | null };
 
 // A simulated position (dev only) overrides the device GPS for every server call.
 let simFix: Fix | null = null;
@@ -26,6 +26,8 @@ function fromObject(o: Location.LocationObject): Fix {
     lng: o.coords.longitude,
     accuracyM: o.coords.accuracy ?? undefined,
     mock: o.mocked ?? false,
+    speedMps: o.coords.speed ?? null,
+    headingDeg: o.coords.heading != null && o.coords.heading >= 0 ? o.coords.heading : null,
   };
 }
 
@@ -95,4 +97,18 @@ export function offsetM(p: { lat: number; lng: number }, m: number, bearing: num
   const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(br));
   const lng2 = lng1 + Math.atan2(Math.sin(br) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
   return { lat: (lat2 * 180) / Math.PI, lng: (lng2 * 180) / Math.PI };
+}
+
+/** Compass heading from the device (degrees from true north), or null while it is not available. */
+export function watchHeading(cb: (deg: number) => void): () => void {
+  let sub: Location.LocationSubscription | null = null;
+  let stopped = false;
+  (async () => {
+    try {
+      const ok = await ensurePermission();
+      if (!ok || stopped) return;
+      sub = await Location.watchHeadingAsync((h) => { const d = h.trueHeading >= 0 ? h.trueHeading : h.magHeading; if (d >= 0) cb(d); });
+    } catch { /* no compass on this device */ }
+  })();
+  return () => { stopped = true; sub?.remove(); };
 }

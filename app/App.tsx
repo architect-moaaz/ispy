@@ -13,6 +13,7 @@ import { Welcome } from "./src/screens/Welcome";
 import { Assessment } from "./src/screens/Assessment";
 import { HQ } from "./src/screens/HQ";
 import { Duty } from "./src/screens/Duty";
+import { Intro } from "./src/screens/Intro";
 import { Profile } from "./src/screens/Profile";
 import { DossierScreen } from "./src/screens/Dossier";
 import { Board } from "./src/screens/Board";
@@ -27,6 +28,7 @@ function Shell() {
   const insets = useSafeAreaInsets();
   const [fontsLoaded] = useFonts({ BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold, CourierPrime_400Regular, CourierPrime_700Bold });
   const [booted, setBooted] = useState(false);
+  const [intro, setIntro] = useState(true);
   const [player, setPlayer] = useState<Player | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // Apply a published update as soon as it is downloaded, instead of on the launch after.
@@ -96,6 +98,7 @@ function Shell() {
   }, [player?.id, refreshMe]);
 
   if (!booted || !fontsLoaded) return <View style={s.root}><Spinner /></View>;
+  if (intro) return <View style={s.root}><Intro onDone={() => setIntro(false)} /></View>;
 
   let body: React.ReactNode;
   if (!player) body = <Welcome onRegistered={(p) => { setPlayer(p); }} />;

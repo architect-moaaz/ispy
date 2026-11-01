@@ -369,3 +369,11 @@ Any order verified at the current link's site counts as that link (`chain.link_c
 mission is cancelled and the next link opens. A dead drop spawned while nobody of that agency is at the
 desk ships with its desk link already in `fallback`, so the walker decodes the pickup code solo on site
 instead of waiting out the fallback timer.
+
+## Street scene
+
+`GET /v1/scene?lat&lng` (player). Building footprints with heights, roads (OSM highway kind) and green or
+water areas within 360 m of the ~110 m grid cell the fix falls in, as `[lat,lng]` rings. Source: OpenFreeMap
+vector tiles (OpenMapTiles schema, zoom 14, no key), falling back to Overpass; cells are cached for a week.
+The call answers at once: an unknown cell comes back empty with `pending: true` while it fills in the
+background, and the app asks again a few seconds later. Powers the app's 3D street view and AR guide.

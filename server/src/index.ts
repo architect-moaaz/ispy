@@ -18,6 +18,7 @@ import * as archive from "./archive.ts";
 import * as distractions from "./distractions.ts";
 import * as intrigue from "./intrigue.ts";
 import * as lineop from "./lineop.ts";
+import * as scene from "./scene.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
 import { directorAgent } from "./directorAgent.ts";
@@ -330,6 +331,7 @@ app.post("/v1/push/register", async (req) => { registerPushToken(need(req).id, z
 app.post("/v1/push/unregister", async (req) => { unregisterPushToken(need(req).id); return { ok: true }; });
 app.get("/v1/admin/push", async () => ({ ...pushStats(), streamClients: streamClients() }));
 
+app.get("/v1/scene", async (req) => { need(req); const q = scene.SceneQuery.parse(req.query); return scene.sceneAround(q.lat, q.lng); });
 app.get("/v1/profile/history", async (req) => ({ events: history(need(req).id) }));
 
 // ---- dev & admin ----

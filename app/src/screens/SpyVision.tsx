@@ -5,12 +5,14 @@ import Svg, { Circle, G, Line, Path, Polygon, Polyline, Rect } from "react-nativ
 import type { CaptureResult, Contact, MapResponse, ToolkitResponse, MissionSummary, NavigateResponse, OfferCard, Presence, ScanResponse, SpinResult } from "@ispy/shared";
 import { api } from "../api";
 import { onLive } from "../live";
-import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix } from "../location";
+import { bearingDeg, currentFix, distanceM, Fix, getSimFix, watchFix, watchHeading } from "../location";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Dossier, Input, Screen, Stamp, Typed, fmtCountdown } from "../ui";
 import { Projector, SatMap } from "../SatMap";
 import { walkingRoute, fmtWalk, guide, type WalkingRoute } from "../route";
 import { Guide } from "./Guide";
+import { Street, type Beacon, type Scene } from "./Street";
+import { ARGuide } from "./ARGuide";
 import { Debrief } from "./Debrief";
 import { ART } from "../art";
 import { DevPanel } from "./DevPanel";
@@ -119,6 +121,20 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
     const moved = distanceM(courseFrom.current, fix);
     if (moved >= 8) { setCourse(bearingDeg(courseFrom.current, fix)); courseFrom.current = fix; }
   }, [fix?.lat, fix?.lng]);
+  // Map, 3D street or AR guide. The street scene is fetched per ~110 m cell as you move; the compass runs off-map only.
+  const [view, setView] = useState<"map" | "3d" | "ar">("map");
+  const [scene3d, setScene3d] = useState<Scene | null>(null);
+  const [heading, setHeading] = useState<number | null>(null);
+  useEffect(() => { if (view === "map") return; return watchHeading(setHeading); }, [view]);
+  const cell = fix ? `${fix.lat.toFixed(3)},${fix.lng.toFixed(3)}` : "";
+  useEffect(() => {
+    if (view !== "3d" || !fix) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const ask = () => api.scene(fix.lat, fix.lng).then((sc) => { if (!alive) return; setScene3d(sc); if (sc.pending) timer = setTimeout(ask, 6000); }).catch(() => { if (alive) timer = setTimeout(ask, 15000); });
+    ask();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [view, cell]);
   useEffect(() => { if (scan?.result === "locked") setAr(true); }, [scan?.result]);
   // Refresh the ambient layer as you move (every ~25 m) and on live spawns.
   useEffect(() => { void loadField(fix); }, [fix ? Math.round(fix.lat * 4000) : 0, fix ? Math.round(fix.lng * 4000) : 0]);
@@ -204,6 +220,18 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
 
   const completed = scan?.result === "verified" && scan.reward;
 
+  const beacons: Beacon[] = field && !mission ? [
+    ...field.caches.map((c) => ({ lat: c.lat, lng: c.lng, name: c.name, kind: "cache" as const })),
+    ...field.signals.map((g) => ({ lat: g.lat, lng: g.lng, name: g.name, kind: "signal" as const })),
+    ...field.pins.map((p) => ({ lat: p.lat, lng: p.lng, name: p.targetName, kind: "site" as const })),
+  ] : [];
+  const target3d = target ? { ...target, name: nav ? nav.targetName : selPoint?.name ?? "the site", radiusM: nav?.approachRadiusM ?? 40 } : null;
+  if (view === "3d" && fix && !ar) {
+    return <Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} onMap={() => setView("map")} onAR={() => setView("ar")} />;
+  }
+  if (view === "ar" && fix && !ar) {
+    return <ARGuide fix={fix} heading={heading ?? course} route={route} target={target3d} beacons={beacons} onMap={() => setView("map")} on3D={() => setView("3d")} />;
+  }
   if (ar && mission && nav && (!completed || arHold)) {
     return (
       <ARScan codename={codename} factionId={factionId} rank={rank} targetName={nav.targetName}
@@ -300,6 +328,10 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         {mission ? (onSite ? "You are inside the ring. Scan to verify the site." : nav?.unlocked ? "Walk to the ring, then scan." : "An intel analyst is unlocking this site.") : "Refreshes orders and signals around you. Tools are on Me; your chief is on HQ."}
       </Text>
       {mission && nav?.unlocked && !completed && <Button title={!onSite ? "AR view · look for the package" : nav.lock && !nav.lockOpen ? "AR scan · open the package" : "AR scan · camera view"} kind={onSite && nav.lock && !nav.lockOpen ? undefined : "ghost"} onPress={() => setAr(true)} style={{ paddingVertical: 9 }} />}
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+        <Button title="3D street" kind="ghost" onPress={() => setView("3d")} disabled={!fix} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
+        <Button title="AR guide" kind="ghost" onPress={() => setView("ar")} disabled={!fix} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
+      </View>
       {kit && (() => {
         // What each tool can do from exactly here: the dial greys the rest and says why.
         const jam = kit.effects.find((e) => e.kind === "jammer"), trk = kit.effects.find((e) => e.kind === "tracker");
