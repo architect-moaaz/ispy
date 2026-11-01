@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Asset } from "expo-asset";
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { C, F } from "../theme";
 import { Button } from "../ui";
 import type { Fix } from "../location";
@@ -30,6 +31,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const latest = useRef({ fix, course, heading, route, target, beacons, scene, factionColor });
   latest.current = { fix, course, heading, route, target, beacons, scene, factionColor };
   const [speed, setSpeed] = useState(0);
+  const [demo, setDemo] = useState<number | null>(null); // tap the gait line to preview walk and run while standing
   const prevFix = useRef<{ f: Fix; t: number } | null>(null);
   useEffect(() => {
     const t = Date.now();
@@ -39,7 +41,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     prevFix.current = { f: fix, t };
   }, [fix.lat, fix.lng]);
   const g = route ? guide(route, fix) : null;
-  const speedRef = useRef(0); speedRef.current = speed;
+  const speedRef = useRef(0); speedRef.current = demo ?? speed;
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
@@ -52,6 +54,8 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     sc.add(new THREE.HemisphereLight(0x9fbfd0, 0x0a1118, 1.2));
     const sun = new THREE.DirectionalLight(0xbfdbe6, 1.1); sun.position.set(80, 140, -60); sc.add(sun);
     const rim = new THREE.DirectionalLight(new THREE.Color(C.cyan), 0.6); rim.position.set(-60, 40, 80); sc.add(rim);
+    // A soft lamp that rides with the camera, so the operative reads against the dark street.
+    const follow = new THREE.PointLight(0xdfe9ee, 60, 26, 1.4); sc.add(follow);
     const camera = new THREE.PerspectiveCamera(50, w / h, 0.3, 600);
     const origin = latest.current.scene?.center ?? { lat: latest.current.fix.lat, lng: latest.current.fix.lng };
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.MeshStandardMaterial({ color: 0x0e151c, roughness: 1 }));
@@ -60,6 +64,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const city = new THREE.Group(); sc.add(city);
     const live = new THREE.Group(); sc.add(live);
     const avatar = makeAvatar(latest.current.factionColor); sc.add(avatar.group);
+    void loadOperative().then((model) => { const W = world.current; if (!W || !model) return; W.avatar = dressOperative(W.avatar, model, latest.current.factionColor); console.log("[street] operative ready"); });
     world.current = { gl, renderer, scene: sc, camera, origin, city, live, avatar, raf: 0 };
     buildCity(world.current, latest.current.scene);
     let lastScene = latest.current.scene;
@@ -90,6 +95,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       const rad = THREE.MathUtils.degToRad(yaw);
       const back = new THREE.Vector3(-Math.sin(rad) * 9.5, 5.2, Math.cos(rad) * 9.5);
       W.camera.position.lerp(pos.clone().add(back), 1 - Math.exp(-dt * 2.5));
+      follow.position.copy(W.camera.position).add(new THREE.Vector3(0, 2.5, 0));
       W.camera.lookAt(pos.clone().add(new THREE.Vector3(Math.sin(rad) * 7, 1.6, -Math.cos(rad) * 7)));
       // The next-turn arrow bobs; beacons pulse.
       const tt = (nowT - t0) / 1000;
@@ -103,7 +109,8 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   };
   useEffect(() => () => { const W = world.current; if (W) { cancelAnimationFrame(W.raf); W.renderer.dispose(); } }, []);
 
-  const gait = speed < 0.3 ? "Standing" : speed > 2.4 ? "Running" : "Walking";
+  const shown = demo ?? speed;
+  const gait = shown < 0.3 ? "Standing" : shown > 2.4 ? "Running" : "Walking";
   const next = g?.next;
   return (
     <View style={{ flex: 1, backgroundColor: C.ink }}>
@@ -117,7 +124,9 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
         {!route && target && <Text style={s.line}>{fmtM(haversine(fix, target))} straight line · plotting a footpath</Text>}
       </View>
       <View style={s.bottom}>
-        <Text style={s.eyebrow}>{gait.toUpperCase()} · {speed.toFixed(1)} M/S{heading != null ? ` · ${Math.round(heading)}°` : course != null ? ` · ${Math.round(course)}°` : ""}</Text>
+        <Pressable onPress={() => setDemo((d) => (d == null ? 1.3 : d < 2 ? 3.2 : null))} hitSlop={8}>
+          <Text style={s.eyebrow}>{gait.toUpperCase()} · {shown.toFixed(1)} M/S{heading != null ? ` · ${Math.round(heading)}°` : course != null ? ` · ${Math.round(course)}°` : ""}{demo != null ? " · PREVIEW · TAP TO STOP" : " · TAP TO PREVIEW THE WALK"}</Text>
+        </Pressable>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
           <Button title="Map" kind="ghost" onPress={onMap} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
           <Button title="AR" kind="ghost" onPress={onAR} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
@@ -201,6 +210,36 @@ function loadPhotos(): Promise<Photos> {
     return photos;
   })();
   return photosLoading;
+}
+
+/**
+ * The operative: a CC0 rigged human (Quaternius Universal Base Characters, mannequin skeleton),
+ * packed as a GLB without its textures; the dark suit texture is applied here through the same
+ * loader as the facades. No clips ship with the rig, so the walk is driven on the bones.
+ */
+let operativeLoading: Promise<THREE.Group | null> | null = null;
+function loadOperative(): Promise<THREE.Group | null> {
+  if (!operativeLoading) operativeLoading = (async () => {
+    try {
+      const asset = Asset.fromModule(require("../../assets/models/operative.glb"));
+      await asset.downloadAsync();
+      const buf = await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer();
+      const gltf = await new Promise<any>((res, rej) => new GLTFLoader().parse(buf, "", res, rej));
+      const suit = await loadPhoto(require("../../assets/art/tex-operative.jpg"));
+      suit.flipY = false; // glTF UVs
+      const root: THREE.Group = gltf.scene;
+      root.traverse((o: any) => {
+        if (!o.isMesh) return;
+        o.frustumCulled = false;
+        const name: string = o.name ?? "";
+        if (/Retopology/.test(name)) o.material = new THREE.MeshStandardMaterial({ map: suit, color: 0xffffff, emissive: 0x2b3642, emissiveIntensity: 0.9, roughness: 0.65, metalness: 0.1 });
+        else if (/Face\.001/.test(name)) o.material = new THREE.MeshStandardMaterial({ color: 0x1a1f24, roughness: 0.3 });
+        else o.material = new THREE.MeshStandardMaterial({ color: 0x0b0f13, roughness: 0.9 });
+      });
+      return root;
+    } catch (e) { console.warn("[street] operative failed:", (e as Error)?.message ?? e); return null; }
+  })();
+  return operativeLoading;
 }
 
 // ---------- geometry ----------
@@ -394,7 +433,7 @@ function makeAvatar(color: string): Avatar {
   const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.025, 20), felt); brim.position.y = 2.195; brim.rotation.x = 0.06;
   const band = new THREE.Mesh(new THREE.CylinderGeometry(0.152, 0.162, 0.04, 16), accent); band.position.y = 2.215;
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.62, 40), new THREE.MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
-  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03;
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; ring.userData.keep = true;
   const figure = new THREE.Group();
   figure.add(legL, legR, body, chest, belt, lapel, collar, armL, armR, neck, head, crown, brim, band);
   group.add(figure, ring);
@@ -408,6 +447,77 @@ function makeAvatar(color: string): Avatar {
       figure.position.y = amp ? Math.abs(Math.sin(phase)) * (speed > 2.4 ? 0.09 : 0.035) : 0;
       figure.rotation.x = speed > 2.4 ? 0.18 : speed >= 0.3 ? 0.05 : 0;
       if (!amp) { const idle = Math.sin(Date.now() / 900) * 0.02; figure.rotation.z = idle; head.rotation.y = Math.sin(Date.now() / 2300) * 0.35; } else { figure.rotation.z = 0; head.rotation.y = 0; }
+    },
+  };
+}
+
+/** Replace the shape-built figure with the rigged human, keeping the ring and the hat, and drive its bones. */
+function dressOperative(prev: Avatar, model: THREE.Group, color: string): Avatar {
+  const group = prev.group;
+  for (const o of [...group.children]) if (!o.userData.keep) group.remove(o);
+  group.add(model);
+  const bone = (n: string) => model.getObjectByName(n) as THREE.Bone | undefined;
+  const B = { thighL: bone("thigh_l"), thighR: bone("thigh_r"), calfL: bone("calf_l"), calfR: bone("calf_r"), armL: bone("upperarm_l"), armR: bone("upperarm_r"), foreL: bone("lowerarm_l"), foreR: bone("lowerarm_r"), spine: bone("spine_01"), chest: bone("spine_03"), neck: bone("neck_01"), head: bone("Head") };
+  const rest = new Map<THREE.Object3D, THREE.Quaternion>();
+  for (const b of Object.values(B)) if (b) rest.set(b, b.quaternion.clone());
+  const tmpQ = new THREE.Quaternion(), pw = new THREE.Quaternion(), pinv = new THREE.Quaternion(), axis = new THREE.Vector3(), v = new THREE.Vector3();
+  // Rotate a bone about a model-space axis by `angle`, whatever its local frame: local = P⁻¹ · R · P · rest.
+  const turn = (b: THREE.Object3D | undefined, ax: THREE.Vector3, angle: number, first: boolean) => {
+    if (!b || !b.parent) return;
+    if (first) b.quaternion.copy(rest.get(b)!);
+    b.parent.updateWorldMatrix(true, false);
+    b.parent.getWorldQuaternion(pw); pinv.copy(pw).invert();
+    axis.copy(ax).applyQuaternion(group.quaternion).normalize();
+    tmpQ.setFromAxisAngle(axis, angle);
+    b.quaternion.premultiply(pinv.multiply(tmpQ).multiply(pw));
+  };
+  const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+  // The hat rides on the head bone.
+  const felt = new THREE.MeshStandardMaterial({ color: 0x0c1115, roughness: 0.95 });
+  const hat = new THREE.Group();
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.115, 0.13, 16), felt); crown.position.y = 0.09;
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.02, 20), felt); brim.rotation.x = 0.08;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.108, 0.117, 0.035, 16), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.5 })); band.position.y = 0.04;
+  hat.add(crown, brim, band); group.add(hat);
+  // A knee-length coat over the suit, hung from the hips each frame: the operative's silhouette.
+  const coatMat = new THREE.MeshStandardMaterial({ color: 0x1b2530, roughness: 0.8, emissive: 0x0e151c, emissiveIntensity: 0.6 });
+  // Placed in world metres each frame: the skirt hangs from the hips to the knees, the cape sits on the
+  // shoulders; the arms swing free between them.
+  const coat = new THREE.Group();
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 18, 1, true), coatMat); skirt.position.y = -0.42;
+  const cape = new THREE.Mesh(new THREE.SphereGeometry(0.29, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), coatMat); cape.scale.set(1.0, 0.36, 0.62);
+  const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.3, 0.03), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.6 })); lapel.position.set(-0.1, -0.16, 0.2);
+  coatMat.side = THREE.DoubleSide;
+  coat.add(skirt, cape, lapel); group.add(coat);
+  const hip = bone("pelvis") ?? B.spine;
+  const chest = B.chest;
+  return {
+    group,
+    step: (phase, speed) => {
+      const amp = speed < 0.3 ? 0 : speed > 2.4 ? 0.85 : 0.55;
+      const t = Date.now() / 1000;
+      const breathe = Math.sin(t * 1.6) * 0.015;
+      group.updateMatrixWorld(true);
+      // arms down from the T-pose, then swing; a little bend at the elbow
+      turn(B.armL, Z, -1.25, true); turn(B.armL, X, -Math.sin(phase) * amp * 0.6, false);
+      turn(B.armR, Z, 1.25, true); turn(B.armR, X, Math.sin(phase) * amp * 0.6, false);
+      turn(B.foreL, X, -0.35 - Math.max(0, Math.sin(phase)) * amp * 0.3, true);
+      turn(B.foreR, X, -0.35 - Math.max(0, -Math.sin(phase)) * amp * 0.3, true);
+      // legs: thigh swing, knee bends on the trailing leg
+      turn(B.thighL, X, Math.sin(phase) * amp, true); turn(B.calfL, X, -Math.max(0, -Math.sin(phase)) * amp * 1.3, true);
+      turn(B.thighR, X, -Math.sin(phase) * amp, true); turn(B.calfR, X, -Math.max(0, Math.sin(phase)) * amp * 1.3, true);
+      // trunk: lean into a run, breathe when still, head looks around when idle
+      turn(B.spine, X, (speed > 2.4 ? 0.22 : amp ? 0.06 : 0) + breathe, true);
+      turn(B.chest, Y, Math.sin(phase) * amp * 0.12, true);
+      turn(B.head, Y, amp ? 0 : Math.sin(t / 2.3) * 0.4, true);
+      model.position.y = amp ? Math.abs(Math.sin(phase)) * (speed > 2.4 ? 0.07 : 0.03) : 0;
+      if (B.head) { B.head.updateWorldMatrix(true, false); B.head.getWorldPosition(v); group.worldToLocal(v); hat.position.copy(v).add(new THREE.Vector3(0, 0.1, 0)); hat.rotation.y = B.head.rotation.y; }
+      if (hip && chest) {
+        hip.updateWorldMatrix(true, false); hip.getWorldPosition(v); group.worldToLocal(v); const hy = v.y;
+        chest.updateWorldMatrix(true, false); chest.getWorldPosition(v); group.worldToLocal(v); const cy = v.y;
+        coat.position.set(0, cy + 0.08, 0); skirt.position.y = hy - 0.31 - (cy + 0.08); lapel.position.y = (hy + cy) / 2 - (cy + 0.1);
+        coat.rotation.x = speed > 2.4 ? 0.18 : amp ? 0.05 : 0;
+      }
     },
   };
 }
