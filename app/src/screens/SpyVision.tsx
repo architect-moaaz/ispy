@@ -14,6 +14,7 @@ import { Guide } from "./Guide";
 import { Street, type Beacon, type Scene } from "./Street";
 import { getBuild, loadBuild, onBuild, type Build } from "../prefs";
 import { ARGuide } from "./ARGuide";
+import { ErrorBoundary } from "../ErrorBoundary";
 import { Debrief } from "./Debrief";
 import { ART } from "../art";
 import { DevPanel } from "./DevPanel";
@@ -230,10 +231,10 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   ] : [];
   const target3d = target ? { ...target, name: nav ? nav.targetName : selPoint?.name ?? "the site", radiusM: nav?.approachRadiusM ?? 40 } : null;
   if (view === "3d" && fix && !ar) {
-    return <Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} build={build} onMap={() => setView("map")} onAR={() => setView("ar")} />;
+    return <ErrorBoundary where="3D street" onBack={() => setView("map")}><Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} build={build} onMap={() => setView("map")} onAR={() => setView("ar")} /></ErrorBoundary>;
   }
   if (view === "ar" && fix && !ar) {
-    return <ARGuide fix={fix} heading={heading ?? course} route={route} target={target3d} beacons={beacons} onMap={() => setView("map")} on3D={() => setView("3d")} />;
+    return <ErrorBoundary where="AR guide" onBack={() => setView("map")}><ARGuide fix={fix} heading={heading ?? course} route={route} target={target3d} beacons={beacons} onMap={() => setView("map")} on3D={() => setView("3d")} /></ErrorBoundary>;
   }
   if (ar && mission && nav && (!completed || arHold)) {
     return (
