@@ -67,18 +67,22 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     renderer.setPixelRatio(1);
     renderer.setClearColor(new THREE.Color(C.ink), 1);
     const sc = new THREE.Scene();
-    sc.fog = new THREE.Fog(new THREE.Color(0x070b10), 120, 380);
+    sc.fog = new THREE.Fog(new THREE.Color(0x0a1016), 140, 460);
     sc.add(new THREE.HemisphereLight(0x9fbfd0, 0x0a1118, 1.2));
     const sun = new THREE.DirectionalLight(0xbfdbe6, 1.1); sun.position.set(80, 140, -60); sc.add(sun);
     const rim = new THREE.DirectionalLight(new THREE.Color(C.cyan), 0.6); rim.position.set(-60, 40, 80); sc.add(rim);
     // A soft lamp that rides with the camera, so the operative reads against the dark street.
     const follow = new THREE.PointLight(0xdfe9ee, 22, 26, 1.4); sc.add(follow);
     const fill = new THREE.DirectionalLight(0xcfdde6, 0.45); sc.add(fill); sc.add(fill.target);
-    const camera = new THREE.PerspectiveCamera(50, w / h, 0.3, 600);
+    const camera = new THREE.PerspectiveCamera(50, w / h, 0.3, 1200);
     const origin = latest.current.scene?.center ?? { lat: latest.current.fix.lat, lng: latest.current.fix.lng };
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.MeshStandardMaterial({ color: 0x0e151c, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; sc.add(ground);
     const grid = new THREE.GridHelper(1600, 200, 0x10262e, 0x0d1f27); grid.position.y = -0.02; sc.add(grid);
+    // The sky: a painted dystopian storm wrapped on a dome that turns very slowly, outside the fog.
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(540, 48, 24), new THREE.MeshBasicMaterial({ color: 0x3a4650, side: THREE.BackSide, fog: false }));
+    sky.rotation.y = Math.PI; sc.add(sky);
+    void loadPhoto(require("../../assets/art/sky-dystopia.jpg")).then((t) => { t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; const m = sky.material as THREE.MeshBasicMaterial; m.map = t; m.color.set(0xffffff); m.needsUpdate = true; }).catch(() => {});
     const city = new THREE.Group(); sc.add(city);
     const live = new THREE.Group(); sc.add(live);
     const avatar = makeAvatar(latest.current.factionColor); sc.add(avatar.group);
@@ -132,6 +136,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       // The next-turn arrow bobs; beacons pulse.
       const tt = (nowT - t0) / 1000;
       routeTex.offset.y -= dt * 0.9;
+      sky.rotation.y += dt * 0.004; sky.position.copy(W.camera.position).setY(-40);
       W.live.children.forEach((o: THREE.Object3D) => { if (o.userData.bob) o.position.y = o.userData.baseY + Math.sin(tt * 3) * 0.6; if (o.userData.pulse) { const s = 1 + Math.sin(tt * 2.2) * 0.08; o.scale.set(s, 1, s); } });
       W.renderer.render(W.scene, W.camera);
       W.gl.endFrameEXP();
