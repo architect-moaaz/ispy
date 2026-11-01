@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Asset } from "expo-asset";
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
 import * as THREE from "three";
@@ -33,6 +34,21 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   latest.current = { fix, course, heading, route, target, beacons, scene, factionColor, build };
   const [speed, setSpeed] = useState(0);
   const [demo, setDemo] = useState<number | null>(null); // tap the gait line to preview walk and run while standing
+  // Free look: drag to orbit round the operative, drag up and down for height, pinch for distance.
+  const look = useRef({ yaw: 0, pitch: 0, zoom: 1, start: { yaw: 0, pitch: 0, zoom: 1 } });
+  const [moved, setMoved] = useState(false);
+  const gestures = useMemo(() => {
+    const pan = Gesture.Pan().minPointers(1).maxPointers(1)
+      .onBegin(() => { look.current.start = { ...look.current }; })
+      .onUpdate((e) => { const L = look.current; L.yaw = L.start.yaw + e.translationX * 0.35; L.pitch = Math.max(-0.6, Math.min(1, L.start.pitch - e.translationY * 0.004)); setMoved(true); })
+      .runOnJS(true);
+    const pinch = Gesture.Pinch()
+      .onBegin(() => { look.current.start = { ...look.current }; })
+      .onUpdate((e) => { look.current.zoom = Math.max(0.45, Math.min(2.4, look.current.start.zoom / Math.max(0.05, e.scale))); setMoved(true); })
+      .runOnJS(true);
+    return Gesture.Simultaneous(pan, pinch);
+  }, []);
+  const recentre = () => { look.current = { yaw: 0, pitch: 0, zoom: 1, start: { yaw: 0, pitch: 0, zoom: 1 } }; setMoved(false); };
   const prevFix = useRef<{ f: Fix; t: number } | null>(null);
   useEffect(() => {
     const t = Date.now();
@@ -103,10 +119,12 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       if (sp >= 0.3) stillSince = nowT;
       const wantOrbit = nowT - stillSince > 2500 ? 1 : 0;
       orbit += (wantOrbit - orbit) * (1 - Math.exp(-dt * (wantOrbit ? 0.9 : 2.2)));
-      const rad = THREE.MathUtils.degToRad(yaw) + orbit * Math.PI * 0.82;
-      const dist = 7.5 - orbit * 4.3, lift = 4.2 - orbit * 2.7, side = 1.7 - orbit * 1.1;
+      const LK = look.current;
+      const rad = THREE.MathUtils.degToRad(yaw + LK.yaw) + orbit * Math.PI * 0.82;
+      const dist = (7.5 - orbit * 4.3) * LK.zoom, lift = (4.2 - orbit * 2.7) * LK.zoom + LK.pitch * 5 * LK.zoom, side = (1.7 - orbit * 1.1) * LK.zoom;
       const back = new THREE.Vector3(-Math.sin(rad) * dist + Math.cos(rad) * side, lift, Math.cos(rad) * dist + Math.sin(rad) * side);
-      W.camera.position.lerp(pos.clone().add(back), 1 - Math.exp(-dt * 2.5));
+      if (back.y < 0.6) back.y = 0.6; // never below the pavement
+      W.camera.position.lerp(pos.clone().add(back), 1 - Math.exp(-dt * (LK.yaw || LK.pitch ? 6 : 2.5)));
       follow.position.copy(W.camera.position).add(new THREE.Vector3(0, 2.5, 0));
       const aheadX = Math.sin(rad) * (3 - orbit * 2.6) + Math.cos(rad) * 0.5 * (1 - orbit), aheadZ = -Math.cos(rad) * (3 - orbit * 2.6) + Math.sin(rad) * 0.5 * (1 - orbit);
       W.camera.lookAt(pos.clone().add(new THREE.Vector3(aheadX, 1.3 + orbit * 0.1, aheadZ)));
@@ -129,6 +147,10 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   return (
     <View style={{ flex: 1, backgroundColor: C.ink }}>
       <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+      <GestureDetector gesture={gestures}><View style={StyleSheet.absoluteFill} collapsable={false} /></GestureDetector>
+      {moved && (
+        <Pressable onPress={recentre} style={s.recentre} hitSlop={8}><Text style={s.recentreText}>RECENTRE</Text></Pressable>
+      )}
       <View style={s.top} pointerEvents="none">
         <Text style={s.eyebrow}>STREET VIEW · {scene && !scene.pending ? `${scene.buildings.length} BUILDINGS · ${scene.roads.length} ROADS` : scene?.pending && scene.buildings.length ? `${scene.buildings.length} BUILDINGS · REFRESHING` : "MAPPING THE BLOCK…"}</Text>
         {target ? <Text style={s.title}>{target.name}</Text> : <Text style={s.title}>No objective</Text>}
@@ -592,4 +614,6 @@ const s = StyleSheet.create({
   eyebrow: { color: C.dim, fontFamily: F.displayMed, fontSize: 10.5, letterSpacing: 1.6 },
   title: { color: C.text, fontFamily: F.displayMed, fontSize: 22, marginTop: 2 },
   line: { color: C.cyan, fontFamily: F.typed, fontSize: 13.5, marginTop: 3 },
+  recentre: { position: "absolute", right: 14, top: 128, borderWidth: 1, borderColor: "rgba(0,229,242,0.6)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "rgba(7,11,16,0.72)" },
+  recentreText: { color: C.cyan, fontFamily: F.displayMed, fontSize: 11, letterSpacing: 1.6 },
 });
