@@ -68,7 +68,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     renderer.setClearColor(new THREE.Color(C.ink), 1);
     const sc = new THREE.Scene();
     sc.fog = new THREE.Fog(new THREE.Color(0x0a1016), 140, 460);
-    sc.add(new THREE.HemisphereLight(0x9fbfd0, 0x0a1118, 1.2));
+    const hemi = new THREE.HemisphereLight(0x9fbfd0, 0x0a1118, 1.2); sc.add(hemi);
     const sun = new THREE.DirectionalLight(0xbfdbe6, 1.1); sun.position.set(80, 140, -60); sc.add(sun);
     const rim = new THREE.DirectionalLight(new THREE.Color(C.cyan), 0.6); rim.position.set(-60, 40, 80); sc.add(rim);
     // A soft lamp that rides with the camera, so the operative reads against the dark street.
@@ -79,10 +79,13 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.MeshStandardMaterial({ color: 0x0e151c, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; sc.add(ground);
     const grid = new THREE.GridHelper(1600, 200, 0x10262e, 0x0d1f27); grid.position.y = -0.02; sc.add(grid);
-    // The sky: a painted dystopian storm wrapped on a dome that turns very slowly, outside the fog.
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(540, 48, 24), new THREE.MeshBasicMaterial({ color: 0x3a4650, side: THREE.BackSide, fog: false }));
-    sky.rotation.y = Math.PI; sc.add(sky);
-    void loadPhoto(require("../../assets/art/sky-dystopia.jpg")).then((t) => { t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; const m = sky.material as THREE.MeshBasicMaterial; m.map = t; m.color.set(0xffffff); m.needsUpdate = true; }).catch(() => {});
+    // The sky: painted panoramas on two domes that crossfade with the hour, turning very slowly, outside the fog.
+    const skyTex: Partial<Record<Phase, THREE.Texture>> = {};
+    const skyA = new THREE.Mesh(new THREE.SphereGeometry(540, 48, 24), new THREE.MeshBasicMaterial({ color: 0x3a4650, side: THREE.BackSide, fog: false }));
+    const skyB = new THREE.Mesh(new THREE.SphereGeometry(536, 48, 24), new THREE.MeshBasicMaterial({ color: 0x3a4650, side: THREE.BackSide, fog: false, transparent: true, opacity: 0 }));
+    skyA.rotation.y = Math.PI; skyB.rotation.y = Math.PI; sc.add(skyA, skyB);
+    const skyFor = (ph: Phase) => { if (skyTex[ph]) return; void loadPhoto(SKIES[ph]).then((t) => { t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; skyTex[ph] = t; }).catch(() => {}); };
+    let skyShown: [Phase | null, Phase | null] = [null, null];
     const city = new THREE.Group(); sc.add(city);
     const live = new THREE.Group(); sc.add(live);
     const avatar = makeAvatar(latest.current.factionColor); sc.add(avatar.group);
@@ -136,7 +139,20 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       // The next-turn arrow bobs; beacons pulse.
       const tt = (nowT - t0) / 1000;
       routeTex.offset.y -= dt * 0.9;
-      sky.rotation.y += dt * 0.004; sky.position.copy(W.camera.position).setY(-40);
+      // Time of day: pick the two skies for this hour, load them lazily, crossfade, and move the light.
+      const hourNow = (W as any).hourOverride ?? (new Date().getHours() + new Date().getMinutes() / 60);
+      const ph = phaseAt(hourNow);
+      skyFor(ph.a); skyFor(ph.b);
+      const setSky = (mesh: THREE.Mesh, p: Phase, slot: 0 | 1) => { const t = skyTex[p]; const m = mesh.material as THREE.MeshBasicMaterial; if (t && skyShown[slot] !== p) { m.map = t; m.color.set(0xffffff); m.needsUpdate = true; skyShown[slot] = p; } };
+      setSky(skyA, ph.a, 0); setSky(skyB, ph.b, 1);
+      (skyB.material as THREE.MeshBasicMaterial).opacity = ph.a === ph.b ? 0 : ph.t;
+      const la = LIGHTS[ph.a], lb = LIGHTS[ph.b];
+      sun.intensity = la.sun + (lb.sun - la.sun) * ph.t; sun.color.copy(lerpC(la.sunColor, lb.sunColor, ph.t));
+      hemi.intensity = la.sky + (lb.sky - la.sky) * ph.t; hemi.color.copy(lerpC(la.skyColor, lb.skyColor, ph.t));
+      (sc.fog as THREE.Fog).color.copy(lerpC(la.fog, lb.fog, ph.t));
+      const win = la.windows + (lb.windows - la.windows) * ph.t, lampK = la.lamps + (lb.lamps - la.lamps) * ph.t;
+      W.city.traverse((o: any) => { if (Array.isArray(o.material)) { for (const m of o.material) if (m.userData.windows) m.emissiveIntensity = win; } if (o.userData.lampHead) o.visible = lampK > 0.05; if (o.userData.lampPool) o.material.opacity = 0.09 * lampK; });
+      for (const d of [skyA, skyB]) { d.rotation.y += dt * 0.004; d.position.copy(W.camera.position).setY(-40); }
       W.live.children.forEach((o: THREE.Object3D) => { if (o.userData.bob) o.position.y = o.userData.baseY + Math.sin(tt * 3) * 0.6; if (o.userData.pulse) { const s = 1 + Math.sin(tt * 2.2) * 0.08; o.scale.set(s, 1, s); } });
       W.renderer.render(W.scene, W.camera);
       W.gl.endFrameEXP();
@@ -176,6 +192,30 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     </View>
   );
 }
+
+// ---------- time of day ----------
+/**
+ * The sky and the light follow the clock. Four painted panoramas (dystopian dawn, ashen day, blood
+ * dusk, storm night) crossfade through the day, and the sun, sky light, fog and window glow move
+ * with them. `hourOverride` on the world object lets the web preview jump the clock.
+ */
+type Phase = "night" | "dawn" | "day" | "dusk";
+const SKIES = { night: require("../../assets/art/sky-dystopia.jpg"), dawn: require("../../assets/art/sky-dawn.jpg"), day: require("../../assets/art/sky-day.jpg"), dusk: require("../../assets/art/sky-dusk.jpg") } as const;
+interface Light { sun: number; sunColor: number; sky: number; skyColor: number; fog: number; windows: number; lamps: number }
+const LIGHTS: Record<Phase, Light> = {
+  night: { sun: 1.1, sunColor: 0xbfdbe6, sky: 1.2, skyColor: 0x9fbfd0, fog: 0x0a1016, windows: 0.7, lamps: 1 },
+  dawn: { sun: 1.6, sunColor: 0xe8a070, sky: 1.5, skyColor: 0xb89aa0, fog: 0x3a2a2a, windows: 0.35, lamps: 0.5 },
+  day: { sun: 2.4, sunColor: 0xd9e4ea, sky: 2.2, skyColor: 0xb9c8cf, fog: 0x5a6670, windows: 0.08, lamps: 0 },
+  dusk: { sun: 1.5, sunColor: 0xff6a5a, sky: 1.4, skyColor: 0x8a5a7a, fog: 0x2e1a2a, windows: 0.5, lamps: 0.8 },
+};
+/** Which two phases the hour sits between, and how far along. */
+function phaseAt(hour: number): { a: Phase; b: Phase; t: number } {
+  const h = ((hour % 24) + 24) % 24;
+  const seg: [number, number, Phase, Phase][] = [[5, 7, "night", "dawn"], [7, 9, "dawn", "day"], [9, 16.5, "day", "day"], [16.5, 18.5, "day", "dusk"], [18.5, 20.5, "dusk", "night"]];
+  for (const [s0, s1, a, b] of seg) if (h >= s0 && h < s1) return { a, b, t: (h - s0) / (s1 - s0) };
+  return { a: "night", b: "night", t: 0 };
+}
+const lerpC = (a: number, b: number, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), t);
 
 // ---------- textures (procedural; no files, no canvas) ----------
 /** A block of night windows: 4 columns × 4 floors per tile, each lit warm, cool or dark. */
@@ -410,6 +450,7 @@ function buildCity(W: { origin: LL; city: THREE.Group }, scene: Scene | null) {
   winTex.repeat.set(1 / 7.2, 1 / 6); winGlow.repeat.set(1 / 7.2, 1 / 6);
   // Photographic facades: a tile is about four floors (12.8 m) tall and 12 m wide; the lit panes glow through the emissive map.
   const facade = (t: THREE.Texture, glow: number) => { t.repeat.set(1 / 12, 1 / 12.8); return new THREE.MeshStandardMaterial({ color: 0xffffff, map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: glow, roughness: 0.9, metalness: 0.05 }); };
+  const markWindows = (m: THREE.Mesh) => { m.userData.windows = true; return m; };
   const walls = photos ? { low: facade(photos.shophouse, 0.55), mid: facade(photos.apartment, 0.6), high: facade(photos.tower, 0.7) } : null;
   const wallFor = (h: number) => (walls ? (h < 10 ? walls.low : h < 26 ? walls.mid : walls.high) : fallback);
   const edge = new THREE.LineBasicMaterial({ color: new THREE.Color(C.cyan), transparent: true, opacity: photos ? 0.12 : 0.28 });
@@ -419,7 +460,9 @@ function buildCity(W: { origin: LL; city: THREE.Group }, scene: Scene | null) {
     const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, -p.z)));
     const geo = new THREE.ExtrudeGeometry(shape, { depth: b.h ?? 7, bevelEnabled: false });
     geo.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geo, [roof, wallFor(b.h ?? 7)]);
+    const wallMat = wallFor(b.h ?? 7);
+    const mesh = new THREE.Mesh(geo, [roof, wallMat.clone()]);
+    (mesh.material as THREE.Material[])[1].userData.windows = true; mesh.userData.windows = false;
     W.city.add(mesh);
     W.city.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), edge));
   }
@@ -447,8 +490,8 @@ function buildCity(W: { origin: LL; city: THREE.Group }, scene: Scene | null) {
         const side = Math.floor((d + i * 7) / 30) % 2 ? 1 : -1;
         const x = p.x + (dx / len) * d + nx * side * (wdt / 2 + 0.9), z = p.z + (dz / len) * d + nz * side * (wdt / 2 + 0.9);
         const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 5.5, 6), lampPole); pole.position.set(x, 2.75, z);
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), lampHead); head.position.set(x - nx * side * 0.7, 5.5, z - nz * side * 0.7);
-        const pool = new THREE.Mesh(new THREE.CircleGeometry(3.6, 20), lampPool); pool.rotation.x = -Math.PI / 2; pool.position.set(x - nx * side * 1.2, 0.06, z - nz * side * 1.2);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), lampHead); head.position.set(x - nx * side * 0.7, 5.5, z - nz * side * 0.7); head.userData.lampHead = true;
+        const pool = new THREE.Mesh(new THREE.CircleGeometry(3.6, 20), lampPool.clone()); pool.userData.lampPool = true; pool.rotation.x = -Math.PI / 2; pool.position.set(x - nx * side * 1.2, 0.06, z - nz * side * 1.2);
         W.city.add(pole, head, pool);
       }
       acc = ((acc - len) % 30 + 30) % 30;
