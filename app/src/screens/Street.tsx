@@ -372,11 +372,13 @@ function dressCoat(body: THREE.SkinnedMesh, cloth: THREE.Texture) {
   body.geometry.computeBoundingBox();
   const bb = body.geometry.boundingBox!;
   const H = bb.max.y, armX = bb.max.x; // the rig stands in a T-pose: arms out to ±armX
-  const knee = 0.29 * H, hip = 0.52 * H, shoulder = 0.86 * H, chin = 0.885 * H, lips = 0.922 * H;
-  const mat = new THREE.MeshStandardMaterial({ map: cloth, color: 0xffffff, roughness: 0.92, metalness: 0.02, emissive: 0x0b0e12, emissiveIntensity: 0.5, side: THREE.DoubleSide });
+  const hem = 0.33 * H, hip = 0.52 * H, waist = 0.6 * H, shoulder = 0.86 * H, chin = 0.885 * H, lips = 0.922 * H;
+  const mat = new THREE.MeshStandardMaterial({ map: cloth, color: 0xffffff, roughness: 0.62, metalness: 0.1, emissive: 0x0b0e12, emissiveIntensity: 0.45, side: THREE.DoubleSide });
+  // Tailored: a few millimetres off the suit through the waist and hips, sleeves close, a wide open
+  // front down the chest, mid-thigh hem with just a little swing below the hips, a short standing collar.
   const coat = shellOf(body,
-    (p) => p.y >= knee && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(Math.abs(p.x) < 0.022 && p.z > 0.02 && p.y > hip - 0.05),
-    (p) => 0.016 + Math.max(0, hip - p.y) * 0.06 + (p.y > shoulder - 0.06 ? 0.008 : 0),
+    (p) => p.y >= hem && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(p.z > 0.02 && p.y > hip && Math.abs(p.x) < (p.y > waist ? 0.05 : 0.03)),
+    (p) => 0.007 + Math.max(0, hip - p.y) * 0.03 + (p.y > shoulder - 0.05 ? 0.01 : 0),
     mat);
   // A deep peaked cowl: the head is covered down to just above the lips, the front edge pushed forward
   // into a beak so eyes and nose sit in darkness; only the mouth and chin show beneath.
