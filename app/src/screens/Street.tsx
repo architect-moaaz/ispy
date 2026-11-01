@@ -40,6 +40,8 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const look = useRef({ yaw: 0, pitch: 0, zoom: 1, start: { yaw: 0, pitch: 0, zoom: 1 } });
   const [moved, setMoved] = useState(false);
   const [glError, setGlError] = useState<string | null>(null);
+  const [gpu, setGpu] = useState<string | null>(null);
+  const framesRef = useRef(0);
   const gestures = useMemo(() => {
     const pan = Gesture.Pan().minPointers(1).maxPointers(1)
       .onBegin(() => { look.current.start = { ...look.current }; })
@@ -71,6 +73,19 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const renderer = new THREE.WebGLRenderer({ canvas: shim(gl, w, h), context: gl as any, antialias: Platform.OS === "web" });
     renderer.setSize(w, h, false);
     renderer.setPixelRatio(1);
+    // Diagnostics: what this GPU is, and anything its driver refuses, reported to the bureau.
+    try {
+      const dbg = gl.getExtension("WEBGL_debug_renderer_info") as any;
+      const vendor = dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+      const chip = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+      const info = `${vendor} · ${chip} · ${gl.getParameter(gl.VERSION)} · ${w}x${h} · maxTex ${gl.getParameter(gl.MAX_TEXTURE_SIZE)}`;
+      setGpu(String(info));
+      if (Platform.OS !== "web") report("street.gpu", new Error(info));
+    } catch (e) { report("street.gpu-info", e); }
+    renderer.debug.onShaderError = (g, program, vs, fs) => {
+      const log = g.getProgramInfoLog(program) ?? ""; const vl = g.getShaderInfoLog(vs) ?? ""; const fl = g.getShaderInfoLog(fs) ?? "";
+      setGlError(report("street.shader", new Error(`${log} ${vl} ${fl}`.trim().slice(0, 500))));
+    };
     renderer.setClearColor(new THREE.Color(C.ink), 1);
     const sc = new THREE.Scene();
     sc.fog = new THREE.Fog(new THREE.Color(0x0a1016), 140, 460);
@@ -170,6 +185,8 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       W.live.children.forEach((o: THREE.Object3D) => { if (o.userData.bob) o.position.y = o.userData.baseY + Math.sin(tt * 3) * 0.6; if (o.userData.pulse) { const s = 1 + Math.sin(tt * 2.2) * 0.08; o.scale.set(s, 1, s); } });
       W.renderer.render(W.scene, W.camera);
       W.gl.endFrameEXP();
+      // After the first few frames, read back the driver's error state once.
+      if (++framesRef.current === 5) { const err = W.gl.getError(); if (err !== W.gl.NO_ERROR) setGlError(report("street.glerror", new Error(`gl error ${err} after first frames`))); else if (Platform.OS !== "web") report("street.ok", new Error(`5 frames drawn, city ${W.city.children.length} objects`)); }
     };
     world.current.raf = requestAnimationFrame(loop);
   };
@@ -202,7 +219,8 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       </View>
       <View style={s.bottom}>
         <Pressable onPress={() => setDemo((d) => (d == null ? 1.3 : d < 2 ? 3.2 : null))} hitSlop={8}>
-          <Text style={s.eyebrow}>{gait.toUpperCase()} · {shown.toFixed(1)} M/S{heading != null ? ` · ${Math.round(heading)}°` : course != null ? ` · ${Math.round(course)}°` : ""}{demo != null ? " · PREVIEW · TAP TO STOP" : " · TAP TO PREVIEW THE WALK"}</Text>
+          {gpu && <Text style={[s.eyebrow, { color: C.dim, fontSize: 9 }]} numberOfLines={1}>{gpu}</Text>}
+        <Text style={s.eyebrow}>{gait.toUpperCase()} · {shown.toFixed(1)} M/S{heading != null ? ` · ${Math.round(heading)}°` : course != null ? ` · ${Math.round(course)}°` : ""}{demo != null ? " · PREVIEW · TAP TO STOP" : " · TAP TO PREVIEW THE WALK"}</Text>
         </Pressable>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
           <Button title="Map" kind="ghost" onPress={onMap} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
