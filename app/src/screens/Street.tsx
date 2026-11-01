@@ -243,25 +243,78 @@ function loadOperative(build: Build): Promise<THREE.Group | null> {
       const buf = await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer();
       const gltf = await new Promise<any>((res, rej) => new GLTFLoader().parse(buf, "", res, rej));
       // The suit painted onto the body's own UV layout, the pack's normal map, and the eye and brow maps.
-      const [body, normal, eye, hair] = await Promise.all([
-        loadPhoto(SUITS[build]), loadPhoto(NORMALS[build]), loadPhoto(require("../../assets/art/tex-eye.jpg")), loadPhoto(require("../../assets/art/tex-hair.jpg")),
+      const [body, normal, eye, hair, cloth] = await Promise.all([
+        loadPhoto(SUITS[build]), loadPhoto(NORMALS[build]), loadPhoto(require("../../assets/art/tex-eye.jpg")), loadPhoto(require("../../assets/art/tex-hair.jpg")), loadPhoto(require("../../assets/art/tex-coat.jpg")),
       ]);
       for (const t of [body, normal, eye, hair]) { t.flipY = false; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; }
       normal.colorSpace = THREE.NoColorSpace;
+      cloth.flipY = false; cloth.repeat.set(3, 3);
       const root: THREE.Group = gltf.scene;
+      let bodyMesh: THREE.SkinnedMesh | null = null;
       root.traverse((o: any) => {
         if (!o.isMesh) return;
         o.frustumCulled = false;
         const name: string = o.name ?? "";
+        if (/male|retopology|body/i.test(name) && o.isSkinnedMesh) bodyMesh = o;
         // Names as GLTFLoader gives them (node names): SuperHero_Male, Eyes, Eyebrows.
         if (/male|retopology|body/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: body, normalMap: normal, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.85, metalness: 0.05, emissive: 0x0a1015, emissiveIntensity: 0.6 });
         else if (/eye(?!brow)/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: eye, roughness: 0.35, metalness: 0 });
         else o.material = new THREE.MeshStandardMaterial({ map: hair, color: 0x241a14, roughness: 0.85, metalness: 0 }); // brows: the hair map tinted dark
       });
+      if (bodyMesh) dressCoat(bodyMesh, cloth);
       return root;
     } catch (e) { console.warn("[street] operative failed:", (e as Error)?.message ?? e); return null; }
   })();
   return operativeLoading[build]!;
+}
+
+/**
+ * The coat and the hood are shells of the body itself: the torso, sleeves and thighs pushed out from
+ * the skin along their normals, with the front split open, a standing collar and a hem that flares
+ * from the hips; the hood is the head pushed out with the face cut away. Each shell keeps the body's
+ * own skin indices and weights, so it is bound to the same skeleton and moves with every bone.
+ */
+function shellOf(body: THREE.SkinnedMesh, keep: (p: THREE.Vector3) => boolean, offset: (p: THREE.Vector3) => number, material: THREE.Material): THREE.SkinnedMesh {
+  const g = body.geometry;
+  const pos = g.attributes.position, nor = g.attributes.normal, idx = g.index!;
+  const n = pos.count, out = new Float32Array(n * 3), ok = new Uint8Array(n);
+  const p = new THREE.Vector3(), nn = new THREE.Vector3();
+  for (let i = 0; i < n; i++) {
+    p.fromBufferAttribute(pos, i); nn.fromBufferAttribute(nor, i);
+    ok[i] = keep(p) ? 1 : 0;
+    const o = offset(p);
+    out[i * 3] = p.x + nn.x * o; out[i * 3 + 1] = p.y + nn.y * o; out[i * 3 + 2] = p.z + nn.z * o;
+  }
+  const tris: number[] = [];
+  for (let t = 0; t < idx.count; t += 3) { const a = idx.getX(t), b = idx.getX(t + 1), c = idx.getX(t + 2); if (ok[a] && ok[b] && ok[c]) tris.push(a, b, c); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(out, 3));
+  geo.setAttribute("normal", nor.clone());
+  geo.setAttribute("uv", g.attributes.uv.clone());
+  geo.setAttribute("skinIndex", g.attributes.skinIndex.clone());
+  geo.setAttribute("skinWeight", g.attributes.skinWeight.clone());
+  geo.setIndex(tris);
+  const m = new THREE.SkinnedMesh(geo, material);
+  m.frustumCulled = false;
+  m.position.copy(body.position); m.quaternion.copy(body.quaternion); m.scale.copy(body.scale);
+  m.bind(body.skeleton, body.bindMatrix);
+  return m;
+}
+function dressCoat(body: THREE.SkinnedMesh, cloth: THREE.Texture) {
+  body.geometry.computeBoundingBox();
+  const bb = body.geometry.boundingBox!;
+  const H = bb.max.y, armX = bb.max.x; // the rig stands in a T-pose: arms out to ±armX
+  const knee = 0.29 * H, hip = 0.52 * H, shoulder = 0.86 * H, chin = 0.885 * H, brow = 0.985 * H;
+  const mat = new THREE.MeshStandardMaterial({ map: cloth, color: 0xffffff, roughness: 0.92, metalness: 0.02, emissive: 0x0b0e12, emissiveIntensity: 0.5, side: THREE.DoubleSide });
+  const coat = shellOf(body,
+    (p) => p.y >= knee && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(Math.abs(p.x) < 0.022 && p.z > 0.02 && p.y > hip - 0.05),
+    (p) => 0.034 + Math.max(0, hip - p.y) * 0.14 + (p.y > shoulder - 0.06 ? 0.018 : 0),
+    mat);
+  const hood = shellOf(body,
+    (p) => p.y >= chin && !(p.z > 0.025 && p.y < brow && Math.abs(p.x) < 0.1),
+    () => 0.03,
+    mat);
+  body.parent!.add(coat, hood);
 }
 
 // ---------- geometry ----------
