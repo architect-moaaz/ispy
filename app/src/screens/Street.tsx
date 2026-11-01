@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Asset } from "expo-asset";
+import * as Updates from "expo-updates";
 import * as FileSystem from "expo-file-system/legacy";
 import { report } from "../diag";
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
@@ -42,6 +43,12 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const [glError, setGlError] = useState<string | null>(null);
   const [gpu, setGpu] = useState<string | null>(null);
   const framesRef = useRef(0);
+  // If no graphics context arrives within a few seconds, say so: the surface never came up.
+  const layoutRef = useRef("unmeasured");
+  useEffect(() => {
+    const t = setTimeout(() => { if (!world.current) { const msg = `no GL context after 4 s · view ${layoutRef.current} · update ${Updates.updateId ?? "embedded"} · ${Platform.OS}`; setGlError(msg); report("street.nocontext", new Error(msg)); } }, 4000);
+    return () => clearTimeout(t);
+  }, []);
   const gestures = useMemo(() => {
     const pan = Gesture.Pan().minPointers(1).maxPointers(1)
       .onBegin(() => { look.current.start = { ...look.current }; })
@@ -197,7 +204,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const next = g?.next;
   return (
     <View style={{ flex: 1, backgroundColor: C.ink }}>
-      <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+      <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; layoutRef.current = `${Math.round(width)}x${Math.round(height)}`; }} />
       <GestureDetector gesture={gestures}><View style={StyleSheet.absoluteFill} collapsable={false} /></GestureDetector>
       {moved && (
         <Pressable onPress={recentre} style={s.recentre} hitSlop={8}><Text style={s.recentreText}>RECENTRE</Text></Pressable>
@@ -219,7 +226,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       </View>
       <View style={s.bottom}>
         <Pressable onPress={() => setDemo((d) => (d == null ? 1.3 : d < 2 ? 3.2 : null))} hitSlop={8}>
-          {gpu && <Text style={[s.eyebrow, { color: C.dim, fontSize: 9 }]} numberOfLines={1}>{gpu}</Text>}
+          <Text style={[s.eyebrow, { color: C.dim, fontSize: 9 }]} numberOfLines={1}>{gpu ?? `WAITING FOR GRAPHICS · update ${Updates.updateId?.slice(0, 8) ?? "embedded"}`}</Text>
         <Text style={s.eyebrow}>{gait.toUpperCase()} · {shown.toFixed(1)} M/S{heading != null ? ` · ${Math.round(heading)}°` : course != null ? ` · ${Math.round(course)}°` : ""}{demo != null ? " · PREVIEW · TAP TO STOP" : " · TAP TO PREVIEW THE WALK"}</Text>
         </Pressable>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
