@@ -90,7 +90,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const live = new THREE.Group(); sc.add(live);
     const avatar = makeAvatar(latest.current.factionColor); sc.add(avatar.group);
     let dressed: Build | null = null;
-    const dress = (b: Build) => void loadOperative(b).then((model) => { const W = world.current; if (!W || !model || latest.current.build !== b) return; dressed = b; W.avatar = dressOperative(W.avatar, model, latest.current.factionColor); console.log("[street] operative ready", b); });
+    const dress = (b: Build) => void loadOperative(b).then((model) => { const W = world.current; if (!W || !model || latest.current.build !== b) return; dressed = b; W.avatar = dressOperative(W.avatar, model, latest.current.factionColor, b); console.log("[street] operative ready", b); });
     dress(latest.current.build);
     world.current = { gl, renderer, scene: sc, camera, origin, city, live, avatar, raf: 0 };
     if (Platform.OS === "web") (globalThis as any).__street = world; // inspection in the web preview only
@@ -608,8 +608,19 @@ function makeAvatar(color: string): Avatar {
   };
 }
 
+/**
+ * Idle stances, as bone angles in model space (X right, Y up, Z forward; radians). Hers: hands on
+ * hips, weight on one leg, a tilt through the hips and shoulders. His: arms folded, square. The
+ * walk blends out of the stance as speed rises. `pose` on the scene handle overrides these live.
+ */
+interface Stance { armZ: number; armX: number; armY: number; foreX: number; foreY: number; foreZ: number; spineZ: number; spineX: number; chestY: number; headY: number; headZ: number; thighLZ: number; thighRZ: number; calfRX: number; hipShift: number }
+const STANCES: Record<Build, Stance> = {
+  f: { armZ: 1.0, armX: 0.3, armY: 0.0, foreX: 0.0, foreY: 0.0, foreZ: -1.5, spineZ: 0.09, spineX: 0.0, chestY: 0.12, headY: 0.18, headZ: -0.08, thighLZ: 0.0, thighRZ: -0.1, calfRX: -0.15, hipShift: 0.04 },
+  m: { armZ: 1.35, armX: 0.5, armY: 0.0, foreX: -1.25, foreY: -1.0, foreZ: 0.0, spineZ: 0.0, spineX: 0.02, chestY: 0.0, headY: 0.0, headZ: 0.0, thighLZ: 0.05, thighRZ: -0.05, calfRX: 0.0, hipShift: 0.0 },
+};
+
 /** Replace the shape-built figure with the rigged human, keeping the ring and the hat, and drive its bones. */
-function dressOperative(prev: Avatar, model: THREE.Group, color: string): Avatar {
+function dressOperative(prev: Avatar, model: THREE.Group, color: string, build: Build): Avatar {
   const group = prev.group;
   for (const o of [...group.children]) if (!o.userData.keep) group.remove(o);
   group.add(model);
@@ -641,19 +652,24 @@ function dressOperative(prev: Avatar, model: THREE.Group, color: string): Avatar
       const t = Date.now() / 1000;
       const breathe = Math.sin(t * 1.6) * 0.015;
       group.updateMatrixWorld(true);
-      // arms down from the T-pose, then swing; a little bend at the elbow
-      turn(B.armL, Z, -1.25, true); turn(B.armL, X, -Math.sin(phase) * amp * 0.6, false);
-      turn(B.armR, Z, 1.25, true); turn(B.armR, X, Math.sin(phase) * amp * 0.6, false);
-      turn(B.foreL, X, -0.35 - Math.max(0, Math.sin(phase)) * amp * 0.3, true);
-      turn(B.foreR, X, -0.35 - Math.max(0, -Math.sin(phase)) * amp * 0.3, true);
-      // legs: thigh swing, knee bends on the trailing leg
-      turn(B.thighL, X, Math.sin(phase) * amp, true); turn(B.calfL, X, -Math.max(0, -Math.sin(phase)) * amp * 1.3, true);
-      turn(B.thighR, X, -Math.sin(phase) * amp, true); turn(B.calfR, X, -Math.max(0, Math.sin(phase)) * amp * 1.3, true);
-      // trunk: lean into a run, breathe when still, head looks around when idle
-      turn(B.spine, X, (speed > 2.4 ? 0.22 : amp ? 0.06 : 0) + breathe, true);
-      turn(B.chest, Y, Math.sin(phase) * amp * 0.12, true);
-      turn(B.head, Y, amp ? 0 : Math.sin(t / 2.3) * 0.4, true);
+      // How much of the idle stance shows: all of it standing, none once walking properly.
+      const P: Stance = ((globalThis as any).__street?.current?.pose as Stance | undefined) ?? STANCES[build];
+      const st = Math.max(0, 1 - speed / 0.6);
+      const mv = 1 - st;
+      // arms: the stance when still, hanging and swinging when moving
+      turn(B.armL, Z, -(1.25 * mv + P.armZ * st), true); turn(B.armL, X, -Math.sin(phase) * amp * 0.6 - P.armX * st, false); if (P.armY) turn(B.armL, Y, P.armY * st, false);
+      turn(B.armR, Z, 1.25 * mv + P.armZ * st, true); turn(B.armR, X, Math.sin(phase) * amp * 0.6 - P.armX * st, false); if (P.armY) turn(B.armR, Y, -P.armY * st, false);
+      turn(B.foreL, X, (-0.35 - Math.max(0, Math.sin(phase)) * amp * 0.3) * mv + P.foreX * st, true); if (P.foreY) turn(B.foreL, Y, P.foreY * st, false); if (P.foreZ) turn(B.foreL, Z, P.foreZ * st, false);
+      turn(B.foreR, X, (-0.35 - Math.max(0, -Math.sin(phase)) * amp * 0.3) * mv + P.foreX * st, true); if (P.foreY) turn(B.foreR, Y, -P.foreY * st, false); if (P.foreZ) turn(B.foreR, Z, -P.foreZ * st, false);
+      // legs: thigh swing and knee bends when moving; the stance's weight shift when still
+      turn(B.thighL, X, Math.sin(phase) * amp, true); if (P.thighLZ) turn(B.thighL, Z, P.thighLZ * st, false); turn(B.calfL, X, -Math.max(0, -Math.sin(phase)) * amp * 1.3, true);
+      turn(B.thighR, X, -Math.sin(phase) * amp, true); if (P.thighRZ) turn(B.thighR, Z, P.thighRZ * st, false); turn(B.calfR, X, -Math.max(0, Math.sin(phase)) * amp * 1.3 + P.calfRX * st, true);
+      // trunk: lean into a run, the stance's tilt when still, breathe, head looks around when idle
+      turn(B.spine, X, (speed > 2.4 ? 0.22 : amp ? 0.06 : 0) + P.spineX * st + breathe, true); if (P.spineZ) turn(B.spine, Z, P.spineZ * st, false);
+      turn(B.chest, Y, Math.sin(phase) * amp * 0.12 + P.chestY * st, true);
+      turn(B.head, Y, (amp ? 0 : Math.sin(t / 2.3) * 0.4) + P.headY * st, true); if (P.headZ) turn(B.head, Z, P.headZ * st, false);
       model.position.y = amp ? Math.abs(Math.sin(phase)) * (speed > 2.4 ? 0.07 : 0.03) : 0;
+      model.position.x = P.hipShift * st;
     },
   };
 }
