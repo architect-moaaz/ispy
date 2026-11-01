@@ -73,7 +73,9 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       // Avatar glides to the latest fix; faces the way you are walking (compass when standing still).
       const p = toLocal(W.origin, L.fix);
       pos.lerp(new THREE.Vector3(p.x, 0, p.z), 1 - Math.exp(-dt * 2.2));
-      const want = L.heading != null && (speedRef.current < 0.6 || L.course == null) ? L.heading : L.course ?? L.heading ?? 0;
+      // Face the way you are walking; standing still, the compass; with neither, along the route.
+      const along = L.route ? (() => { const gg = guide(L.route, L.fix); const to = gg.next ?? L.target; return to ? bearingLL(L.fix, to) : null; })() : L.target ? bearingLL(L.fix, L.target) : null;
+      const want = L.heading != null && (speedRef.current < 0.6 || L.course == null) ? L.heading : L.course ?? L.heading ?? along ?? 0;
       yaw = lerpAngle(yaw, want, 1 - Math.exp(-dt * 3));
       W.avatar.group.position.copy(pos);
       W.avatar.group.rotation.y = -THREE.MathUtils.degToRad(yaw);
@@ -130,6 +132,11 @@ function haversine(a: LL, b: LL) {
   const dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
+}
+function bearingLL(a: LL, b: LL) {
+  const r = Math.PI / 180, dLng = (b.lng - a.lng) * r;
+  const y = Math.sin(dLng) * Math.cos(b.lat * r), x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 function lerpAngle(a: number, b: number, t: number) {
   const d = ((b - a + 540) % 360) - 180;
