@@ -56,6 +56,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const rim = new THREE.DirectionalLight(new THREE.Color(C.cyan), 0.6); rim.position.set(-60, 40, 80); sc.add(rim);
     // A soft lamp that rides with the camera, so the operative reads against the dark street.
     const follow = new THREE.PointLight(0xdfe9ee, 60, 26, 1.4); sc.add(follow);
+    const fill = new THREE.DirectionalLight(0xcfdde6, 0.8); sc.add(fill); sc.add(fill.target);
     const camera = new THREE.PerspectiveCamera(50, w / h, 0.3, 600);
     const origin = latest.current.scene?.center ?? { lat: latest.current.fix.lat, lng: latest.current.fix.lng };
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1600, 1600), new THREE.MeshStandardMaterial({ color: 0x0e151c, roughness: 1 }));
@@ -93,10 +94,11 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       W.avatar.step(walkPhase, sp);
       // Third person: behind and above, looking a little ahead.
       const rad = THREE.MathUtils.degToRad(yaw);
-      const back = new THREE.Vector3(-Math.sin(rad) * 9.5, 5.2, Math.cos(rad) * 9.5);
+      const back = new THREE.Vector3(-Math.sin(rad) * 7.5 + Math.cos(rad) * 1.7, 4.2, Math.cos(rad) * 7.5 + Math.sin(rad) * 1.7);
       W.camera.position.lerp(pos.clone().add(back), 1 - Math.exp(-dt * 2.5));
       follow.position.copy(W.camera.position).add(new THREE.Vector3(0, 2.5, 0));
-      W.camera.lookAt(pos.clone().add(new THREE.Vector3(Math.sin(rad) * 7, 1.6, -Math.cos(rad) * 7)));
+      W.camera.lookAt(pos.clone().add(new THREE.Vector3(Math.sin(rad) * 3 + Math.cos(rad) * 0.5, 1.3, -Math.cos(rad) * 3 + Math.sin(rad) * 0.5)));
+      fill.position.copy(W.camera.position).add(new THREE.Vector3(0, 3, 0)); fill.target.position.copy(pos); fill.target.updateMatrixWorld();
       // The next-turn arrow bobs; beacons pulse.
       const tt = (nowT - t0) / 1000;
       routeTex.offset.y -= dt * 0.9;
@@ -225,14 +227,14 @@ function loadOperative(): Promise<THREE.Group | null> {
       await asset.downloadAsync();
       const buf = await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer();
       const gltf = await new Promise<any>((res, rej) => new GLTFLoader().parse(buf, "", res, rej));
-      const suit = await loadPhoto(require("../../assets/art/tex-operative.jpg"));
-      suit.flipY = false; // glTF UVs
+      const suit = await loadPhoto(require("../../assets/art/tex-suit.jpg"));
+      suit.flipY = false; suit.repeat.set(6, 6); // tiled tactical weave; the pack's UVs are not needed
       const root: THREE.Group = gltf.scene;
       root.traverse((o: any) => {
         if (!o.isMesh) return;
         o.frustumCulled = false;
         const name: string = o.name ?? "";
-        if (/Retopology/.test(name)) o.material = new THREE.MeshStandardMaterial({ map: suit, color: 0xffffff, emissive: 0x2b3642, emissiveIntensity: 0.9, roughness: 0.65, metalness: 0.1 });
+        if (/Retopology/.test(name)) o.material = new THREE.MeshStandardMaterial({ map: suit, color: 0xffffff, emissive: 0x1a232c, emissiveIntensity: 0.8, roughness: 0.6, metalness: 0.15 });
         else if (/Face\.001/.test(name)) o.material = new THREE.MeshStandardMaterial({ color: 0x1a1f24, roughness: 0.3 });
         else o.material = new THREE.MeshStandardMaterial({ color: 0x0b0f13, roughness: 0.9 });
       });
@@ -472,25 +474,67 @@ function dressOperative(prev: Avatar, model: THREE.Group, color: string): Avatar
     b.quaternion.premultiply(pinv.multiply(tmpQ).multiply(pw));
   };
   const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
-  // The hat rides on the head bone.
-  const felt = new THREE.MeshStandardMaterial({ color: 0x0c1115, roughness: 0.95 });
-  const hat = new THREE.Group();
-  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.115, 0.13, 16), felt); crown.position.y = 0.09;
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.02, 20), felt); brim.rotation.x = 0.08;
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.108, 0.117, 0.035, 16), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.5 })); band.position.y = 0.04;
-  hat.add(crown, brim, band); group.add(hat);
-  // A knee-length coat over the suit, hung from the hips each frame: the operative's silhouette.
-  const coatMat = new THREE.MeshStandardMaterial({ color: 0x1b2530, roughness: 0.8, emissive: 0x0e151c, emissiveIntensity: 0.6 });
-  // Placed in world metres each frame: the skirt hangs from the hips to the knees, the cape sits on the
-  // shoulders; the arms swing free between them.
+  // The kit, placed from the bones every frame: hood and visor on the head; collar, open long coat and
+  // pack on the chest; belt and pouches on the hips; straps and holster on the thighs; guards on the
+  // forearms; boots on the feet. Teal and violet lamps ride with the figure for the two-tone rim.
+  const tint = new THREE.Color(color);
+  const cloth = new THREE.MeshStandardMaterial({ color: 0x1c252e, roughness: 0.85, emissive: 0x0c131a, emissiveIntensity: 0.6, side: THREE.DoubleSide });
+  const gear = new THREE.MeshStandardMaterial({ color: 0x2a343d, roughness: 0.6, metalness: 0.3, emissive: 0x0d1319, emissiveIntensity: 0.5 });
+  const glow = new THREE.MeshBasicMaterial({ color: new THREE.Color(C.cyan) });
+  const accent = new THREE.MeshStandardMaterial({ color: tint, emissive: tint, emissiveIntensity: 0.7 });
+  // head: hood (sphere with the face open), visor bar, neck gaiter
+  const hood = new THREE.Group();
+  const cowl = new THREE.Mesh(new THREE.SphereGeometry(0.17, 22, 16, Math.PI / 2 + 0.75, Math.PI * 2 - 1.5, 0, Math.PI * 0.64), cloth); cowl.scale.set(1.0, 1.18, 1.12); cowl.position.y = 0.02;
+  const peak = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.2, 10), cloth); peak.position.set(0, 0.1, -0.12); peak.rotation.x = -1.0;
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.03, 0.03), glow); visor.position.set(0, 0.015, 0.135);
+  const visorRim = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.035), gear); visorRim.position.set(0, 0.015, 0.125);
+  const gaiter = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.12, 14), cloth); gaiter.position.set(0, -0.14, 0.01);
+  const visorLight = new THREE.PointLight(new THREE.Color(C.cyan), 1.2, 1.2, 2); visorLight.position.set(0, 0.02, 0.2);
+  hood.add(cowl, peak, visorRim, visor, gaiter, visorLight); group.add(hood);
+  // chest: collar, long open coat (gap at the front), straps, pack
   const coat = new THREE.Group();
-  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 18, 1, true), coatMat); skirt.position.y = -0.42;
-  const cape = new THREE.Mesh(new THREE.SphereGeometry(0.29, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), coatMat); cape.scale.set(1.0, 0.36, 0.62);
-  const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.3, 0.03), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.6 })); lapel.position.set(-0.1, -0.16, 0.2);
-  coatMat.side = THREE.DoubleSide;
-  coat.add(skirt, cape, lapel); group.add(coat);
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.12, 16, 1, true, 0.5, Math.PI * 2 - 1), cloth); collar.position.y = 0.06;
+  const cape = new THREE.Mesh(new THREE.SphereGeometry(0.27, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth); cape.scale.set(1.0, 0.34, 0.6); cape.position.y = -0.02;
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.29, 0.56, 20, 1, true, 0.42, Math.PI * 2 - 0.84), cloth); skirt.position.y = -0.62;
+  const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.02), gear); strapL.position.set(-0.12, -0.22, 0.2); strapL.rotation.z = 0.12;
+  const strapR = strapL.clone(); strapR.position.x = 0.12; strapR.rotation.z = -0.12;
+  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.15), gear); pack.position.set(0, -0.3, -0.24);
+  const packLip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.16), cloth); packLip.position.set(0, -0.08, -0.24);
+  const packStrap = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.17), accent); packStrap.position.set(0, -0.3, -0.24);
+  const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.34, 0.03), accent); lapel.position.set(-0.1, -0.28, 0.25);
+  coat.add(collar, cape, skirt, strapL, strapR, pack, packLip, packStrap, lapel); group.add(coat);
+  // hips: belt and pouches
+  const belt = new THREE.Group();
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.235, 0.022, 8, 28), gear); band.rotation.x = Math.PI / 2;
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.03), gear); buckle.position.set(0, 0, 0.24);
+  for (const [x, z, r] of [[-0.13, 0.2, 0.55], [0.13, 0.2, -0.55], [0.22, -0.08, -1.9], [-0.22, -0.08, 1.9]] as const) { const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.11, 0.05), gear); pouch.position.set(x, -0.06, z); pouch.rotation.y = r; belt.add(pouch); }
+  belt.add(band, buckle); group.add(belt);
+  // limbs: straps and a holster on the thighs, guards on the forearms, boots on the feet
+  const mkStrap = () => { const g = new THREE.Group(); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.014, 6, 20), gear); ring.rotation.x = Math.PI / 2; g.add(ring); return g; };
+  const strapTL = mkStrap(), strapTR = mkStrap();
+  const holster = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.05), gear); holster.position.set(0.07, -0.04, 0.03); strapTR.add(holster);
+  const mkGuard = () => { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.07, 0.2, 12), gear)); return g; };
+  const guardL = mkGuard(), guardR = mkGuard();
+  const mkBoot = () => { const g = new THREE.Group(); const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.2, 12), gear); shaft.position.y = 0.1; const toe = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.07, 0.27), gear); toe.position.set(0, 0.035, 0.05); g.add(shaft, toe); return g; };
+  const bootL = mkBoot(), bootR = mkBoot();
+  group.add(strapTL, strapTR, guardL, guardR, bootL, bootR);
+  // rim lamps: teal left, violet right, both slightly behind
+  const lampT = new THREE.PointLight(new THREE.Color(C.cyan), 4, 4.5, 1.5); lampT.position.set(-1.1, 1.9, -0.6);
+  const lampV = new THREE.PointLight(0x8a3cff, 2.5, 4.5, 1.5); lampV.position.set(1.1, 1.9, -0.6);
+  group.add(lampT, lampV);
   const hip = bone("pelvis") ?? B.spine;
   const chest = B.chest;
+  const footL = bone("foot_l"), footR = bone("foot_r"), handL = bone("hand_l"), handR = bone("hand_r");
+  const wa = new THREE.Vector3(), wb = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), q = new THREE.Quaternion();
+  const place = (o: THREE.Object3D, a: THREE.Object3D | undefined, b: THREE.Object3D | undefined, t: number) => {
+    if (!a || !b) { o.visible = false; return; }
+    a.updateWorldMatrix(true, false); b.updateWorldMatrix(true, false);
+    a.getWorldPosition(wa); b.getWorldPosition(wb);
+    group.worldToLocal(wa); group.worldToLocal(wb);
+    const dir = wb.clone().sub(wa); const len = dir.length(); dir.normalize();
+    o.position.copy(wa).addScaledVector(dir, len * t);
+    q.setFromUnitVectors(up, dir.clone().negate()); o.quaternion.copy(q);
+  };
   return {
     group,
     step: (phase, speed) => {
@@ -511,13 +555,18 @@ function dressOperative(prev: Avatar, model: THREE.Group, color: string): Avatar
       turn(B.chest, Y, Math.sin(phase) * amp * 0.12, true);
       turn(B.head, Y, amp ? 0 : Math.sin(t / 2.3) * 0.4, true);
       model.position.y = amp ? Math.abs(Math.sin(phase)) * (speed > 2.4 ? 0.07 : 0.03) : 0;
-      if (B.head) { B.head.updateWorldMatrix(true, false); B.head.getWorldPosition(v); group.worldToLocal(v); hat.position.copy(v).add(new THREE.Vector3(0, 0.1, 0)); hat.rotation.y = B.head.rotation.y; }
+      if (B.head) { B.head.updateWorldMatrix(true, false); B.head.getWorldPosition(v); group.worldToLocal(v); hood.position.copy(v).add(new THREE.Vector3(0, 0.06, 0)); hood.rotation.y = B.head.rotation.y; }
       if (hip && chest) {
         hip.updateWorldMatrix(true, false); hip.getWorldPosition(v); group.worldToLocal(v); const hy = v.y;
         chest.updateWorldMatrix(true, false); chest.getWorldPosition(v); group.worldToLocal(v); const cy = v.y;
-        coat.position.set(0, cy + 0.08, 0); skirt.position.y = hy - 0.31 - (cy + 0.08); lapel.position.y = (hy + cy) / 2 - (cy + 0.1);
+        coat.position.set(0, cy + 0.2, 0); skirt.position.y = hy - 0.3 - (cy + 0.2);
         coat.rotation.x = speed > 2.4 ? 0.18 : amp ? 0.05 : 0;
+        belt.position.set(0, hy + 0.02, 0);
       }
+      place(strapTL, B.thighL, B.calfL, 0.55); place(strapTR, B.thighR, B.calfR, 0.55);
+      place(guardL, B.foreL, handL, 0.5); place(guardR, B.foreR, handR, 0.5);
+      if (footL) { footL.updateWorldMatrix(true, false); footL.getWorldPosition(v); group.worldToLocal(v); bootL.position.set(v.x, 0, v.z); }
+      if (footR) { footR.updateWorldMatrix(true, false); footR.getWorldPosition(v); group.worldToLocal(v); bootR.position.set(v.x, 0, v.z); }
     },
   };
 }
