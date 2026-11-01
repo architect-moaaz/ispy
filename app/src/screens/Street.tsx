@@ -250,7 +250,7 @@ function loadOperative(): Promise<THREE.Group | null> {
         // Names as GLTFLoader gives them (node names): SuperHero_Male, Eyes, Eyebrows.
         if (/male|retopology|body/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: body, normalMap: normal, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.85, metalness: 0.05, emissive: 0x0a1015, emissiveIntensity: 0.6 });
         else if (/eye(?!brow)/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: eye, roughness: 0.35, metalness: 0 });
-        else o.material = new THREE.MeshStandardMaterial({ map: hair, roughness: 0.82, metalness: 0 });
+        else o.material = new THREE.MeshStandardMaterial({ map: hair, color: 0x241a14, roughness: 0.85, metalness: 0 }); // brows: the hair map tinted dark
       });
       return root;
     } catch (e) { console.warn("[street] operative failed:", (e as Error)?.message ?? e); return null; }
