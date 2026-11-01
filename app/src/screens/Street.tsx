@@ -43,12 +43,16 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const [glError, setGlError] = useState<string | null>(null);
   const [gpu, setGpu] = useState<string | null>(null);
   const framesRef = useRef(0);
-  // If no graphics context arrives within a few seconds, say so: the surface never came up.
+  // Safe mode: the panels mount first and the graphics surface starts on request, so a failure in
+  // the surface cannot take the whole view with it. Each stage is reported to the bureau.
+  const [started, setStarted] = useState(Platform.OS === "web");
   const layoutRef = useRef("unmeasured");
+  useEffect(() => { if (Platform.OS !== "web") report("street.mounted", new Error(`update ${Updates.updateId ?? "embedded"}`)); }, []);
   useEffect(() => {
+    if (!started) return;
     const t = setTimeout(() => { if (!world.current) { const msg = `no GL context after 4 s · view ${layoutRef.current} · update ${Updates.updateId ?? "embedded"} · ${Platform.OS}`; setGlError(msg); report("street.nocontext", new Error(msg)); } }, 4000);
     return () => clearTimeout(t);
-  }, []);
+  }, [started]);
   const gestures = useMemo(() => {
     const pan = Gesture.Pan().minPointers(1).maxPointers(1)
       .onBegin(() => { look.current.start = { ...look.current }; })
@@ -73,6 +77,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const speedRef = useRef(0); speedRef.current = demo ?? speed;
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
+    if (Platform.OS !== "web") report("street.context", new Error(`${gl.drawingBufferWidth}x${gl.drawingBufferHeight}`));
     try { startScene(gl); } catch (e) { setGlError(report("street.start", e)); }
   };
   const startScene = (gl: ExpoWebGLRenderingContext) => {
@@ -204,7 +209,16 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const next = g?.next;
   return (
     <View style={{ flex: 1, backgroundColor: C.ink }}>
-      <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; layoutRef.current = `${Math.round(width)}x${Math.round(height)}`; }} />
+      {started ? (
+        <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; layoutRef.current = `${Math.round(width)}x${Math.round(height)}`; if (Platform.OS !== "web") report("street.layout", new Error(layoutRef.current)); }} />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", padding: 24 }]}>
+          <Text style={s.eyebrow}>3D STREET · SAFE START</Text>
+          <Text style={[s.line, { textAlign: "center", marginTop: 6 }]}>The panels are up. Start the graphics when ready; if the screen goes black after this, the surface is the culprit and the bureau has the report.</Text>
+          <Button title="Start graphics" onPress={() => setStarted(true)} style={{ marginTop: 16, paddingHorizontal: 24 }} />
+          <Button title="Back to map" kind="ghost" onPress={onMap} style={{ marginTop: 8, paddingHorizontal: 24 }} />
+        </View>
+      )}
       <GestureDetector gesture={gestures}><View style={StyleSheet.absoluteFill} collapsable={false} /></GestureDetector>
       {moved && (
         <Pressable onPress={recentre} style={s.recentre} hitSlop={8}><Text style={s.recentreText}>RECENTRE</Text></Pressable>
