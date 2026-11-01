@@ -85,7 +85,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       if (L.scene !== lastScene || photos !== lastPhotos) { lastScene = L.scene; lastPhotos = photos; buildCity(W, L.scene); }
       if (dressed && dressed !== L.build) { dressed = L.build; dress(L.build); }
       const key = `${L.route?.coords.length ?? 0}:${L.target?.lat}:${L.target?.lng}:${L.beacons.map((b) => b.name).join("|")}`;
-      if (key !== lastLive) { lastLive = key; buildLive(W, L.route, L.target, L.beacons); }
+      if (key !== lastLive) { lastLive = key; buildLive(W, L.route, L.target, L.beacons.filter((b) => haversine(b, L.fix) > 6)); } // nothing standing on the operative's own spot
       // Avatar glides to the latest fix; faces the way you are walking (compass when standing still).
       const p = toLocal(W.origin, L.fix);
       pos.lerp(new THREE.Vector3(p.x, 0, p.z), 1 - Math.exp(-dt * 2.2));
@@ -275,7 +275,7 @@ function loadOperative(build: Build): Promise<THREE.Group | null> {
  * from the hips; the hood is the head pushed out with the face cut away. Each shell keeps the body's
  * own skin indices and weights, so it is bound to the same skeleton and moves with every bone.
  */
-function shellOf(body: THREE.SkinnedMesh, keep: (p: THREE.Vector3) => boolean, offset: (p: THREE.Vector3) => number, material: THREE.Material): THREE.SkinnedMesh {
+function shellOf(body: THREE.SkinnedMesh, keep: (p: THREE.Vector3) => boolean, offset: (p: THREE.Vector3) => number, material: THREE.Material, shift?: (p: THREE.Vector3) => [number, number, number]): THREE.SkinnedMesh {
   const g = body.geometry;
   const pos = g.attributes.position, nor = g.attributes.normal, idx = g.index!;
   const n = pos.count, out = new Float32Array(n * 3), ok = new Uint8Array(n);
@@ -283,8 +283,8 @@ function shellOf(body: THREE.SkinnedMesh, keep: (p: THREE.Vector3) => boolean, o
   for (let i = 0; i < n; i++) {
     p.fromBufferAttribute(pos, i); nn.fromBufferAttribute(nor, i);
     ok[i] = keep(p) ? 1 : 0;
-    const o = offset(p);
-    out[i * 3] = p.x + nn.x * o; out[i * 3 + 1] = p.y + nn.y * o; out[i * 3 + 2] = p.z + nn.z * o;
+    const o = offset(p); const sh = shift ? shift(p) : [0, 0, 0];
+    out[i * 3] = p.x + nn.x * o + sh[0]; out[i * 3 + 1] = p.y + nn.y * o + sh[1]; out[i * 3 + 2] = p.z + nn.z * o + sh[2];
   }
   const tris: number[] = [];
   for (let t = 0; t < idx.count; t += 3) { const a = idx.getX(t), b = idx.getX(t + 1), c = idx.getX(t + 2); if (ok[a] && ok[b] && ok[c]) tris.push(a, b, c); }
@@ -305,16 +305,25 @@ function dressCoat(body: THREE.SkinnedMesh, cloth: THREE.Texture) {
   body.geometry.computeBoundingBox();
   const bb = body.geometry.boundingBox!;
   const H = bb.max.y, armX = bb.max.x; // the rig stands in a T-pose: arms out to ±armX
-  const knee = 0.29 * H, hip = 0.52 * H, shoulder = 0.86 * H, chin = 0.885 * H, brow = 0.985 * H;
+  const knee = 0.29 * H, hip = 0.52 * H, shoulder = 0.86 * H, chin = 0.885 * H, eyes = 0.948 * H;
   const mat = new THREE.MeshStandardMaterial({ map: cloth, color: 0xffffff, roughness: 0.92, metalness: 0.02, emissive: 0x0b0e12, emissiveIntensity: 0.5, side: THREE.DoubleSide });
   const coat = shellOf(body,
     (p) => p.y >= knee && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(Math.abs(p.x) < 0.022 && p.z > 0.02 && p.y > hip - 0.05),
     (p) => 0.016 + Math.max(0, hip - p.y) * 0.06 + (p.y > shoulder - 0.06 ? 0.008 : 0),
     mat);
+  // A deep peaked cowl: the head is covered down to the eye line, the front edge pushed forward into a
+  // beak over the eyes so the brow sits in shadow; only nose, mouth and chin show beneath.
   const hood = shellOf(body,
-    (p) => p.y >= chin && !(p.z > 0.015 && p.y < brow + 0.01 && Math.abs(p.x) < 0.115),
-    () => 0.014,
-    mat);
+    (p) => p.y >= chin && !(p.z > 0.012 && p.y < eyes - 0.004 && Math.abs(p.x) < 0.105),
+    (p) => (p.y >= eyes ? 0.022 : 0.014),
+    mat,
+    (p) => {
+      if (p.z < -0.03 || p.y < eyes - 0.01) return [0, 0, 0];
+      const t = Math.max(0, 1 - (p.y - eyes) / (H - eyes)); // 1 at the eye line, 0 at the crown
+      const front = Math.max(0, Math.min(1, (p.z + 0.03) / 0.12)); // only the forward-facing part of the head
+      const k = Math.pow(t, 1.6) * front;
+      return [0, -0.018 * k, 0.06 * k];
+    });
   body.parent!.add(coat, hood);
 }
 
