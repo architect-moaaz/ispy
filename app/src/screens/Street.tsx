@@ -259,9 +259,10 @@ function loadOperative(build: Build): Promise<THREE.Group | null> {
         // Names as GLTFLoader gives them (node names): SuperHero_Male, Eyes, Eyebrows.
         if (/male|retopology|body/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: body, normalMap: normal, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.85, metalness: 0.05, emissive: 0x0a1015, emissiveIntensity: 0.6 });
         else if (/eye(?!brow)/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: eye, roughness: 0.35, metalness: 0 });
-        else o.material = new THREE.MeshStandardMaterial({ map: hair, color: 0x241a14, roughness: 0.85, metalness: 0 }); // brows: the hair map tinted dark
+        else { o.material = new THREE.MeshStandardMaterial({ map: hair, color: 0x241a14, roughness: 0.85, metalness: 0 }); o.visible = false; } // brows sit under the hood; the heavy mesh read as a scowl
       });
       if (bodyMesh) dressCoat(bodyMesh, cloth);
+      root.scale.set(0.94, 1, 0.94); // a touch slimmer than the pack's hero proportions
       return root;
     } catch (e) { console.warn("[street] operative failed:", (e as Error)?.message ?? e); return null; }
   })();
@@ -308,11 +309,11 @@ function dressCoat(body: THREE.SkinnedMesh, cloth: THREE.Texture) {
   const mat = new THREE.MeshStandardMaterial({ map: cloth, color: 0xffffff, roughness: 0.92, metalness: 0.02, emissive: 0x0b0e12, emissiveIntensity: 0.5, side: THREE.DoubleSide });
   const coat = shellOf(body,
     (p) => p.y >= knee && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(Math.abs(p.x) < 0.022 && p.z > 0.02 && p.y > hip - 0.05),
-    (p) => 0.034 + Math.max(0, hip - p.y) * 0.14 + (p.y > shoulder - 0.06 ? 0.018 : 0),
+    (p) => 0.016 + Math.max(0, hip - p.y) * 0.06 + (p.y > shoulder - 0.06 ? 0.008 : 0),
     mat);
   const hood = shellOf(body,
-    (p) => p.y >= chin && !(p.z > 0.025 && p.y < brow && Math.abs(p.x) < 0.1),
-    () => 0.03,
+    (p) => p.y >= chin && !(p.z > 0.015 && p.y < brow + 0.01 && Math.abs(p.x) < 0.115),
+    () => 0.014,
     mat);
   body.parent!.add(coat, hood);
 }
