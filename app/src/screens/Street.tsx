@@ -616,7 +616,7 @@ function makeAvatar(color: string): Avatar {
 interface Stance { armZ: number; armX: number; armY: number; foreX: number; foreY: number; foreZ: number; spineZ: number; spineX: number; chestY: number; headY: number; headZ: number; thighLZ: number; thighRZ: number; calfRX: number; hipShift: number }
 const STANCES: Record<Build, Stance> = {
   f: { armZ: 1.0, armX: 0.3, armY: 0.0, foreX: 0.0, foreY: 0.0, foreZ: -1.5, spineZ: 0.09, spineX: 0.0, chestY: 0.12, headY: 0.18, headZ: -0.08, thighLZ: 0.0, thighRZ: -0.1, calfRX: -0.15, hipShift: 0.04 },
-  m: { armZ: 1.35, armX: 0.5, armY: 0.0, foreX: -1.25, foreY: -1.0, foreZ: 0.0, spineZ: 0.0, spineX: 0.02, chestY: 0.0, headY: 0.0, headZ: 0.0, thighLZ: 0.05, thighRZ: -0.05, calfRX: 0.0, hipShift: 0.0 },
+  m: { armZ: 1.4, armX: 0.42, armY: 0.0, foreX: -1.08, foreY: -1.45, foreZ: 0.0, spineZ: 0.0, spineX: 0.02, chestY: 0.08, headY: 0.06, headZ: 0.0, thighLZ: 0.05, thighRZ: -0.05, calfRX: 0.0, hipShift: 0.0 },
 };
 
 /** Replace the shape-built figure with the rigged human, keeping the ring and the hat, and drive its bones. */
