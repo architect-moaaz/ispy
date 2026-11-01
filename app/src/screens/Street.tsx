@@ -258,7 +258,7 @@ function loadOperative(build: Build): Promise<THREE.Group | null> {
         if (/male|retopology|body/i.test(name) && o.isSkinnedMesh) bodyMesh = o;
         // Names as GLTFLoader gives them (node names): SuperHero_Male, Eyes, Eyebrows.
         if (/male|retopology|body/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: body, normalMap: normal, normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.85, metalness: 0.05, emissive: 0x0a1015, emissiveIntensity: 0.6 });
-        else if (/eye(?!brow)/i.test(name)) o.material = new THREE.MeshStandardMaterial({ map: eye, roughness: 0.35, metalness: 0 });
+        else if (/eye(?!brow)/i.test(name)) { o.material = new THREE.MeshStandardMaterial({ map: eye, roughness: 0.35, metalness: 0 }); o.visible = false; } // under the cowl
         else { o.material = new THREE.MeshStandardMaterial({ map: hair, color: 0x241a14, roughness: 0.85, metalness: 0 }); o.visible = false; } // brows sit under the hood; the heavy mesh read as a scowl
       });
       if (bodyMesh) dressCoat(bodyMesh, cloth);
@@ -305,21 +305,21 @@ function dressCoat(body: THREE.SkinnedMesh, cloth: THREE.Texture) {
   body.geometry.computeBoundingBox();
   const bb = body.geometry.boundingBox!;
   const H = bb.max.y, armX = bb.max.x; // the rig stands in a T-pose: arms out to ±armX
-  const knee = 0.29 * H, hip = 0.52 * H, shoulder = 0.86 * H, chin = 0.885 * H, eyes = 0.948 * H;
+  const knee = 0.29 * H, hip = 0.52 * H, shoulder = 0.86 * H, chin = 0.885 * H, lips = 0.922 * H;
   const mat = new THREE.MeshStandardMaterial({ map: cloth, color: 0xffffff, roughness: 0.92, metalness: 0.02, emissive: 0x0b0e12, emissiveIntensity: 0.5, side: THREE.DoubleSide });
   const coat = shellOf(body,
     (p) => p.y >= knee && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(Math.abs(p.x) < 0.022 && p.z > 0.02 && p.y > hip - 0.05),
     (p) => 0.016 + Math.max(0, hip - p.y) * 0.06 + (p.y > shoulder - 0.06 ? 0.008 : 0),
     mat);
-  // A deep peaked cowl: the head is covered down to the eye line, the front edge pushed forward into a
-  // beak over the eyes so the brow sits in shadow; only nose, mouth and chin show beneath.
+  // A deep peaked cowl: the head is covered down to just above the lips, the front edge pushed forward
+  // into a beak so eyes and nose sit in darkness; only the mouth and chin show beneath.
   const hood = shellOf(body,
-    (p) => p.y >= chin && !(p.z > 0.012 && p.y < eyes - 0.004 && Math.abs(p.x) < 0.105),
-    (p) => (p.y >= eyes ? 0.022 : 0.014),
+    (p) => p.y >= chin && !(p.z > 0.012 && p.y < lips && Math.abs(p.x) < 0.1),
+    (p) => (p.y >= lips ? 0.024 : 0.014),
     mat,
     (p) => {
-      if (p.z < -0.03 || p.y < eyes - 0.01) return [0, 0, 0];
-      const t = Math.max(0, 1 - (p.y - eyes) / (H - eyes)); // 1 at the eye line, 0 at the crown
+      if (p.z < -0.03 || p.y < lips - 0.01) return [0, 0, 0];
+      const t = Math.max(0, 1 - (p.y - lips) / (H - lips)); // 1 at the lip line, 0 at the crown
       const front = Math.max(0, Math.min(1, (p.z + 0.03) / 0.12)); // only the forward-facing part of the head
       const k = Math.pow(t, 1.6) * front;
       return [0, -0.018 * k, 0.06 * k];
