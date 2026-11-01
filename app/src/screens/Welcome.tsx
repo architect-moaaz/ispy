@@ -7,6 +7,7 @@ import { Button, Input, Typed } from "../ui";
 import { FactionEmblem } from "../graphics";
 import { ART } from "../art";
 import type { Player } from "@ispy/shared";
+import { getBuild, loadBuild, setBuild, type Build } from "../prefs";
 
 /**
  * Clearance, step one. The story's last frame (the three on the rooftop) keeps drifting behind
@@ -21,6 +22,9 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [build, setBuildState] = useState<Build>(getBuild());
+  useEffect(() => { loadBuild().then(setBuildState); }, []);
+  const pickBuild = (b: Build) => { setBuildState(b); void setBuild(b); };
   const { width, height } = Dimensions.get("window");
   const drift = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(0)).current;
@@ -69,6 +73,11 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
               {!name && <Animated.View style={{ width: 12, height: 30, backgroundColor: C.cyan, marginLeft: 4, marginBottom: 6, opacity: blink }} />}
             </View>
             <Text style={s.cardSub}>EARTH 686 · SECTOR UNASSIGNED · RANK NONE</Text>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+              {([["f", "Female operative"], ["m", "Male operative"]] as const).map(([b, label]) => (
+                <Button key={b} title={label} kind={build === b ? "primary" : "ghost"} onPress={() => pickBuild(b)} disabled={sending} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
+              ))}
+            </View>
             <Input value={codename} onChangeText={(t) => { setCodename(t); setErr(null); }} placeholder="Type your codename" autoCapitalize="characters" autoCorrect={false} onSubmitEditing={go} editable={!sending} style={{ fontSize: 18, marginTop: 12, marginBottom: 0 }} />
             {err && <Typed style={{ color: C.red, marginTop: 6, marginBottom: 0 }}>{err}</Typed>}
           </View>

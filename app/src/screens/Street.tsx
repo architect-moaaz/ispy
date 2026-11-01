@@ -8,6 +8,7 @@ import { C, F } from "../theme";
 import { Button } from "../ui";
 import type { Fix } from "../location";
 import { fmtM, guide, type WalkingRoute } from "../route";
+import type { Build } from "../prefs";
 
 /**
  * The street in three dimensions: real building footprints raised to their heights, roads laid
@@ -22,14 +23,14 @@ type LL = { lat: number; lng: number };
 
 const ROAD_WIDTH: Record<string, number> = { motorway: 12, trunk: 11, primary: 9, secondary: 7.5, tertiary: 6.5, residential: 5, unclassified: 5, living_street: 4.5, service: 3.5, pedestrian: 4, footway: 1.8, path: 1.5, steps: 1.5, cycleway: 2, track: 2.5 };
 
-export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, onMap, onAR }: {
+export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, build, onMap, onAR }: {
   fix: Fix; course: number | null; heading: number | null; route: WalkingRoute | null; target: (LL & { name: string; radiusM: number }) | null;
-  beacons: Beacon[]; scene: Scene | null; factionColor: string; onMap: () => void; onAR: () => void;
+  beacons: Beacon[]; scene: Scene | null; factionColor: string; build: Build; onMap: () => void; onAR: () => void;
 }) {
   // Everything three.js lives in refs: the render loop reads the latest props without re-creating the scene.
   const world = useRef<{ gl: ExpoWebGLRenderingContext; renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; origin: LL; city: THREE.Group; live: THREE.Group; avatar: Avatar; raf: number } | null>(null);
-  const latest = useRef({ fix, course, heading, route, target, beacons, scene, factionColor });
-  latest.current = { fix, course, heading, route, target, beacons, scene, factionColor };
+  const latest = useRef({ fix, course, heading, route, target, beacons, scene, factionColor, build });
+  latest.current = { fix, course, heading, route, target, beacons, scene, factionColor, build };
   const [speed, setSpeed] = useState(0);
   const [demo, setDemo] = useState<number | null>(null); // tap the gait line to preview walk and run while standing
   const prevFix = useRef<{ f: Fix; t: number } | null>(null);
@@ -65,7 +66,9 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const city = new THREE.Group(); sc.add(city);
     const live = new THREE.Group(); sc.add(live);
     const avatar = makeAvatar(latest.current.factionColor); sc.add(avatar.group);
-    void loadOperative().then((model) => { const W = world.current; if (!W || !model) return; W.avatar = dressOperative(W.avatar, model, latest.current.factionColor); console.log("[street] operative ready"); });
+    let dressed: Build | null = null;
+    const dress = (b: Build) => void loadOperative(b).then((model) => { const W = world.current; if (!W || !model || latest.current.build !== b) return; dressed = b; W.avatar = dressOperative(W.avatar, model, latest.current.factionColor); console.log("[street] operative ready", b); });
+    dress(latest.current.build);
     world.current = { gl, renderer, scene: sc, camera, origin, city, live, avatar, raf: 0 };
     if (Platform.OS === "web") (globalThis as any).__street = world; // inspection in the web preview only
     buildCity(world.current, latest.current.scene);
@@ -80,6 +83,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       const L = latest.current;
       const nowT = Date.now(); const dt = Math.min(0.1, (nowT - last) / 1000); last = nowT;
       if (L.scene !== lastScene || photos !== lastPhotos) { lastScene = L.scene; lastPhotos = photos; buildCity(W, L.scene); }
+      if (dressed && dressed !== L.build) { dressed = L.build; dress(L.build); }
       const key = `${L.route?.coords.length ?? 0}:${L.target?.lat}:${L.target?.lng}:${L.beacons.map((b) => b.name).join("|")}`;
       if (key !== lastLive) { lastLive = key; buildLive(W, L.route, L.target, L.beacons); }
       // Avatar glides to the latest fix; faces the way you are walking (compass when standing still).
@@ -227,21 +231,23 @@ function loadPhotos(): Promise<Photos> {
  * packed as a GLB without its textures; the dark suit texture is applied here through the same
  * loader as the facades. No clips ship with the rig, so the walk is driven on the bones.
  */
-let operativeLoading: Promise<THREE.Group | null> | null = null;
-function loadOperative(): Promise<THREE.Group | null> {
-  if (!operativeLoading) operativeLoading = (async () => {
+const operativeLoading: Partial<Record<Build, Promise<THREE.Group | null>>> = {};
+const MODELS = { m: require("../../assets/models/operative.glb"), f: require("../../assets/models/operative-f.glb") } as const;
+const SUITS = { m: require("../../assets/art/tex-operative-suit.jpg"), f: require("../../assets/art/tex-operative-f-suit.jpg") } as const;
+const NORMALS = { m: require("../../assets/art/tex-operative-normal.jpg"), f: require("../../assets/art/tex-operative-f-normal.jpg") } as const;
+function loadOperative(build: Build): Promise<THREE.Group | null> {
+  if (!operativeLoading[build]) operativeLoading[build] = (async () => {
     try {
-      const asset = Asset.fromModule(require("../../assets/models/operative.glb"));
+      const asset = Asset.fromModule(MODELS[build]);
       await asset.downloadAsync();
       const buf = await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer();
       const gltf = await new Promise<any>((res, rej) => new GLTFLoader().parse(buf, "", res, rej));
-      // The pack's own UV-mapped maps: base colour, normal and roughness for the body, plus eyes and brows.
-      const [body, normal, rough, eye, hair] = await Promise.all([
-        loadPhoto(require("../../assets/art/tex-operative-suit.jpg")), loadPhoto(require("../../assets/art/tex-operative-normal.jpg")),
-        loadPhoto(require("../../assets/art/tex-operative-rough.jpg")), loadPhoto(require("../../assets/art/tex-eye.jpg")), loadPhoto(require("../../assets/art/tex-hair.jpg")),
+      // The suit painted onto the body's own UV layout, the pack's normal map, and the eye and brow maps.
+      const [body, normal, eye, hair] = await Promise.all([
+        loadPhoto(SUITS[build]), loadPhoto(NORMALS[build]), loadPhoto(require("../../assets/art/tex-eye.jpg")), loadPhoto(require("../../assets/art/tex-hair.jpg")),
       ]);
-      for (const t of [body, normal, rough, eye, hair]) { t.flipY = false; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; }
-      normal.colorSpace = THREE.NoColorSpace; rough.colorSpace = THREE.NoColorSpace;
+      for (const t of [body, normal, eye, hair]) { t.flipY = false; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; }
+      normal.colorSpace = THREE.NoColorSpace;
       const root: THREE.Group = gltf.scene;
       root.traverse((o: any) => {
         if (!o.isMesh) return;
@@ -255,7 +261,7 @@ function loadOperative(): Promise<THREE.Group | null> {
       return root;
     } catch (e) { console.warn("[street] operative failed:", (e as Error)?.message ?? e); return null; }
   })();
-  return operativeLoading;
+  return operativeLoading[build]!;
 }
 
 // ---------- geometry ----------

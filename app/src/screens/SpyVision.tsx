@@ -12,6 +12,7 @@ import { Projector, SatMap } from "../SatMap";
 import { walkingRoute, fmtWalk, guide, type WalkingRoute } from "../route";
 import { Guide } from "./Guide";
 import { Street, type Beacon, type Scene } from "./Street";
+import { getBuild, loadBuild, onBuild, type Build } from "../prefs";
 import { ARGuide } from "./ARGuide";
 import { Debrief } from "./Debrief";
 import { ART } from "../art";
@@ -123,6 +124,8 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   }, [fix?.lat, fix?.lng]);
   // Map, 3D street or AR guide. The street scene is fetched per ~110 m cell as you move; the compass runs off-map only.
   const [view, setView] = useState<"map" | "3d" | "ar">("map");
+  const [build, setBuildState] = useState<Build>(getBuild());
+  useEffect(() => { loadBuild().then(setBuildState); return onBuild(setBuildState); }, []);
   const [scene3d, setScene3d] = useState<Scene | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
   useEffect(() => { if (view === "map") return; return watchHeading(setHeading); }, [view]);
@@ -227,7 +230,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   ] : [];
   const target3d = target ? { ...target, name: nav ? nav.targetName : selPoint?.name ?? "the site", radiusM: nav?.approachRadiusM ?? 40 } : null;
   if (view === "3d" && fix && !ar) {
-    return <Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} onMap={() => setView("map")} onAR={() => setView("ar")} />;
+    return <Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} build={build} onMap={() => setView("map")} onAR={() => setView("ar")} />;
   }
   if (view === "ar" && fix && !ar) {
     return <ARGuide fix={fix} heading={heading ?? course} route={route} target={target3d} beacons={beacons} onMap={() => setView("map")} on3D={() => setView("3d")} />;
