@@ -101,6 +101,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     let lastLive = "";
     let yaw = 0, pos = new THREE.Vector3(), t0 = Date.now(), walkPhase = 0, last = Date.now();
     let stillSince = Date.now(), orbit = 0; // 0 behind, 1 round the front: the idle turn
+    let sm = 0; // speed smoothed over time, so nothing in the body snaps when a fix lands
     const loop = () => {
       const W = world.current; if (!W) return;
       const L = latest.current;
@@ -118,8 +119,10 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       yaw = lerpAngle(yaw, want, 1 - Math.exp(-dt * 3));
       W.avatar.group.position.copy(pos);
       W.avatar.group.rotation.y = Math.PI - THREE.MathUtils.degToRad(yaw); // front is +z; north is -z
-      const sp = speedRef.current;
-      walkPhase += dt * (sp < 0.3 ? 0 : sp > 2.4 ? 14 : 8 + sp * 2);
+      const spRaw = speedRef.current;
+      sm += (spRaw - sm) * (1 - Math.exp(-dt * (spRaw > sm ? 2.2 : 1.4)));
+      const sp = sm;
+      walkPhase += dt * (sp < 0.12 ? 0 : 5.5 + sp * 3.2); // cadence rises with speed, no steps
       W.avatar.step(walkPhase, sp);
       // Third person: three-quarter rear while moving. Stand still a couple of seconds and the camera
       // swings round the front to hold on the operative; it swings back the moment you move.
@@ -648,14 +651,17 @@ function dressOperative(prev: Avatar, model: THREE.Group, color: string, build: 
   return {
     group,
     step: (phase, speed) => {
-      const amp = speed < 0.3 ? 0 : speed > 2.4 ? 0.85 : 0.55;
+      const ss = (a: number, b: number, x: number) => { const k = Math.max(0, Math.min(1, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+      const w = ss(0.1, 1.0, speed), r = ss(1.7, 2.7, speed); // walking, running: both ease in
+      const amp = 0.6 * w + 0.3 * r;
       const t = Date.now() / 1000;
       const breathe = Math.sin(t * 1.6) * 0.015;
       group.updateMatrixWorld(true);
-      // How much of the idle stance shows: all of it standing, none once walking properly.
+      // How much of the idle stance shows: all of it standing, easing out as the walk takes over.
       const P: Stance = ((globalThis as any).__street?.current?.pose as Stance | undefined) ?? STANCES[build];
-      const st = Math.max(0, 1 - speed / 0.6);
+      const st = 1 - ss(0.05, 0.55, speed);
       const mv = 1 - st;
+      const sway = Math.sin(phase) * 0.03 * w; // a little side-to-side through the hips
       // arms: the stance when still, hanging and swinging when moving
       turn(B.armL, Z, -(1.25 * mv + P.armZ * st), true); turn(B.armL, X, -Math.sin(phase) * amp * 0.6 - P.armX * st, false); if (P.armY) turn(B.armL, Y, P.armY * st, false);
       turn(B.armR, Z, 1.25 * mv + P.armZ * st, true); turn(B.armR, X, Math.sin(phase) * amp * 0.6 - P.armX * st, false); if (P.armY) turn(B.armR, Y, -P.armY * st, false);
@@ -664,12 +670,12 @@ function dressOperative(prev: Avatar, model: THREE.Group, color: string, build: 
       // legs: thigh swing and knee bends when moving; the stance's weight shift when still
       turn(B.thighL, X, Math.sin(phase) * amp, true); if (P.thighLZ) turn(B.thighL, Z, P.thighLZ * st, false); turn(B.calfL, X, -Math.max(0, -Math.sin(phase)) * amp * 1.3, true);
       turn(B.thighR, X, -Math.sin(phase) * amp, true); if (P.thighRZ) turn(B.thighR, Z, P.thighRZ * st, false); turn(B.calfR, X, -Math.max(0, Math.sin(phase)) * amp * 1.3 + P.calfRX * st, true);
-      // trunk: lean into a run, the stance's tilt when still, breathe, head looks around when idle
-      turn(B.spine, X, (speed > 2.4 ? 0.22 : amp ? 0.06 : 0) + P.spineX * st + breathe, true); if (P.spineZ) turn(B.spine, Z, P.spineZ * st, false);
-      turn(B.chest, Y, Math.sin(phase) * amp * 0.12 + P.chestY * st, true);
-      turn(B.head, Y, (amp ? 0 : Math.sin(t / 2.3) * 0.4) + P.headY * st, true); if (P.headZ) turn(B.head, Z, P.headZ * st, false);
-      model.position.y = amp ? Math.abs(Math.sin(phase)) * (speed > 2.4 ? 0.07 : 0.03) : 0;
-      model.position.x = P.hipShift * st;
+      // trunk: lean eases in with the run, the stance's tilt when still, breathe, head looks around when idle
+      turn(B.spine, X, 0.06 * w + 0.16 * r + P.spineX * st + breathe, true); turn(B.spine, Z, P.spineZ * st + sway, false);
+      turn(B.chest, Y, Math.sin(phase) * amp * 0.14 + P.chestY * st, true);
+      turn(B.head, Y, Math.sin(t / 2.3) * 0.4 * st + P.headY * st - Math.sin(phase) * amp * 0.05, true); if (P.headZ) turn(B.head, Z, P.headZ * st, false);
+      model.position.y = Math.abs(Math.sin(phase)) * (0.03 + 0.04 * r) * w;
+      model.position.x = P.hipShift * st + sway * 0.6;
     },
   };
 }
