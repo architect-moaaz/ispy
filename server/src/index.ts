@@ -331,6 +331,13 @@ app.post("/v1/push/register", async (req) => { registerPushToken(need(req).id, z
 app.post("/v1/push/unregister", async (req) => { unregisterPushToken(need(req).id); return { ok: true }; });
 app.get("/v1/admin/push", async () => ({ ...pushStats(), streamClients: streamClients() }));
 
+app.post("/v1/client-log", async (req) => {
+  const p = need(req);
+  const b = z.object({ where: z.string().max(80), message: z.string().max(600), stack: z.string().max(2000).optional() }).parse(req.body);
+  console.warn(`[client] ${p.codename} ${b.where}: ${b.message}${b.stack ? "\n" + b.stack : ""}`);
+  logEvent("client.error", "player", { where: b.where, message: b.message }, p.id);
+  return { ok: true as const };
+});
 app.get("/v1/scene", async (req) => { need(req); const q = scene.SceneQuery.parse(req.query); return scene.sceneAround(q.lat, q.lng); });
 app.get("/v1/profile/history", async (req) => ({ events: history(need(req).id) }));
 

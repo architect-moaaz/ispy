@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Asset } from "expo-asset";
+import * as FileSystem from "expo-file-system/legacy";
+import { report } from "../diag";
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -37,6 +39,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   // Free look: drag to orbit round the operative, drag up and down for height, pinch for distance.
   const look = useRef({ yaw: 0, pitch: 0, zoom: 1, start: { yaw: 0, pitch: 0, zoom: 1 } });
   const [moved, setMoved] = useState(false);
+  const [glError, setGlError] = useState<string | null>(null);
   const gestures = useMemo(() => {
     const pan = Gesture.Pan().minPointers(1).maxPointers(1)
       .onBegin(() => { look.current.start = { ...look.current }; })
@@ -61,8 +64,11 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const speedRef = useRef(0); speedRef.current = demo ?? speed;
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
+    try { startScene(gl); } catch (e) { setGlError(report("street.start", e)); }
+  };
+  const startScene = (gl: ExpoWebGLRenderingContext) => {
     const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
-    const renderer = new THREE.WebGLRenderer({ canvas: shim(gl, w, h), context: gl as any, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ canvas: shim(gl, w, h), context: gl as any, antialias: Platform.OS === "web" });
     renderer.setSize(w, h, false);
     renderer.setPixelRatio(1);
     renderer.setClearColor(new THREE.Color(C.ink), 1);
@@ -97,13 +103,18 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     buildCity(world.current, latest.current.scene);
     let lastScene = latest.current.scene;
     let lastPhotos = photos;
-    void loadPhotos().catch((e) => { console.warn("[street] photos failed:", e?.message ?? e); photosLoading = null; return null; }).then((p) => { const W = world.current; if (!W || !p) return; console.log("[street] photos ready"); (ground.material as THREE.MeshStandardMaterial).map = p.asphalt; p.asphalt.repeat.set(200, 200); (ground.material as THREE.MeshStandardMaterial).color.set(0x4f5b64); (ground.material as THREE.MeshStandardMaterial).needsUpdate = true; });
+    void loadPhotos().catch((e) => { report("street.photos", e); photosLoading = null; return null; }).then((p) => { const W = world.current; if (!W || !p) return; console.log("[street] photos ready"); (ground.material as THREE.MeshStandardMaterial).map = p.asphalt; p.asphalt.repeat.set(200, 200); (ground.material as THREE.MeshStandardMaterial).color.set(0x4f5b64); (ground.material as THREE.MeshStandardMaterial).needsUpdate = true; });
     let lastLive = "";
     let yaw = 0, pos = new THREE.Vector3(), t0 = Date.now(), walkPhase = 0, last = Date.now();
     let stillSince = Date.now(), orbit = 0; // 0 behind, 1 round the front: the idle turn
     let sm = 0; // speed smoothed over time, so nothing in the body snaps when a fix lands
+    let failed = false;
     const loop = () => {
-      const W = world.current; if (!W) return;
+      const W = world.current; if (!W || failed) return;
+      try { frame(W); } catch (e) { failed = true; setGlError(report("street.frame", e)); return; }
+      W.raf = requestAnimationFrame(loop);
+    };
+    const frame = (W: NonNullable<typeof world.current>) => {
       const L = latest.current;
       const nowT = Date.now(); const dt = Math.min(0.1, (nowT - last) / 1000); last = nowT;
       if (L.scene !== lastScene || photos !== lastPhotos) { lastScene = L.scene; lastPhotos = photos; buildCity(W, L.scene); }
@@ -159,7 +170,6 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       W.live.children.forEach((o: THREE.Object3D) => { if (o.userData.bob) o.position.y = o.userData.baseY + Math.sin(tt * 3) * 0.6; if (o.userData.pulse) { const s = 1 + Math.sin(tt * 2.2) * 0.08; o.scale.set(s, 1, s); } });
       W.renderer.render(W.scene, W.camera);
       W.gl.endFrameEXP();
-      W.raf = requestAnimationFrame(loop);
     };
     world.current.raf = requestAnimationFrame(loop);
   };
@@ -174,6 +184,13 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       <GestureDetector gesture={gestures}><View style={StyleSheet.absoluteFill} collapsable={false} /></GestureDetector>
       {moved && (
         <Pressable onPress={recentre} style={s.recentre} hitSlop={8}><Text style={s.recentreText}>RECENTRE</Text></Pressable>
+      )}
+      {glError && (
+        <View style={[s.top, { top: 140, borderColor: C.red }]}>
+          <Text style={[s.eyebrow, { color: C.red }]}>3D VIEW FAILED ON THIS DEVICE</Text>
+          <Text style={s.line}>{glError}</Text>
+          <Text style={[s.eyebrow, { marginTop: 6 }]}>Reported to the bureau. Use the map or AR guide meanwhile.</Text>
+        </View>
       )}
       <View style={s.top} pointerEvents="none">
         <Text style={s.eyebrow}>STREET VIEW · {scene && !scene.pending ? `${scene.buildings.length} BUILDINGS · ${scene.roads.length} ROADS` : scene?.pending && scene.buildings.length ? `${scene.buildings.length} BUILDINGS · REFRESHING` : "MAPPING THE BLOCK…"}</Text>
@@ -310,7 +327,14 @@ function loadOperative(build: Build): Promise<THREE.Group | null> {
     try {
       const asset = Asset.fromModule(MODELS[build]);
       await asset.downloadAsync();
-      const buf = await (await fetch(asset.localUri ?? asset.uri)).arrayBuffer();
+      let buf: ArrayBuffer;
+      if (Platform.OS === "web") buf = await (await fetch(asset.uri)).arrayBuffer();
+      else {
+        const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: "base64" });
+        const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        buf = bytes.buffer;
+      }
       const gltf = await new Promise<any>((res, rej) => new GLTFLoader().parse(buf, "", res, rej));
       // The suit painted onto the body's own UV layout, the pack's normal map, and the eye and brow maps.
       const [body, normal, eye, hair, cloth] = await Promise.all([
@@ -334,7 +358,7 @@ function loadOperative(build: Build): Promise<THREE.Group | null> {
       if (bodyMesh) dressCoat(bodyMesh, cloth);
       root.scale.set(0.94, 1, 0.94); // a touch slimmer than the pack's hero proportions
       return root;
-    } catch (e) { console.warn("[street] operative failed:", (e as Error)?.message ?? e); return null; }
+    } catch (e) { report("street.operative", e); return null; }
   })();
   return operativeLoading[build]!;
 }

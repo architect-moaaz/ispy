@@ -135,6 +135,7 @@ export const api = {
   archive: () => get<ArchiveView>("/v1/archive"),
   plantDistraction: (targetId: string) => post<PlantResult>("/v1/distractions", { targetId }),
   backchannel: () => get<BackChannelOptions>("/v1/backchannel"),
+  clientLog: (b: { where: string; message: string; stack?: string }) => post<{ ok: true }>("/v1/client-log", b),
   scene: (lat: number, lng: number) => get<import("./screens/Street").Scene>(`/v1/scene?lat=${lat}&lng=${lng}`),
   sendTip: (toFaction: string, kind: "sell" | "plant", refId: string) => post<TipResult>("/v1/backchannel", { toFaction, kind, refId }),
   examine: (id: string) => post<ArchiveActionResult>(`/v1/archive/${id}/examine`),
