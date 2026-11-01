@@ -342,7 +342,7 @@ function loadOperative(build: Build): Promise<THREE.Group | null> {
  * from the hips; the hood is the head pushed out with the face cut away. Each shell keeps the body's
  * own skin indices and weights, so it is bound to the same skeleton and moves with every bone.
  */
-function shellOf(body: THREE.SkinnedMesh, keep: (p: THREE.Vector3) => boolean, offset: (p: THREE.Vector3) => number, material: THREE.Material, shift?: (p: THREE.Vector3) => [number, number, number]): THREE.SkinnedMesh {
+function shellOf(body: THREE.SkinnedMesh, keep: (p: THREE.Vector3) => boolean, offset: (p: THREE.Vector3) => number, material: THREE.Material, shift?: (p: THREE.Vector3) => [number, number, number], floorY?: number): THREE.SkinnedMesh {
   const g = body.geometry;
   const pos = g.attributes.position, nor = g.attributes.normal, idx = g.index!;
   const n = pos.count, out = new Float32Array(n * 3), ok = new Uint8Array(n);
@@ -351,7 +351,7 @@ function shellOf(body: THREE.SkinnedMesh, keep: (p: THREE.Vector3) => boolean, o
     p.fromBufferAttribute(pos, i); nn.fromBufferAttribute(nor, i);
     ok[i] = keep(p) ? 1 : 0;
     const o = offset(p); const sh = shift ? shift(p) : [0, 0, 0];
-    out[i * 3] = p.x + nn.x * o + sh[0]; out[i * 3 + 1] = p.y + nn.y * o + sh[1]; out[i * 3 + 2] = p.z + nn.z * o + sh[2];
+    out[i * 3] = p.x + nn.x * o + sh[0]; out[i * 3 + 1] = Math.max(floorY ?? -Infinity, p.y + nn.y * o + sh[1]); out[i * 3 + 2] = p.z + nn.z * o + sh[2]; // a floor gives a clean level hem
   }
   const tris: number[] = [];
   for (let t = 0; t < idx.count; t += 3) { const a = idx.getX(t), b = idx.getX(t + 1), c = idx.getX(t + 2); if (ok[a] && ok[b] && ok[c]) tris.push(a, b, c); }
@@ -377,9 +377,9 @@ function dressCoat(body: THREE.SkinnedMesh, cloth: THREE.Texture) {
   // Tailored: a few millimetres off the suit through the waist and hips, sleeves close, a wide open
   // front down the chest, mid-thigh hem with just a little swing below the hips, a short standing collar.
   const coat = shellOf(body,
-    (p) => p.y >= hem && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(p.z > 0.02 && p.y > hip && Math.abs(p.x) < (p.y > waist ? 0.05 : 0.03)),
+    (p) => p.y >= hem - 0.07 && p.y <= shoulder && Math.abs(p.x) <= armX * 0.8 && !(p.z > 0.02 && p.y > hip && Math.abs(p.x) < (p.y > waist ? 0.05 : 0.03)),
     (p) => 0.007 + Math.max(0, hip - p.y) * 0.03 + (p.y > shoulder - 0.05 ? 0.01 : 0),
-    mat);
+    mat, undefined, hem);
   // A deep peaked cowl: the head is covered down to just above the lips, the front edge pushed forward
   // into a beak so eyes and nose sit in darkness; only the mouth and chin show beneath.
   const hood = shellOf(body,
