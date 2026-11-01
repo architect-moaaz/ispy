@@ -73,6 +73,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     void loadPhotos().catch((e) => { console.warn("[street] photos failed:", e?.message ?? e); photosLoading = null; return null; }).then((p) => { const W = world.current; if (!W || !p) return; console.log("[street] photos ready"); (ground.material as THREE.MeshStandardMaterial).map = p.asphalt; p.asphalt.repeat.set(200, 200); (ground.material as THREE.MeshStandardMaterial).color.set(0x4f5b64); (ground.material as THREE.MeshStandardMaterial).needsUpdate = true; });
     let lastLive = "";
     let yaw = 0, pos = new THREE.Vector3(), t0 = Date.now(), walkPhase = 0, last = Date.now();
+    let stillSince = Date.now(), orbit = 0; // 0 behind, 1 round the front: the idle turn
     const loop = () => {
       const W = world.current; if (!W) return;
       const L = latest.current;
@@ -92,12 +93,18 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       const sp = speedRef.current;
       walkPhase += dt * (sp < 0.3 ? 0 : sp > 2.4 ? 14 : 8 + sp * 2);
       W.avatar.step(walkPhase, sp);
-      // Third person: behind and above, looking a little ahead.
-      const rad = THREE.MathUtils.degToRad(yaw);
-      const back = new THREE.Vector3(-Math.sin(rad) * 7.5 + Math.cos(rad) * 1.7, 4.2, Math.cos(rad) * 7.5 + Math.sin(rad) * 1.7);
+      // Third person: three-quarter rear while moving. Stand still a couple of seconds and the camera
+      // swings round the front to hold on the operative; it swings back the moment you move.
+      if (sp >= 0.3) stillSince = nowT;
+      const wantOrbit = nowT - stillSince > 2500 ? 1 : 0;
+      orbit += (wantOrbit - orbit) * (1 - Math.exp(-dt * (wantOrbit ? 0.9 : 2.2)));
+      const rad = THREE.MathUtils.degToRad(yaw) + orbit * Math.PI * 0.82;
+      const dist = 7.5 - orbit * 3.2, lift = 4.2 - orbit * 2.3, side = 1.7 - orbit * 0.9;
+      const back = new THREE.Vector3(-Math.sin(rad) * dist + Math.cos(rad) * side, lift, Math.cos(rad) * dist + Math.sin(rad) * side);
       W.camera.position.lerp(pos.clone().add(back), 1 - Math.exp(-dt * 2.5));
       follow.position.copy(W.camera.position).add(new THREE.Vector3(0, 2.5, 0));
-      W.camera.lookAt(pos.clone().add(new THREE.Vector3(Math.sin(rad) * 3 + Math.cos(rad) * 0.5, 1.3, -Math.cos(rad) * 3 + Math.sin(rad) * 0.5)));
+      const aheadX = Math.sin(rad) * (3 - orbit * 2.6) + Math.cos(rad) * 0.5 * (1 - orbit), aheadZ = -Math.cos(rad) * (3 - orbit * 2.6) + Math.sin(rad) * 0.5 * (1 - orbit);
+      W.camera.lookAt(pos.clone().add(new THREE.Vector3(aheadX, 1.3 + orbit * 0.2, aheadZ)));
       fill.position.copy(W.camera.position).add(new THREE.Vector3(0, 3, 0)); fill.target.position.copy(pos); fill.target.updateMatrixWorld();
       // The next-turn arrow bobs; beacons pulse.
       const tt = (nowT - t0) / 1000;
@@ -496,18 +503,18 @@ function dressOperative(prev: Avatar, model: THREE.Group, color: string): Avatar
   const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.12, 16, 1, true, 0.5, Math.PI * 2 - 1), cloth); collar.position.y = 0.06;
   const cape = new THREE.Mesh(new THREE.SphereGeometry(0.27, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), cloth); cape.scale.set(1.0, 0.34, 0.6); cape.position.y = -0.02;
   const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.29, 0.56, 20, 1, true, 0.42, Math.PI * 2 - 0.84), cloth); skirt.position.y = -0.62;
-  const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.02), gear); strapL.position.set(-0.12, -0.22, 0.2); strapL.rotation.z = 0.12;
-  const strapR = strapL.clone(); strapR.position.x = 0.12; strapR.rotation.z = -0.12;
+  const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.4, 0.015), gear); strapL.position.set(-0.11, -0.24, 0.125); strapL.rotation.z = 0.1; strapL.rotation.x = 0.12;
+  const strapR = strapL.clone(); strapR.position.x = 0.11; strapR.rotation.z = -0.1;
   const pack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.15), gear); pack.position.set(0, -0.3, -0.24);
   const packLip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.16), cloth); packLip.position.set(0, -0.08, -0.24);
   const packStrap = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.03, 0.17), accent); packStrap.position.set(0, -0.3, -0.24);
-  const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.34, 0.03), accent); lapel.position.set(-0.1, -0.28, 0.25);
+  const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.3, 0.02), accent); lapel.position.set(-0.07, -0.3, 0.165);
   coat.add(collar, cape, skirt, strapL, strapR, pack, packLip, packStrap, lapel); group.add(coat);
   // hips: belt and pouches
   const belt = new THREE.Group();
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.235, 0.022, 8, 28), gear); band.rotation.x = Math.PI / 2;
-  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.03), gear); buckle.position.set(0, 0, 0.24);
-  for (const [x, z, r] of [[-0.13, 0.2, 0.55], [0.13, 0.2, -0.55], [0.22, -0.08, -1.9], [-0.22, -0.08, 1.9]] as const) { const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.11, 0.05), gear); pouch.position.set(x, -0.06, z); pouch.rotation.y = r; belt.add(pouch); }
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.02, 8, 28), gear); band.rotation.x = Math.PI / 2;
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.03), gear); buckle.position.set(0, 0, 0.2);
+  for (const [x, z, r] of [[-0.12, 0.16, 0.6], [0.12, 0.16, -0.6], [0.19, -0.06, -1.9], [-0.19, -0.06, 1.9]] as const) { const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.11, 0.05), gear); pouch.position.set(x, -0.06, z); pouch.rotation.y = r; belt.add(pouch); }
   belt.add(band, buckle); group.add(belt);
   // limbs: straps and a holster on the thighs, guards on the forearms, boots on the feet
   const mkStrap = () => { const g = new THREE.Group(); const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.014, 6, 20), gear); ring.rotation.x = Math.PI / 2; g.add(ring); return g; };
