@@ -54,7 +54,9 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const framesRef = useRef(0);
   // Safe mode: the panels mount first and the graphics surface starts on request, so a failure in
   // the surface cannot take the whole view with it. Each stage is reported to the bureau.
-  const [started, setStarted] = useState(Platform.OS === "web");
+  // Graphics start with the view. (A manual "Start graphics" step lived here while the release-build
+  // GLView crash was being traced; the cause was R8 stripping expo-gl, fixed in app.json.)
+  const [started] = useState(true);
   const layoutRef = useRef("unmeasured");
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -229,16 +231,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   const next = g?.next;
   return (
     <View style={{ flex: 1, backgroundColor: C.ink }}>
-      {started ? (
-        <GLView style={StyleSheet.absoluteFill} msaaSamples={0} onContextCreate={onContextCreate} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; layoutRef.current = `${Math.round(width)}x${Math.round(height)}`; if (Platform.OS !== "web") report("street.layout", new Error(layoutRef.current)); }} />
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", padding: 24 }]}>
-          <Text style={s.eyebrow}>3D STREET · SAFE START</Text>
-          <Text style={[s.line, { textAlign: "center", marginTop: 6 }]}>The panels are up. Start the graphics when ready; if the screen goes black after this, the surface is the culprit and the bureau has the report.</Text>
-          <Button title="Start graphics" onPress={() => { report("street.starting", new Error(`msaa off · update ${Updates.updateId ?? "embedded"}`)); setTimeout(() => setStarted(true), 400); }} style={{ marginTop: 16, paddingHorizontal: 24 }} />
-          <Button title="Back to map" kind="ghost" onPress={onMap} style={{ marginTop: 8, paddingHorizontal: 24 }} />
-        </View>
-      )}
+      <GLView style={StyleSheet.absoluteFill} msaaSamples={0} onContextCreate={onContextCreate} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; layoutRef.current = `${Math.round(width)}x${Math.round(height)}`; if (Platform.OS !== "web") report("street.layout", new Error(layoutRef.current)); }} />
       {started && <GestureDetector gesture={gestures}><View style={StyleSheet.absoluteFill} collapsable={false} /></GestureDetector>}
       {moved && (
         <Pressable onPress={recentre} style={s.recentre} hitSlop={8}><Text style={s.recentreText}>RECENTRE</Text></Pressable>
