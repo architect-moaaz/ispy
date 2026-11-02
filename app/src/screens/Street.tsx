@@ -210,12 +210,12 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   return (
     <View style={{ flex: 1, backgroundColor: C.ink }}>
       {started ? (
-        <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; layoutRef.current = `${Math.round(width)}x${Math.round(height)}`; if (Platform.OS !== "web") report("street.layout", new Error(layoutRef.current)); }} />
+        <GLView style={StyleSheet.absoluteFill} msaaSamples={0} onContextCreate={onContextCreate} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; layoutRef.current = `${Math.round(width)}x${Math.round(height)}`; if (Platform.OS !== "web") report("street.layout", new Error(layoutRef.current)); }} />
       ) : (
         <View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center", padding: 24 }]}>
           <Text style={s.eyebrow}>3D STREET · SAFE START</Text>
           <Text style={[s.line, { textAlign: "center", marginTop: 6 }]}>The panels are up. Start the graphics when ready; if the screen goes black after this, the surface is the culprit and the bureau has the report.</Text>
-          <Button title="Start graphics" onPress={() => setStarted(true)} style={{ marginTop: 16, paddingHorizontal: 24 }} />
+          <Button title="Start graphics" onPress={() => { report("street.starting", new Error(`msaa off · update ${Updates.updateId ?? "embedded"}`)); setTimeout(() => setStarted(true), 400); }} style={{ marginTop: 16, paddingHorizontal: 24 }} />
           <Button title="Back to map" kind="ghost" onPress={onMap} style={{ marginTop: 8, paddingHorizontal: 24 }} />
         </View>
       )}
