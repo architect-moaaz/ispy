@@ -1,3 +1,30 @@
+diff --git a/node_modules/expo-gl/android/build.gradle b/node_modules/expo-gl/android/build.gradle
+index b99853f..4606043 100644
+--- a/node_modules/expo-gl/android/build.gradle
++++ b/node_modules/expo-gl/android/build.gradle
+@@ -28,6 +28,7 @@ android {
+   defaultConfig {
+     versionCode 31
+     versionName "58.0.4"
++    consumerProguardFiles("proguard-rules.pro")
+ 
+     externalNativeBuild {
+       cmake {
+diff --git a/node_modules/expo-gl/android/proguard-rules.pro b/node_modules/expo-gl/android/proguard-rules.pro
+new file mode 100644
+index 0000000..5a181cb
+--- /dev/null
++++ b/node_modules/expo-gl/android/proguard-rules.pro
+@@ -0,0 +1,9 @@
++# Expo creates the view by reflection. `GLView` extends `TextureView`, so the `ExpoView` rule in expo-modules-core does not match it.
++-keepclassmembers class expo.modules.gl.GLView {
++    public <init>(android.content.Context, expo.modules.kotlin.AppContext);
++}
++
++# `EXGLContextPrepare` in the native code looks up `GLContext.flush()` by name through JNI.
++-keepclassmembers class expo.modules.gl.GLContext {
++    public void flush();
++}
 diff --git a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
 index 082c40f..08c0b5b 100644
 --- a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
