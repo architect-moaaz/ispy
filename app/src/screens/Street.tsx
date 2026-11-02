@@ -219,7 +219,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
           <Button title="Back to map" kind="ghost" onPress={onMap} style={{ marginTop: 8, paddingHorizontal: 24 }} />
         </View>
       )}
-      <GestureDetector gesture={gestures}><View style={StyleSheet.absoluteFill} collapsable={false} /></GestureDetector>
+      {started && <GestureDetector gesture={gestures}><View style={StyleSheet.absoluteFill} collapsable={false} /></GestureDetector>}
       {moved && (
         <Pressable onPress={recentre} style={s.recentre} hitSlop={8}><Text style={s.recentreText}>RECENTRE</Text></Pressable>
       )}
