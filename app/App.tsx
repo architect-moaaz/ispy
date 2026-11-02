@@ -21,6 +21,9 @@ import { Board } from "./src/screens/Board";
 type Tab = "hq" | "duty" | "dossier" | "board" | "profile";
 
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { installGlobalErrorReporting } from "./src/diag";
+
+installGlobalErrorReporting();
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Updates from "expo-updates";
 

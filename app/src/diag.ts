@@ -12,3 +12,20 @@ export function report(where: string, err: unknown): string {
   api.clientLog({ where, message, stack }).catch(() => {});
   return message;
 }
+
+/**
+ * An uncaught error in a release build closes the app before anything is logged. The global handler
+ * reports it first and only then hands over to React Native's own handler, so the server log shows
+ * the last error before an exit. Installed once at startup.
+ */
+export function installGlobalErrorReporting() {
+  const utils = (globalThis as any).ErrorUtils;
+  if (!utils?.setGlobalHandler || utils.__ispyInstalled) return;
+  const previous = utils.getGlobalHandler?.();
+  utils.__ispyInstalled = true;
+  utils.setGlobalHandler((err: unknown, isFatal?: boolean) => {
+    report(isFatal ? "global.fatal" : "global", err);
+    // Give the report a moment to leave the device before the default handler exits the app.
+    setTimeout(() => previous?.(err, isFatal), isFatal ? 1500 : 0);
+  });
+}
