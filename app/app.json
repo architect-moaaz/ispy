@@ -70,6 +70,14 @@
         {
           "cameraPermission": "iSpy a Spy uses the camera only as a live backdrop for the AR view. Nothing is recorded or uploaded."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "# expo-gl ships as a precompiled library without shrink rules; R8 strips the GLView constructor and GLContext.flush (expo/expo#51948)\n-keep class expo.modules.gl.** { *; }"
+          }
+        }
       ]
     ],
     "extra": {

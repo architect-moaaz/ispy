@@ -9,10 +9,6 @@
   "scripts": {
     "server": "npm --workspace server run dev",
     "seed": "npm --workspace server run seed",
-    "app": "npm --workspace app run web",
-    "postinstall": "patch-package"
-  },
-  "devDependencies": {
-    "patch-package": "^8.0.1"
+    "app": "npm --workspace app run web"
   }
 }
