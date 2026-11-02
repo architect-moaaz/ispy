@@ -14,6 +14,15 @@ import type { Fix } from "../location";
 import { fmtM, guide, type WalkingRoute } from "../route";
 import type { Build } from "../prefs";
 
+const NATIVE_GL_ERROR_FILE = `${FileSystem.documentDirectory ?? ""}exgl-error.txt`;
+async function readNativeGlError(): Promise<string | null> {
+  try {
+    const info = await FileSystem.getInfoAsync(NATIVE_GL_ERROR_FILE);
+    if (!info.exists) return null;
+    return (await FileSystem.readAsStringAsync(NATIVE_GL_ERROR_FILE)).trim() || null;
+  } catch { return null; }
+}
+
 /**
  * The street in three dimensions: real building footprints raised to their heights, roads laid
  * flat, parks and water tinted, all from OpenStreetMap through the server. Your operative stands on
@@ -47,10 +56,21 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   // the surface cannot take the whole view with it. Each stage is reported to the bureau.
   const [started, setStarted] = useState(Platform.OS === "web");
   const layoutRef = useRef("unmeasured");
-  useEffect(() => { if (Platform.OS !== "web") report("street.mounted", new Error(`update ${Updates.updateId ?? "embedded"}`)); }, []);
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    report("street.mounted", new Error(`update ${Updates.updateId ?? "embedded"}`));
+    // The patched expo-gl writes an EGL failure here instead of closing the app; a leftover from
+    // an earlier visit is reported once, then cleared.
+    readNativeGlError().then((e) => { if (e) { report("street.nativeError.previous", new Error(e)); FileSystem.deleteAsync(NATIVE_GL_ERROR_FILE, { idempotent: true }).catch(() => {}); } });
+  }, []);
   useEffect(() => {
     if (!started) return;
-    const t = setTimeout(() => { if (!world.current) { const msg = `no GL context after 4 s · view ${layoutRef.current} · update ${Updates.updateId ?? "embedded"} · ${Platform.OS}`; setGlError(msg); report("street.nocontext", new Error(msg)); } }, 4000);
+    const t = setTimeout(async () => {
+      if (world.current) return;
+      const native = await readNativeGlError();
+      const msg = `no GL context after 4 s · view ${layoutRef.current} · update ${Updates.updateId ?? "embedded"} · ${Platform.OS}${native ? ` · native: ${native}` : ""}`;
+      setGlError(msg); report("street.nocontext", new Error(msg));
+    }, 4000);
     return () => clearTimeout(t);
   }, [started]);
   const gestures = useMemo(() => {

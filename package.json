@@ -1,10 +1,18 @@
 {
   "name": "ispy",
   "private": true,
-  "workspaces": ["shared", "server", "app"],
+  "workspaces": [
+    "shared",
+    "server",
+    "app"
+  ],
   "scripts": {
     "server": "npm --workspace server run dev",
     "seed": "npm --workspace server run seed",
-    "app": "npm --workspace app run web"
+    "app": "npm --workspace app run web",
+    "postinstall": "patch-package"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
   }
 }

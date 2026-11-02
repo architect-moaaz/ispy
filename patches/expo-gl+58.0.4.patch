@@ -1,0 +1,98 @@
+diff --git a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
+index 082c40f..08c0b5b 100644
+--- a/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
++++ b/node_modules/expo-gl/android/src/main/java/expo/modules/gl/GLContext.java
+@@ -351,7 +351,12 @@ public class GLContext {
+ 
+     @Override
+     public void run() {
+-      initEGL();
++      try {
++        initEGL();
++      } catch (Throwable t) {
++        recordFailure("initEGL", t);
++        return;
++      }
+ 
+       while (true) {
+         try {
+@@ -360,10 +365,31 @@ public class GLContext {
+           checkEGLError();
+         } catch (InterruptedException e) {
+           break;
++        } catch (Throwable t) {
++          recordFailure("glThread", t);
+         }
+       }
+ 
+-      deinitEGL();
++      try {
++        deinitEGL();
++      } catch (Throwable t) {
++        recordFailure("deinitEGL", t);
++      }
++    }
++
++    // A failure on this thread used to be an uncaught exception, which closes the whole app with no
++    // trace the JS side could read. It is now logged and written to files/exgl-error.txt instead.
++    private void recordFailure(String where, Throwable t) {
++      String msg = where + ": " + t.getClass().getSimpleName() + ": " + t.getMessage();
++      Log.e("EXGL", msg, t);
++      try {
++        Context ctx = mManager.getAppContext().getReactContext();
++        if (ctx != null) {
++          FileOutputStream out = new FileOutputStream(new File(ctx.getFilesDir(), "exgl-error.txt"));
++          out.write(msg.getBytes("UTF-8"));
++          out.close();
++        }
++      } catch (Throwable ignored) {}
+     }
+ 
+     private EGLContext createGLContext(int contextVersion, EGLConfig eglConfig) {
+@@ -387,16 +413,37 @@ public class GLContext {
+       // Find a compatible EGLConfig
+       int[] configsCount = new int[1];
+       EGLConfig[] configs = new EGLConfig[1];
+-      int[] configSpec = {
+-        EGL10.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+-        EGL10.EGL_RED_SIZE, 8, EGL10.EGL_GREEN_SIZE, 8, EGL10.EGL_BLUE_SIZE, 8,
+-        EGL10.EGL_ALPHA_SIZE, 8, EGL10.EGL_DEPTH_SIZE, 16, EGL10.EGL_STENCIL_SIZE, 8,
+-        EGL10.EGL_NONE,
++      int[][] configSpecs = {
++        {
++          EGL10.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
++          EGL10.EGL_RED_SIZE, 8, EGL10.EGL_GREEN_SIZE, 8, EGL10.EGL_BLUE_SIZE, 8,
++          EGL10.EGL_ALPHA_SIZE, 8, EGL10.EGL_DEPTH_SIZE, 16, EGL10.EGL_STENCIL_SIZE, 8,
++          EGL10.EGL_NONE,
++        },
++        {
++          EGL10.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
++          EGL10.EGL_RED_SIZE, 8, EGL10.EGL_GREEN_SIZE, 8, EGL10.EGL_BLUE_SIZE, 8,
++          EGL10.EGL_ALPHA_SIZE, 8, EGL10.EGL_DEPTH_SIZE, 16,
++          EGL10.EGL_NONE,
++        },
++        {
++          EGL10.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
++          EGL10.EGL_RED_SIZE, 8, EGL10.EGL_GREEN_SIZE, 8, EGL10.EGL_BLUE_SIZE, 8,
++          EGL10.EGL_DEPTH_SIZE, 16,
++          EGL10.EGL_NONE,
++        },
++        {
++          EGL10.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
++          EGL10.EGL_NONE,
++        },
+       };
+-      if (!mEGL.eglChooseConfig(mEGLDisplay, configSpec, configs, 1, configsCount)) {
+-        throw new IllegalArgumentException("eglChooseConfig failed " + GLUtils.getEGLErrorString(mEGL.eglGetError()));
+-      } else if (configsCount[0] > 0) {
+-        mEGLConfig = configs[0];
++      for (int[] configSpec : configSpecs) {
++        configsCount[0] = 0;
++        if (mEGL.eglChooseConfig(mEGLDisplay, configSpec, configs, 1, configsCount) && configsCount[0] > 0) {
++          mEGLConfig = configs[0];
++          break;
++        }
++        Log.w("EXGL", "no EGL config for that spec, trying a plainer one (" + GLUtils.getEGLErrorString(mEGL.eglGetError()) + ")");
+       }
+       if (mEGLConfig == null) {
+         throw new RuntimeException("eglConfig not initialized");
