@@ -4,3 +4,6 @@ dist
 .env
 .expo
 *.db-*
+
+# Meshy source models (large, unrigged); see art-source/operatives/README.md
+art-source/operatives/*.glb
