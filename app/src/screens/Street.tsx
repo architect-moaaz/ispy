@@ -13,6 +13,7 @@ import { Button } from "../ui";
 import type { Fix } from "../location";
 import { fmtM, guide, type WalkingRoute } from "../route";
 import { buildOf, type Build, type OperativeId } from "../prefs";
+import type { MotionTracker } from "../motion";
 
 const NATIVE_GL_ERROR_FILE = `${FileSystem.documentDirectory ?? ""}exgl-error.txt`;
 async function readNativeGlError(): Promise<string | null> {
@@ -36,9 +37,9 @@ type LL = { lat: number; lng: number };
 
 const ROAD_WIDTH: Record<string, number> = { motorway: 12, trunk: 11, primary: 9, secondary: 7.5, tertiary: 6.5, residential: 5, unclassified: 5, living_street: 4.5, service: 3.5, pedestrian: 4, footway: 1.8, path: 1.5, steps: 1.5, cycleway: 2, track: 2.5 };
 
-export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, operative, onMap, onAR }: {
+export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, operative, motion, onMap, onAR }: {
   fix: Fix; course: number | null; heading: number | null; route: WalkingRoute | null; target: (LL & { name: string; radiusM: number }) | null;
-  beacons: Beacon[]; scene: Scene | null; factionColor: string; operative: OperativeId; onMap: () => void; onAR: () => void;
+  beacons: Beacon[]; scene: Scene | null; factionColor: string; operative: OperativeId; motion?: MotionTracker; onMap: () => void; onAR: () => void;
 }) {
   // Everything three.js lives in refs: the render loop reads the latest props without re-creating the scene.
   const world = useRef<{ gl: ExpoWebGLRenderingContext; renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; origin: LL; city: THREE.Group; live: THREE.Group; avatar: Avatar; raf: number } | null>(null);
@@ -93,10 +94,16 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const p = prevFix.current;
     if (fix.speedMps != null && fix.speedMps >= 0) setSpeed(fix.speedMps);
     else if (p && t - p.t > 800) setSpeed(haversine(p.f, fix) / ((t - p.t) / 1000));
+    // Tell the step counter what the fix says we moved, so its dead reckoning re-anchors here.
+    if (p && motion) { const lat = ((p.f.lat + fix.lat) / 2) * Math.PI / 180; motion.onFix((fix.lng - p.f.lng) * Math.cos(lat) * 111320, (fix.lat - p.f.lat) * 110540); }
     prevFix.current = { f: fix, t };
   }, [fix.lat, fix.lng]);
   const g = route ? guide(route, fix) : null;
   const speedRef = useRef(0); speedRef.current = demo ?? speed;
+  const demoRef = useRef<number | null>(null); demoRef.current = demo;
+  // The HUD's view of the step counter, refreshed on a slow tick: steps so far, and its speed while it is live.
+  const [sensed, setSensed] = useState<{ steps: number; speed: number | null }>({ steps: 0, speed: null });
+  useEffect(() => { if (!motion) return; const id = setInterval(() => { const M = motion.state; setSensed({ steps: M.steps, speed: M.at && Date.now() - M.at < 1500 && M.steps > 0 ? M.speed : null }); }, 700); return () => clearInterval(id); }, [motion]);
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     if (Platform.OS !== "web") report("street.context", new Error(`${gl.drawingBufferWidth}x${gl.drawingBufferHeight}`));
@@ -178,20 +185,29 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       if (dressed && dressed !== L.operative) { dressed = L.operative; dress(L.operative); }
       const key = `${L.route?.coords.length ?? 0}:${L.target?.lat}:${L.target?.lng}:${L.beacons.map((b) => b.name).join("|")}`;
       if (key !== lastLive) { lastLive = key; buildLive(W, L.route, L.target, L.beacons.filter((b) => haversine(b, L.fix) > 6)); } // nothing standing on the operative's own spot
-      // Avatar glides to the latest fix; faces the way you are walking (compass when standing still).
+      // The phone's step counter, when it is reporting: it knows whether you are moving right now,
+      // how fast your feet fall, which way you face, and how far you have stepped since the last fix.
+      const M = motion?.state; const live = !!(M && M.at && nowT - M.at < 1500 && (M.steps > 0 || M.heading != null));
+      const sensed = live && M!.steps > 0;
+      // Avatar glides to the latest fix, plus the steps taken since it; faces the way you are walking.
       const p = toLocal(W.origin, L.fix);
-      pos.lerp(new THREE.Vector3(p.x, 0, p.z), 1 - Math.exp(-dt * 2.2));
-      // Face the way you are walking; standing still, the compass; with neither, along the route.
+      const tx = p.x + (sensed ? M!.east : 0), tz = p.z - (sensed ? M!.north : 0); // north is -z
+      pos.lerp(new THREE.Vector3(tx, 0, tz), 1 - Math.exp(-dt * 2.2));
+      // Face the way you are walking; standing still, the compass (gyro-steadied when the sensors run);
+      // with neither, along the route.
       const along = L.route ? (() => { const gg = guide(L.route, L.fix); const to = gg.next ?? L.target; return to ? bearingLL(L.fix, to) : null; })() : L.target ? bearingLL(L.fix, L.target) : null;
-      const want = L.heading != null && (speedRef.current < 0.6 || L.course == null) ? L.heading : L.course ?? L.heading ?? along ?? 0;
+      const compass = live && M!.heading != null ? M!.heading : L.heading;
+      const want = compass != null && (speedRef.current < 0.6 || L.course == null) ? compass : L.course ?? compass ?? along ?? 0;
       yaw = lerpAngle(yaw, want, 1 - Math.exp(-dt * 3));
       W.avatar.group.position.copy(pos);
       W.avatar.group.rotation.y = Math.PI - THREE.MathUtils.degToRad(yaw); // front is +z; north is -z
-      const spRaw = speedRef.current;
-      sm += (spRaw - sm) * (1 - Math.exp(-dt * (spRaw > sm ? 2.2 : 1.4)));
+      // Speed: the step counter when it is live (it stops the instant you do), else GPS; a preview overrides both.
+      const spRaw = demoRef.current ?? (sensed ? M!.speed : speedRef.current);
+      sm += (spRaw - sm) * (1 - Math.exp(-dt * (spRaw > sm ? (sensed ? 4 : 2.2) : (sensed ? 3 : 1.4))));
       const sp = sm;
-      walkPhase += dt * (sp < 0.12 ? 0 : 5.5 + sp * 3.2); // cadence rises with speed, no steps
-      W.avatar.step(walkPhase, sp);
+      const cadence = sensed && demoRef.current == null ? M!.cadence : 0;
+      walkPhase += dt * (cadence ? cadence * Math.PI : sp < 0.12 ? 0 : 5.5 + sp * 3.2); // a step per half cycle when the phone counts them
+      W.avatar.step(walkPhase, sp, cadence);
       // Third person: three-quarter rear while moving. Stand still a couple of seconds and the camera
       // swings round the front to hold on the operative; it swings back the moment you move.
       if (sp >= 0.3) stillSince = nowT;
@@ -234,7 +250,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
   };
   useEffect(() => () => { const W = world.current; if (W) { cancelAnimationFrame(W.raf); W.renderer.dispose(); } }, []);
 
-  const shown = demo ?? speed;
+  const shown = demo ?? sensed.speed ?? speed;
   const gait = shown < 0.3 ? "Standing" : shown > 2.4 ? "Running" : "Walking";
   const next = g?.next;
   return (
@@ -262,7 +278,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       <View style={s.bottom}>
         <Pressable onPress={() => setDemo((d) => (d == null ? 1.3 : d < 2 ? 3.2 : null))} hitSlop={8}>
           <Text style={[s.eyebrow, { color: C.dim, fontSize: 9 }]} numberOfLines={1}>{gpu ?? `WAITING FOR GRAPHICS · update ${Updates.updateId?.slice(0, 8) ?? "embedded"}`}</Text>
-        <Text style={s.eyebrow}>{gait.toUpperCase()} · {shown.toFixed(1)} M/S{heading != null ? ` · ${Math.round(heading)}°` : course != null ? ` · ${Math.round(course)}°` : ""}{demo != null ? " · PREVIEW · TAP TO STOP" : " · TAP TO PREVIEW THE WALK"}</Text>
+        <Text style={s.eyebrow}>{gait.toUpperCase()} · {shown.toFixed(1)} M/S{heading != null ? ` · ${Math.round(heading)}°` : course != null ? ` · ${Math.round(course)}°` : ""}{sensed.steps > 0 ? ` · ${sensed.steps} STEPS` : ""}{demo != null ? " · PREVIEW · TAP TO STOP" : " · TAP TO PREVIEW THE WALK"}</Text>
         </Pressable>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
           <Button title="Map" kind="ghost" onPress={onMap} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
@@ -708,7 +724,8 @@ function buildLive(W: { origin: LL; live: THREE.Group }, route: WalkingRoute | n
   }
 }
 
-interface Avatar { group: THREE.Group; step: (phase: number, speed: number) => void; dispose?: () => void }
+/** `step` runs the figure: `phase` advances half a cycle per step, `speed` in m/s, `cadence` in steps/s when the phone counts them (else 0). */
+interface Avatar { group: THREE.Group; step: (phase: number, speed: number, cadence?: number) => void; dispose?: () => void }
 /**
  * The operative at 1.8 m: knee-length coat over dark trousers, shoulders, a brimmed hat, a lit
  * device in the right hand, the agency colour on the lapel and the ground ring. Limbs pivot at
@@ -797,15 +814,17 @@ function wearRigged(prev: Avatar, rig: Rigged, color: string, build: Build): Ava
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
   return {
     group,
-    step: (_phase, speed) => {
+    step: (_phase, speed, cadence = 0) => {
       const now = Date.now(); const dt = Math.min(0.1, (now - last) / 1000); last = now;
       const ss = (a: number, b: number, x: number) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
       const w = ss(0.1, 1.0, speed), r = ss(1.7, 2.7, speed);
       idle?.setEffectiveWeight(1 - w);
       walk?.setEffectiveWeight(w * (1 - r));
       run?.setEffectiveWeight(r);
-      if (walk) walk.timeScale = w > 0 ? clamp(speed / 1.35, 0.7, 1.5) : 1; // the clip is a 1.35 m/s stride
-      if (run) run.timeScale = r > 0 ? clamp(speed / 3.0, 0.75, 1.4) : 1; // and a 3 m/s run
+      // Pace the clips: to the phone's step rate when it has one (the walk cycle holds two steps in
+      // 1.03 s, the run two in 0.63 s), else to the ground speed (a 1.35 m/s stride, a 3 m/s run).
+      if (walk) walk.timeScale = cadence ? clamp(cadence / 1.94, 0.6, 1.6) : w > 0 ? clamp(speed / 1.35, 0.7, 1.5) : 1;
+      if (run) run.timeScale = cadence ? clamp(cadence / 3.17, 0.7, 1.4) : r > 0 ? clamp(speed / 3.0, 0.75, 1.4) : 1;
       mixer.update(dt);
     },
     dispose: () => { mixer.stopAllAction(); group.remove(lampT, lampV); },

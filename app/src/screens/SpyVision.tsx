@@ -13,6 +13,7 @@ import { walkingRoute, fmtWalk, guide, type WalkingRoute } from "../route";
 import { Guide } from "./Guide";
 import { Street, type Beacon, type Scene } from "./Street";
 import { getOperative, loadOperative, onOperative, type OperativeId } from "../prefs";
+import { createMotionTracker } from "../motion";
 import { ARGuide } from "./ARGuide";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { Debrief } from "./Debrief";
@@ -129,7 +130,9 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   useEffect(() => { loadOperative().then(setOperativeState); return onOperative(setOperativeState); }, []);
   const [scene3d, setScene3d] = useState<Scene | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
-  useEffect(() => { if (view === "map") return; return watchHeading(setHeading); }, [view]);
+  // Off the map, the compass and the phone's motion sensors run: the street and the AR guide read both.
+  const motion = useRef(createMotionTracker()).current;
+  useEffect(() => { if (view === "map") return; motion.start(); const off = watchHeading((d) => { setHeading(d); motion.feedHeading(d); }); return () => { off(); motion.stop(); }; }, [view]);
   const cell = fix ? `${fix.lat.toFixed(3)},${fix.lng.toFixed(3)}` : "";
   useEffect(() => {
     if (view !== "3d" || !fix) return;
@@ -231,7 +234,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   ] : [];
   const target3d = target ? { ...target, name: nav ? nav.targetName : selPoint?.name ?? "the site", radiusM: nav?.approachRadiusM ?? 40 } : null;
   if (view === "3d" && fix && !ar) {
-    return <ErrorBoundary where="3D street" onBack={() => setView("map")}><Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} operative={operative} onMap={() => setView("map")} onAR={() => setView("ar")} /></ErrorBoundary>;
+    return <ErrorBoundary where="3D street" onBack={() => setView("map")}><Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} operative={operative} motion={motion} onMap={() => setView("map")} onAR={() => setView("ar")} /></ErrorBoundary>;
   }
   if (view === "ar" && fix && !ar) {
     return <ErrorBoundary where="AR guide" onBack={() => setView("map")}><ARGuide fix={fix} heading={heading ?? course} route={route} target={target3d} beacons={beacons} onMap={() => setView("map")} on3D={() => setView("3d")} /></ErrorBoundary>;
