@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
 import type { Faction, Player, SkillKey, TitleEntry, ToolkitResponse } from "@ispy/shared";
 import { api, setToken } from "../api";
-import { getBuild, loadBuild, setBuild, type Build } from "../prefs";
+import { getOperative, loadOperative, setOperative, type OperativeId } from "../prefs";
+import { OperativePicker } from "../operatives";
 import { ART } from "../art";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Kicker, Label, Meter, Panel, Screen, Surface, Typed } from "../ui";
@@ -23,8 +24,8 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
   useEffect(() => { loadKit(); }, [player.xp, player.credits]);
   const craft = async (tool: string) => { try { const r = await api.craft(tool); setKitMsg(r.ok ? `Crafted. You now hold ${r.qty}.` : r.reason ?? "No."); await loadKit(); } catch (e: any) { setKitMsg(e.message); } };
   const color = factionColor(player.factionId);
-  const [build, setBuildState] = useState<Build>(getBuild());
-  useEffect(() => { loadBuild().then(setBuildState); }, []);
+  const [operative, setOperativeState] = useState<OperativeId>(getOperative());
+  useEffect(() => { loadOperative().then(setOperativeState); }, []);
 
   return (
     <Screen>
@@ -93,12 +94,8 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
         ))}
       </Panel>
       <Surface pad={14} style={{ marginTop: 10 }}>
-        <Label>Operative build · 3D street</Label>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-          {([["f", "Female"], ["m", "Male"]] as const).map(([b, label]) => (
-            <Button key={b} title={label} kind={build === b ? "primary" : "ghost"} onPress={() => { setBuildState(b); void setBuild(b); }} style={{ flex: 1, marginTop: 0, paddingVertical: 9 }} />
-          ))}
-        </View>
+        <Label>Operative · 3D street</Label>
+        <View style={{ marginTop: 6 }}><OperativePicker value={operative} onChange={(id) => { setOperativeState(id); void setOperative(id); }} accent={color} /></View>
       </Surface>
       <Button title="Sign out" kind="ghost" onPress={async () => { await setToken(null); onSignOut(); }} />
     </Screen>

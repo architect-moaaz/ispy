@@ -12,7 +12,7 @@ import { C, F } from "../theme";
 import { Button } from "../ui";
 import type { Fix } from "../location";
 import { fmtM, guide, type WalkingRoute } from "../route";
-import type { Build } from "../prefs";
+import { buildOf, type Build, type OperativeId } from "../prefs";
 
 const NATIVE_GL_ERROR_FILE = `${FileSystem.documentDirectory ?? ""}exgl-error.txt`;
 async function readNativeGlError(): Promise<string | null> {
@@ -36,14 +36,14 @@ type LL = { lat: number; lng: number };
 
 const ROAD_WIDTH: Record<string, number> = { motorway: 12, trunk: 11, primary: 9, secondary: 7.5, tertiary: 6.5, residential: 5, unclassified: 5, living_street: 4.5, service: 3.5, pedestrian: 4, footway: 1.8, path: 1.5, steps: 1.5, cycleway: 2, track: 2.5 };
 
-export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, build, onMap, onAR }: {
+export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, operative, onMap, onAR }: {
   fix: Fix; course: number | null; heading: number | null; route: WalkingRoute | null; target: (LL & { name: string; radiusM: number }) | null;
-  beacons: Beacon[]; scene: Scene | null; factionColor: string; build: Build; onMap: () => void; onAR: () => void;
+  beacons: Beacon[]; scene: Scene | null; factionColor: string; operative: OperativeId; onMap: () => void; onAR: () => void;
 }) {
   // Everything three.js lives in refs: the render loop reads the latest props without re-creating the scene.
   const world = useRef<{ gl: ExpoWebGLRenderingContext; renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; origin: LL; city: THREE.Group; live: THREE.Group; avatar: Avatar; raf: number } | null>(null);
-  const latest = useRef({ fix, course, heading, route, target, beacons, scene, factionColor, build });
-  latest.current = { fix, course, heading, route, target, beacons, scene, factionColor, build };
+  const latest = useRef({ fix, course, heading, route, target, beacons, scene, factionColor, operative });
+  latest.current = { fix, course, heading, route, target, beacons, scene, factionColor, operative };
   const [speed, setSpeed] = useState(0);
   const [demo, setDemo] = useState<number | null>(null); // tap the gait line to preview walk and run while standing
   // Free look: drag to orbit round the operative, drag up and down for height, pinch for distance.
@@ -144,9 +144,17 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const city = new THREE.Group(); sc.add(city);
     const live = new THREE.Group(); sc.add(live);
     const avatar = makeAvatar(latest.current.factionColor); sc.add(avatar.group);
-    let dressed: Build | null = null;
-    const dress = (b: Build) => void loadOperative(b).then((model) => { const W = world.current; if (!W || !model || latest.current.build !== b) return; dressed = b; W.avatar = dressOperative(W.avatar, model, latest.current.factionColor, b); console.log("[street] operative ready", b); });
-    dress(latest.current.build);
+    // The chosen operative: a rigged Meshy body with its own clips, or, if that cannot be loaded,
+    // the Quaternius body of the same build dressed and driven on its bones.
+    let dressed: OperativeId | null = null;
+    const dress = (id: OperativeId) => void loadRigged(id).then(async (rig) => {
+      const W = world.current; if (!W || latest.current.operative !== id) return;
+      if (rig) { dressed = id; W.avatar.dispose?.(); W.avatar = wearRigged(W.avatar, rig, latest.current.factionColor, buildOf(id)); console.log("[street] operative ready", id); return; }
+      const model = await loadOperative(buildOf(id));
+      const W2 = world.current; if (!W2 || !model || latest.current.operative !== id) return;
+      dressed = id; W2.avatar.dispose?.(); W2.avatar = dressOperative(W2.avatar, model, latest.current.factionColor, buildOf(id)); console.log("[street] operative fallback ready", id);
+    });
+    dress(latest.current.operative);
     world.current = { gl, renderer, scene: sc, camera, origin, city, live, avatar, raf: 0 };
     if (Platform.OS === "web") (globalThis as any).__street = world; // inspection in the web preview only
     buildCity(world.current, latest.current.scene);
@@ -167,7 +175,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
       const L = latest.current;
       const nowT = Date.now(); const dt = Math.min(0.1, (nowT - last) / 1000); last = nowT;
       if (L.scene !== lastScene || photos !== lastPhotos) { lastScene = L.scene; lastPhotos = photos; buildCity(W, L.scene); }
-      if (dressed && dressed !== L.build) { dressed = L.build; dress(L.build); }
+      if (dressed && dressed !== L.operative) { dressed = L.operative; dress(L.operative); }
       const key = `${L.route?.coords.length ?? 0}:${L.target?.lat}:${L.target?.lng}:${L.beacons.map((b) => b.name).join("|")}`;
       if (key !== lastLive) { lastLive = key; buildLive(W, L.route, L.target, L.beacons.filter((b) => haversine(b, L.fix) > 6)); } // nothing standing on the operative's own spot
       // Avatar glides to the latest fix; faces the way you are walking (compass when standing still).
@@ -374,19 +382,85 @@ const operativeLoading: Partial<Record<Build, Promise<THREE.Group | null>>> = {}
 const MODELS = { m: require("../../assets/models/operative.glb"), f: require("../../assets/models/operative-f.glb") } as const;
 const SUITS = { m: require("../../assets/art/tex-operative-suit.jpg"), f: require("../../assets/art/tex-operative-f-suit.jpg") } as const;
 const NORMALS = { m: require("../../assets/art/tex-operative-normal.jpg"), f: require("../../assets/art/tex-operative-f-normal.jpg") } as const;
+/** A bundled binary asset as an ArrayBuffer: fetched on the web, read back through the file system natively. */
+async function readAssetBuffer(mod: any): Promise<ArrayBuffer> {
+  const asset = Asset.fromModule(mod);
+  await asset.downloadAsync();
+  if (Platform.OS === "web") return (await fetch(asset.uri)).arrayBuffer();
+  const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: "base64" });
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+/**
+ * The ten Meshy operatives: image-to-3D bodies remeshed to ~20k triangles, auto-rigged on a Mixamo
+ * skeleton and exported with Idle, Walking and Running clips (~1.5 MB each, 1K JPEG maps beside them). They
+ * arrive dressed, so nothing is grown on them here; they are scaled to the build's height, stood on
+ * the pavement, and their clips are blended by walking speed.
+ */
+const RIGGED: Record<OperativeId, any> = {
+  f1: require("../../assets/art/operatives/f1.glb"), f2: require("../../assets/art/operatives/f2.glb"), f3: require("../../assets/art/operatives/f3.glb"),
+  f4: require("../../assets/art/operatives/f4.glb"), f5: require("../../assets/art/operatives/f5.glb"),
+  m1: require("../../assets/art/operatives/m1.glb"), m2: require("../../assets/art/operatives/m2.glb"), m3: require("../../assets/art/operatives/m3.glb"),
+  m4: require("../../assets/art/operatives/m4.glb"), m5: require("../../assets/art/operatives/m5.glb"),
+};
+// Their maps travel beside the mesh rather than inside it: GLTFLoader turns embedded images into Blobs,
+// which React Native cannot make from an ArrayBuffer, while expo-asset uploads a JPEG straight to the GPU.
+const MAPS: Record<OperativeId, { color: any; normal: any; mr: any }> = {
+  f1: { color: require("../../assets/art/operatives/f1-color.jpg"), normal: require("../../assets/art/operatives/f1-normal.jpg"), mr: require("../../assets/art/operatives/f1-mr.jpg") },
+  f2: { color: require("../../assets/art/operatives/f2-color.jpg"), normal: require("../../assets/art/operatives/f2-normal.jpg"), mr: require("../../assets/art/operatives/f2-mr.jpg") },
+  f3: { color: require("../../assets/art/operatives/f3-color.jpg"), normal: require("../../assets/art/operatives/f3-normal.jpg"), mr: require("../../assets/art/operatives/f3-mr.jpg") },
+  f4: { color: require("../../assets/art/operatives/f4-color.jpg"), normal: require("../../assets/art/operatives/f4-normal.jpg"), mr: require("../../assets/art/operatives/f4-mr.jpg") },
+  f5: { color: require("../../assets/art/operatives/f5-color.jpg"), normal: require("../../assets/art/operatives/f5-normal.jpg"), mr: require("../../assets/art/operatives/f5-mr.jpg") },
+  m1: { color: require("../../assets/art/operatives/m1-color.jpg"), normal: require("../../assets/art/operatives/m1-normal.jpg"), mr: require("../../assets/art/operatives/m1-mr.jpg") },
+  m2: { color: require("../../assets/art/operatives/m2-color.jpg"), normal: require("../../assets/art/operatives/m2-normal.jpg"), mr: require("../../assets/art/operatives/m2-mr.jpg") },
+  m3: { color: require("../../assets/art/operatives/m3-color.jpg"), normal: require("../../assets/art/operatives/m3-normal.jpg"), mr: require("../../assets/art/operatives/m3-mr.jpg") },
+  m4: { color: require("../../assets/art/operatives/m4-color.jpg"), normal: require("../../assets/art/operatives/m4-normal.jpg"), mr: require("../../assets/art/operatives/m4-mr.jpg") },
+  m5: { color: require("../../assets/art/operatives/m5-color.jpg"), normal: require("../../assets/art/operatives/m5-normal.jpg"), mr: require("../../assets/art/operatives/m5-mr.jpg") },
+};
+const HEIGHT: Record<Build, number> = { m: 1.8, f: 1.7 };
+interface Rigged { scene: THREE.Group; clips: THREE.AnimationClip[] }
+const riggedLoading: Partial<Record<OperativeId, Promise<Rigged | null>>> = {};
+function loadRigged(id: OperativeId): Promise<Rigged | null> {
+  if (!riggedLoading[id]) riggedLoading[id] = (async () => {
+    try {
+      const [buf, color, normal, mr] = await Promise.all([readAssetBuffer(RIGGED[id]), loadPhoto(MAPS[id].color), loadPhoto(MAPS[id].normal), loadPhoto(MAPS[id].mr)]);
+      for (const tx of [color, normal, mr]) { tx.flipY = false; tx.wrapS = tx.wrapT = THREE.ClampToEdgeWrapping; } // glTF UV origin
+      // All three stay in NoColorSpace: an sRGB colour map asks expo-gl for an SRGB8_ALPHA8 upload it cannot
+      // do from an Asset (GL_INVALID_OPERATION on Android); the suit maps of the fallback body never set one either.
+      color.colorSpace = THREE.NoColorSpace; normal.colorSpace = THREE.NoColorSpace; mr.colorSpace = THREE.NoColorSpace;
+      const gltf = await new Promise<any>((res, rej) => new GLTFLoader().parse(buf, "", res, rej));
+      const root: THREE.Group = gltf.scene;
+      root.updateMatrixWorld(true);
+      const box = new THREE.Box3();
+      root.traverse((o: any) => {
+        if (!o.isMesh) return;
+        o.frustumCulled = false; // the bind-pose bounds do not follow the bones
+        o.geometry.computeBoundingBox();
+        box.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (!(m instanceof THREE.MeshStandardMaterial)) continue;
+          m.map = color; m.normalMap = normal; m.roughnessMap = mr; m.metalnessMap = mr; m.needsUpdate = true; // glTF packs roughness in G, metal in B, as three expects
+          m.side = THREE.FrontSide; // closed meshes; the exporter marks them double-sided
+          m.metalness = Math.min(m.metalness, 0.35); // no environment map here, so bare metal would read as black
+          m.emissive = new THREE.Color(0x0a1015); m.emissiveIntensity = 0.5; // lift the dark cloth under the night sky
+        }
+      });
+      const height = box.max.y - box.min.y;
+      const k = height > 0.5 ? HEIGHT[buildOf(id)] / height : 1;
+      root.scale.setScalar(k);
+      root.position.y = -box.min.y * k; // soles on the pavement
+      return { scene: root, clips: gltf.animations ?? [] };
+    } catch (e) { report("street.rigged", e); return null; }
+  })();
+  return riggedLoading[id]!;
+}
+
 function loadOperative(build: Build): Promise<THREE.Group | null> {
   if (!operativeLoading[build]) operativeLoading[build] = (async () => {
     try {
-      const asset = Asset.fromModule(MODELS[build]);
-      await asset.downloadAsync();
-      let buf: ArrayBuffer;
-      if (Platform.OS === "web") buf = await (await fetch(asset.uri)).arrayBuffer();
-      else {
-        const b64 = await FileSystem.readAsStringAsync(asset.localUri ?? asset.uri, { encoding: "base64" });
-        const bin = atob(b64); const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        buf = bytes.buffer;
-      }
+      const buf = await readAssetBuffer(MODELS[build]);
       const gltf = await new Promise<any>((res, rej) => new GLTFLoader().parse(buf, "", res, rej));
       // The suit painted onto the body's own UV layout, the pack's normal map, and the eye and brow maps.
       const [body, normal, eye, hair, cloth] = await Promise.all([
@@ -634,7 +708,7 @@ function buildLive(W: { origin: LL; live: THREE.Group }, route: WalkingRoute | n
   }
 }
 
-interface Avatar { group: THREE.Group; step: (phase: number, speed: number) => void }
+interface Avatar { group: THREE.Group; step: (phase: number, speed: number) => void; dispose?: () => void }
 /**
  * The operative at 1.8 m: knee-length coat over dark trousers, shoulders, a brimmed hat, a lit
  * device in the right hand, the agency colour on the lapel and the ground ring. Limbs pivot at
@@ -697,6 +771,46 @@ const STANCES: Record<Build, Stance> = {
   f: { armZ: 0.9, armX: 0.35, armY: 0.0, foreX: 0.0, foreY: 0.0, foreZ: 1.55, spineZ: 0.05, spineX: 0.0, chestY: 0.08, headY: 0.1, headZ: -0.04, thighLZ: 0.08, thighRZ: -0.1, calfRX: -0.08, hipShift: 0.02 },
   m: { armZ: 1.4, armX: 0.42, armY: 0.0, foreX: -1.08, foreY: -1.45, foreZ: 0.0, spineZ: 0.0, spineX: 0.02, chestY: 0.08, headY: 0.06, headZ: 0.0, thighLZ: 0.05, thighRZ: -0.05, calfRX: 0.0, hipShift: 0.0 },
 };
+
+/**
+ * Replace the figure with a Meshy operative and run its clips: idle when standing, walking and
+ * running blended in as the speed rises, each clip paced to the ground speed so the feet do not slide.
+ */
+function wearRigged(prev: Avatar, rig: Rigged, color: string, build: Build): Avatar {
+  const group = prev.group;
+  for (const o of [...group.children]) if (!o.userData.keep) group.remove(o);
+  group.add(rig.scene);
+  const find = (re: RegExp) => rig.clips.find((c) => re.test(c.name));
+  const idleClip = find(/idle/i) ?? rig.clips[0];
+  const walkClip = (build === "f" && find(/walking_woman/i)) || find(/^walking$/i) || find(/walk/i) || idleClip;
+  const runClip = find(/run/i) ?? walkClip;
+  const mixer = new THREE.AnimationMixer(rig.scene);
+  const act = (clip: THREE.AnimationClip | undefined, weight: number) => {
+    if (!clip) return null;
+    const a = mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat, Infinity); a.enabled = true; a.setEffectiveWeight(weight); a.play(); return a;
+  };
+  const idle = act(idleClip, 1), walk = act(walkClip, 0), run = act(runClip, 0);
+  const lampT = new THREE.PointLight(new THREE.Color(C.cyan), 4, 4.5, 1.5); lampT.position.set(-1.1, 1.9, -0.6);
+  const lampV = new THREE.PointLight(0x8a3cff, 2.5, 4.5, 1.5); lampV.position.set(1.1, 1.9, -0.6);
+  group.add(lampT, lampV);
+  let last = Date.now();
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  return {
+    group,
+    step: (_phase, speed) => {
+      const now = Date.now(); const dt = Math.min(0.1, (now - last) / 1000); last = now;
+      const ss = (a: number, b: number, x: number) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
+      const w = ss(0.1, 1.0, speed), r = ss(1.7, 2.7, speed);
+      idle?.setEffectiveWeight(1 - w);
+      walk?.setEffectiveWeight(w * (1 - r));
+      run?.setEffectiveWeight(r);
+      if (walk) walk.timeScale = w > 0 ? clamp(speed / 1.35, 0.7, 1.5) : 1; // the clip is a 1.35 m/s stride
+      if (run) run.timeScale = r > 0 ? clamp(speed / 3.0, 0.75, 1.4) : 1; // and a 3 m/s run
+      mixer.update(dt);
+    },
+    dispose: () => { mixer.stopAllAction(); group.remove(lampT, lampV); },
+  };
+}
 
 /** Replace the shape-built figure with the rigged human, keeping the ring and the hat, and drive its bones. */
 function dressOperative(prev: Avatar, model: THREE.Group, color: string, build: Build): Avatar {
