@@ -790,7 +790,28 @@ const STANCES: Record<Build, Stance> = {
 };
 
 /**
- * Replace the figure with a Meshy operative and run its clips: idle when standing, walking and
+ * Standing poses for the Meshy rigs. Meshy's "Idle" clip is a slouch (knees bent, arms hanging
+ * forward), so when the operative stands still the bones are posed here instead: turns of each
+ * Mixamo bone about model-space axes (X right, Y up, Z forward; radians) applied to the bind pose,
+ * with a breath, a slow look-around and a weight sway laid on top. Hers is a contrapposto: weight
+ * on the left leg, right hip out, right hand on the hip, left arm loose. His is square-shouldered,
+ * arms folded, chin up. The walk clips blend in over these as the speed rises.
+ */
+type V3 = [number, number, number];
+interface RigPose { shift: number; hips: V3; spine: V3; chest: V3; head: V3; armL: V3; armR: V3; foreL: V3; foreR: V3; handL: V3; handR: V3; thighL: V3; thighR: V3; calfL: V3; calfR: V3; footL: V3; footR: V3 }
+// The arm angles were solved in the web preview against the f1 and m1 rigs (hand and elbow targets in
+// model space); the other eight share the skeleton and proportions closely enough to reuse them.
+const RIG_POSES: Record<Build, RigPose> = {
+  f: { shift: 0.05, hips: [0, 0.15, 0.1], spine: [-0.05, 0, -0.07], chest: [-0.03, 0.06, -0.04], head: [0.02, -0.12, 0.05],
+    armL: [-0.06, -0.19, -0.33], armR: [0.92, 0.57, 0.2], foreL: [0.13, -0.13, -0.25], foreR: [-0.35, 0.9, 0.55], handL: [0, 0, 0], handR: [0, 0, 0],
+    thighL: [0, 0, -0.1], thighR: [-0.1, 0.15, -0.28], calfL: [0, 0, 0], calfR: [0.3, 0, 0], footL: [0, 0, 0], footR: [-0.15, -0.35, 0] },
+  m: { shift: 0.02, hips: [0, 0.08, 0.04], spine: [-0.04, 0, 0], chest: [-0.03, 0, 0], head: [-0.05, 0.1, -0.03],
+    armL: [0.3, -1.35, -0.75], armR: [-0.6, 0.67, 0.79], foreL: [-1.65, -0.35, 0.85], foreR: [-1.11, 0.89, -0.75], handL: [0, 0, 0], handR: [0, 0, 0],
+    thighL: [0, 0, 0.08], thighR: [0, 0, -0.12], calfL: [0, 0, 0], calfR: [0, 0, 0], footL: [0, 0.15, 0], footR: [0, -0.15, 0] },
+};
+
+/**
+ * Replace the figure with a Meshy operative and run its clips: the pose above when standing, walking and
  * running blended in as the speed rises, each clip paced to the ground speed so the feet do not slide.
  */
 function wearRigged(prev: Avatar, rig: Rigged, color: string, build: Build): Avatar {
@@ -798,15 +819,41 @@ function wearRigged(prev: Avatar, rig: Rigged, color: string, build: Build): Ava
   for (const o of [...group.children]) if (!o.userData.keep) group.remove(o);
   group.add(rig.scene);
   const find = (re: RegExp) => rig.clips.find((c) => re.test(c.name));
-  const idleClip = find(/idle/i) ?? rig.clips[0];
-  const walkClip = (build === "f" && find(/walking_woman/i)) || find(/^walking$/i) || find(/walk/i) || idleClip;
+  const walkClip = (build === "f" && find(/walking_woman/i)) || find(/^walking$/i) || find(/walk/i) || rig.clips[0];
   const runClip = find(/run/i) ?? walkClip;
   const mixer = new THREE.AnimationMixer(rig.scene);
   const act = (clip: THREE.AnimationClip | undefined, weight: number) => {
     if (!clip) return null;
     const a = mixer.clipAction(clip); a.setLoop(THREE.LoopRepeat, Infinity); a.enabled = true; a.setEffectiveWeight(weight); a.play(); return a;
   };
-  const idle = act(idleClip, 1), walk = act(walkClip, 0), run = act(runClip, 0);
+  // No idle action: with the walk and run at weight 0 the mixer settles the bones back to the bind pose,
+  // and the standing pose is laid over that.
+  const walk = act(walkClip, 0), run = act(runClip, 0);
+  // The Mixamo bones (GLTFLoader strips the "mixamorig:" prefix's colon).
+  const bones = new Map<string, THREE.Bone>();
+  rig.scene.traverse((o) => { if ((o as THREE.Bone).isBone) bones.set(o.name.replace(/^mixamorig:?/, ""), o as THREE.Bone); });
+  const B = { hips: bones.get("Hips"), spine: bones.get("Spine"), chest: bones.get("Spine2"), head: bones.get("Head"), armL: bones.get("LeftArm"), armR: bones.get("RightArm"), foreL: bones.get("LeftForeArm"), foreR: bones.get("RightForeArm"), handL: bones.get("LeftHand"), handR: bones.get("RightHand"), thighL: bones.get("LeftUpLeg"), thighR: bones.get("RightUpLeg"), calfL: bones.get("LeftLeg"), calfR: bones.get("RightLeg"), footL: bones.get("LeftFoot"), footR: bones.get("RightFoot") };
+  const rest = new Map<THREE.Object3D, THREE.Quaternion>();
+  for (const b of Object.values(B)) if (b) rest.set(b, b.quaternion.clone());
+  const tmpQ = new THREE.Quaternion(), pw = new THREE.Quaternion(), pinv = new THREE.Quaternion(), mixed = new THREE.Quaternion(), axis = new THREE.Vector3();
+  const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), Z = new THREE.Vector3(0, 0, 1);
+  // Rotate a bone about a model-space axis by `angle`, whatever its local frame: local = P⁻¹ · R · P · local.
+  const turn = (b: THREE.Object3D, ax: THREE.Vector3, angle: number) => {
+    if (!angle || !b.parent) return;
+    b.parent.updateWorldMatrix(true, false);
+    b.parent.getWorldQuaternion(pw); pinv.copy(pw).invert();
+    axis.copy(ax).applyQuaternion(group.quaternion).normalize();
+    tmpQ.setFromAxisAngle(axis, angle);
+    b.quaternion.premultiply(pinv.multiply(tmpQ).multiply(pw));
+  };
+  // Pose one bone: from its bind rotation, the three turns, then blended against what the clips left by `k`.
+  const pose = (b: THREE.Object3D | undefined, v: V3, k: number, dx = 0, dy = 0, dz = 0) => {
+    if (!b) return;
+    mixed.copy(b.quaternion);
+    b.quaternion.copy(rest.get(b)!);
+    turn(b, X, v[0] + dx); turn(b, Y, v[1] + dy); turn(b, Z, v[2] + dz);
+    if (k < 1) b.quaternion.copy(mixed.slerp(b.quaternion, k));
+  };
   const lampT = new THREE.PointLight(new THREE.Color(C.cyan), 4, 4.5, 1.5); lampT.position.set(-1.1, 1.9, -0.6);
   const lampV = new THREE.PointLight(0x8a3cff, 2.5, 4.5, 1.5); lampV.position.set(1.1, 1.9, -0.6);
   group.add(lampT, lampV);
@@ -818,7 +865,6 @@ function wearRigged(prev: Avatar, rig: Rigged, color: string, build: Build): Ava
       const now = Date.now(); const dt = Math.min(0.1, (now - last) / 1000); last = now;
       const ss = (a: number, b: number, x: number) => { const k = clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); };
       const w = ss(0.1, 1.0, speed), r = ss(1.7, 2.7, speed);
-      idle?.setEffectiveWeight(1 - w);
       walk?.setEffectiveWeight(w * (1 - r));
       run?.setEffectiveWeight(r);
       // Pace the clips: to the phone's step rate when it has one (the walk cycle holds two steps in
@@ -826,6 +872,19 @@ function wearRigged(prev: Avatar, rig: Rigged, color: string, build: Build): Ava
       if (walk) walk.timeScale = cadence ? clamp(cadence / 1.94, 0.6, 1.6) : w > 0 ? clamp(speed / 1.35, 0.7, 1.5) : 1;
       if (run) run.timeScale = cadence ? clamp(cadence / 3.17, 0.7, 1.4) : r > 0 ? clamp(speed / 3.0, 0.75, 1.4) : 1;
       mixer.update(dt);
+      // Standing: the pose, all of it when still, easing out as the walk takes over.
+      const st = 1 - ss(0.05, 0.55, speed);
+      if (st > 0) {
+        const P: RigPose = ((globalThis as any).__street?.current?.pose as RigPose | undefined) ?? RIG_POSES[build];
+        const t = now / 1000, breathe = Math.sin(t * 1.6) * 0.012, look = Math.sin(t / 2.3) * 0.22, sway = Math.sin(t / 2.9) * 0.008;
+        group.updateMatrixWorld(true);
+        pose(B.hips, P.hips, st); pose(B.spine, P.spine, st, breathe, 0, sway); pose(B.chest, P.chest, st, breathe * 0.6); pose(B.head, P.head, st, 0, look, -sway);
+        pose(B.armL, P.armL, st, 0, 0, breathe * 0.5); pose(B.foreL, P.foreL, st); pose(B.handL, P.handL, st);
+        pose(B.armR, P.armR, st, 0, 0, -breathe * 0.5); pose(B.foreR, P.foreR, st); pose(B.handR, P.handR, st);
+        pose(B.thighL, P.thighL, st); pose(B.calfL, P.calfL, st); pose(B.footL, P.footL, st);
+        pose(B.thighR, P.thighR, st); pose(B.calfR, P.calfR, st); pose(B.footR, P.footR, st);
+        rig.scene.position.x = (P.shift + sway * 0.5) * st;
+      } else rig.scene.position.x = 0;
     },
     dispose: () => { mixer.stopAllAction(); group.remove(lampT, lampV); },
   };
