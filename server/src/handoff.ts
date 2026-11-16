@@ -6,6 +6,7 @@ import { distanceM } from "./geo.ts";
 import { pick } from "./puzzles.ts";
 import { hhmm } from "./clock.ts";
 import { H } from "./hooks.ts";
+import { tierFor } from "./trust.ts";
 
 /**
  * The Handoff. A parcel that needs two operatives of one agency who never meet. A walks to a site,
@@ -42,8 +43,9 @@ export function sweep() {
     if (h.drop_mission_id) { run("UPDATE missions SET state='expired', outcome='expired' WHERE id=? AND state IN ('pool','offered')", h.drop_mission_id); run("UPDATE offers SET state='expired' WHERE mission_id=? AND state='open'", h.drop_mission_id); }
   }
   // Candidates: deployed in the field, same agency and sector, no live handoff, none in the last three hours.
-  const rows = all<{ player_id: string; area_id: string; faction_id: FactionId; last_lat: number; last_lng: number }>(
-    "SELECT p.player_id, p.area_id, pl.faction_id, p.last_lat, p.last_lng FROM presence p JOIN players pl ON pl.id=p.player_id WHERE p.mode='field' AND p.expires_at>? AND p.area_id IS NOT NULL AND p.last_lat IS NOT NULL AND pl.faction_id IS NOT NULL", now());
+  const rows = all<{ player_id: string; area_id: string; faction_id: FactionId; last_lat: number; last_lng: number; trust: number }>(
+    "SELECT p.player_id, p.area_id, pl.faction_id, p.last_lat, p.last_lng, pl.trust FROM presence p JOIN players pl ON pl.id=p.player_id WHERE p.mode='field' AND p.expires_at>? AND p.area_id IS NOT NULL AND p.last_lat IS NOT NULL AND pl.faction_id IS NOT NULL", now())
+    .filter((r) => tierFor(r.trust).handoffs); // nobody hands a parcel to an operative the chief is watching
   const groups = new Map<string, typeof rows>();
   for (const r of rows) { const k = `${r.area_id}:${r.faction_id}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
   for (const [, g] of groups) {

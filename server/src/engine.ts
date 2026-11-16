@@ -25,6 +25,7 @@ import * as hunt from "./hunt.ts";
 import * as territory from "./territory.ts";
 import * as handoff from "./handoff.ts";
 import { H } from "./hooks.ts";
+import * as standing from "./trust.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 /** Once an operative finishes a site, it is theirs (their agency's) for this long: nobody else can run it. */
@@ -79,10 +80,11 @@ export function playerView(id: string): Player {
   const fieldToday = get<{ n: number }>(
     "SELECT COUNT(*) n FROM missions WHERE assignee_id=? AND mode='field' AND state='completed' AND completed_at >= ?", id, today,
   )!.n;
+  const tier = standing.tierFor(p.trust);
   return {
-    id: p.id, codename: p.codename, factionId: p.faction_id, rank: r.rank, xp: p.xp, trust: p.trust,
+    id: p.id, codename: p.codename, factionId: p.faction_id, rank: r.rank, xp: p.xp, trust: p.trust, tier: standing.tierView(p.trust),
     skills: { observation: 0.5, reasoning: 0.5, cipher: 0.5, cooperation: 0.5, ...parse<Partial<Skills>>(p.skills, {}) },
-    walkRadiusM: Math.round(r.walkM * param("walkScale")), dailyFieldCap: r.cap, fieldToday, credits: p.credits ?? 0,
+    walkRadiusM: Math.round(r.walkM * param("walkScale")), dailyFieldCap: Math.max(1, Math.round(r.cap * tier.capMult) + tier.capBonus), fieldToday, credits: p.credits ?? 0,
   };
 }
 export const playerFaction = (p: Player): Faction | null => (p.factionId ? factionById(p.factionId) : null);
@@ -212,6 +214,7 @@ export function boardNotice(player: Player, pres: Presence | null): string | nul
   if (!pres) return null;
   if (!pres.areaId) return "You are outside a play area.";
   if (!get("SELECT 1 FROM targets WHERE area_id=? AND state='ACTIVE'", pres.areaId)) return "Surveying this sector for public ground. Orders follow in a moment.";
+  if (standing.tierFor(player.trust).openOffers === 0) return "Your chief has stopped sending orders. Walk the morning wire and work the desk until your standing is back above 15.";
   if (pres.mode === "field" && player.fieldToday >= player.dailyFieldCap) return "Daily field cap reached. Rest, or switch to the intel desk.";
   if (!openTargets(pres.areaId).length) return "Targets are closed for the night. Field play resumes at 06:00.";
   return null;
@@ -314,7 +317,7 @@ const spawnLink: chains.SpawnStep = (chain, step, index) => {
   const id = buildMission(f, area, step.template, "field", targets, plan, `${chain.id}:${index}`, { target, over: { title: step.title, brief: step.brief, reservedFor: chain.player_id }, extraParams: { chainId: chain.id, chainStep: index } })!;
   return id;
 };
-export const startOperation = (playerId: string, theme?: string) => chains.startChain(playerId, spawnLink, theme);
+export const startOperation = (playerId: string, theme?: string) => standing.tierFor(standing.trustOf(playerId)).operations ? chains.startChain(playerId, spawnLink, theme) : null;
 export const startOperationOn = (playerId: string, targets: chains.TargetLite[], shape: TemplateId[], theme?: string, name?: string) => chains.startChainFrom(playerId, spawnLink, targets, shape, theme, name);
 
 /** A crisis mission: presence-verified at the site, in the agency's chosen stance, open to pact allies. */
@@ -398,7 +401,7 @@ function sweepExpiry() {
   run("UPDATE offers SET state='expired' WHERE state='open' AND expires_at<=?", t);
   for (const m of all<MissionRow>("SELECT * FROM missions WHERE state IN ('pool','offered','accepted','active') AND expires_at<=?", t)) {
     run("UPDATE missions SET state='expired', outcome='expired' WHERE id=?", m.id);
-    if (m.assignee_id) logEvent("mission.expired", "authority", { missionId: m.id, title: m.title }, m.assignee_id);
+    if (m.assignee_id) { logEvent("mission.expired", "authority", { missionId: m.id, title: m.title }, m.assignee_id); if (m.state === "active") award(m.assignee_id, 0, -1, `${m.title} ran out`); }
     const link = chains.chainOf(m.params);
     if (link && m.reserved_for) { const r = chains.onLinkLost(m.reserved_for, link.chainId, "link expired", spawnLink); if (r) chiefSay(m.reserved_for, r.say, r.folded ? `operation ${r.name} folded` : `operation ${r.name}: link reissued`, true); }
   }
@@ -446,7 +449,10 @@ export function offersFor(player: Player): OfferCard[] {
   if (!pres || !pres.area_id || !player.factionId || paused()) return [];
   if (activeMission(player, pres.mode)) return [];
   const open = all<OfferRow>("SELECT * FROM offers WHERE player_id=? AND state='open'", player.id);
-  if (open.length < 2) {
+  // Standing decides how much of the board you see: the tier's open-offer count, and which work.
+  const tier = standing.tierFor(player.trust);
+  const slots = tier.openOffers;
+  if (open.length < slots) {
     if (pres.mode === "field" && player.fieldToday >= player.dailyFieldCap) return [];
     const recentTargets = new Set(all<{ target_id: string }>(
       "SELECT target_id FROM missions WHERE assignee_id=? AND completed_at > ?", player.id, new Date(Date.now() - 86_400_000).toISOString()).map((r) => r.target_id));
@@ -460,6 +466,8 @@ export function offersFor(player: Player): OfferCard[] {
     if (!pool.length) { refreshPool(); pool = poolQuery(); }
     const scored = pool.map((m) => {
       const s = summary(m, player, pres);
+      // Below "watched" the chief issues recon and desk work only; a reserved order (the morning wire) still comes through.
+      if (!tier.templates.includes(m.template_id) && m.reserved_for !== player.id) return null;
       if (pres.mode === "field") {
         if (s.walkM == null || (s.walkM > player.walkRadiusM && m.reserved_for !== player.id)) return null;
         if (m.target_id && recentTargets.has(m.target_id) && m.reserved_for !== player.id) return null;
@@ -492,7 +500,7 @@ export function offersFor(player: Player): OfferCard[] {
     const seenTarget = new Set<string>(open.map((o) => get<{ target_id: string | null }>("SELECT target_id FROM missions WHERE id=?", o.mission_id)?.target_id ?? "").filter(Boolean));
     const ownLink = scored.find(({ m }) => m.reserved_for === player.id);
     const distinct = scored.filter(({ m }) => { if (m.reserved_for === player.id) return false; if (!m.target_id) return true; if (seenTarget.has(m.target_id)) return false; seenTarget.add(m.target_id); return true; });
-    const chosen = [...(ownLink ? [ownLink] : []), ...distinct.slice(0, Math.max(0, 2 - open.length - (ownLink ? 1 : 0)))];
+    const chosen = [...(ownLink ? [ownLink] : []), ...distinct.slice(0, Math.max(0, slots - open.length - (ownLink ? 1 : 0)))];
     for (const { m } of chosen) {
       const id = uid();
       run("INSERT INTO offers(id,mission_id,player_id,state,expires_at,created_at) VALUES(?,?,?,?,?,?)",
@@ -548,6 +556,8 @@ export function abandon(player: Player, missionId: string) {
   if (!m) throw new ApiError(404, "no such active mission");
   run("UPDATE missions SET state='cancelled', outcome='abandoned' WHERE id=?", m.id);
   logEvent("mission.abandoned", "player", { missionId: m.id, title: m.title }, player.id);
+  const pr = parse<any>(m.params, {});
+  award(player.id, 0, pr?.wireId || pr?.handoffId ? -2 : -1, `abandoned ${m.title}`);
   const link = chains.chainOf(m.params);
   if (link) { const r = chains.onLinkLost(player.id, link.chainId, "link abandoned", spawnLink); if (r) chiefSay(player.id, r.say, r.folded ? `operation ${r.name} folded` : `operation ${r.name}: link reissued`, true); }
 }
@@ -609,6 +619,7 @@ export function scan(player: Player, missionId: string, body: ScanRequest): Scan
   const { trust, reasons, distance } = verifyFix(player, m, body, t);
   if (trust < 0.4) {
     logEvent("location.flagged", "verifier", { missionId: m.id, reasons }, player.id);
+    award(player.id, 0, -1, "scan could not be verified");
     return { result: "rejected", trustScore: trust, reason: "Location could not be verified." };
   }
   if (distance > t.approach_radius_m) return { result: "too_far", distanceM: Math.round(distance) };
@@ -651,7 +662,7 @@ function makeCipherPrompt(answer: string, seed: string) {
 function complete(player: Player, m: MissionRow, trust: number, distance: number): ScanResponse {
   const f = factionById(m.faction_id);
   let contestOutcome: "won" | "lost" | null = null;
-  let xp = Math.round(m.reward_xp * param("rewardMultiplier"));
+  let xp = Math.round(m.reward_xp * param("rewardMultiplier") * standing.tierFor(player.trust).xpMult);
   if (m.contested_group_id) {
     const rivalDone = get<MissionRow>("SELECT * FROM missions WHERE contested_group_id=? AND id<>? AND state='completed'", m.contested_group_id, m.id);
     contestOutcome = rivalDone ? "lost" : "won";
@@ -827,6 +838,7 @@ function describe(type: string, p: any): string {
     case "handoff.failed": return `Handoff at ${p.target} failed`;
     case "handoff.note": return `${p.from} wrote in your file: “${p.text}”`;
     case "desk_night.solved": return p.allDone ? "Desk night complete" : "Desk night puzzle solved";
+    case "trust.tier": return `Standing ${p.dir === "up" ? "rose" : "fell"} to ${String(p.to).replace("inner", "inner circle")} (trust ${p.trust})`;
     case "reward": { const sgn = (n: number) => `${n > 0 ? "+" : ""}${n}`; const parts = [p.xp ? `${sgn(p.xp)} XP` : null, p.trust ? `${sgn(p.trust)} trust` : null, p.credits ? `${sgn(p.credits)} credits` : null].filter(Boolean); return `${parts.join(", ") || "No change"} · ${p.why}`; }
     case "rank_up": return `Promoted to ${p.to}`;
     case "presence.check_in": return p.mode === "desk" ? "Deployed to the intel desk" : "Deployed to the field";
@@ -875,7 +887,7 @@ export function briefing(player: Player): Briefing {
   return {
     chief: f.chief, chiefName: f.chiefName, factionName: f.name,
     headline: plan?.headline ?? pick(PERSONAS[f.chief].lines.idle, player.id),
-    standing: { rank: player.rank, xp: player.xp, trust: player.trust, nextRankAt: next?.at ?? player.xp },
+    standing: { rank: player.rank, xp: player.xp, trust: player.trust, nextRankAt: next?.at ?? player.xp, tier: player.tier },
     recent: history(player.id, 6).map((h) => h.text),
     today: (() => {
       const areaId = pres?.areaId ?? get<{ area_id: string }>("SELECT area_id FROM missions WHERE assignee_id=? ORDER BY created_at DESC LIMIT 1", player.id)?.area_id ?? get<AreaRow>("SELECT * FROM areas LIMIT 1")!.id;

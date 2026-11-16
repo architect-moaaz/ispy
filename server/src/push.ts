@@ -22,6 +22,7 @@ const WORTH_A_BUZZ: Record<string, (p: any) => { title: string; body: string } |
   "handoff.ready": (p) => ({ title: "Parcel down", body: `It is at ${p.target ?? "the site"}. Forty minutes.` }),
   "handoff.landed": (p) => ({ title: "Handoff landed", body: `${p.partner ?? "Your partner"} carried it home. Paid.` }),
   "handoff.note": (p) => ({ title: "A line in your file", body: `${p.from ?? "Your partner"}: “${p.text ?? ""}”` }),
+  "trust.tier": (p) => p.dir === "down" ? ({ title: "Standing fell", body: `Your chief now has you as ${String(p.to).replace("inner", "inner circle")}. Read the channel.` }) : p.to === "inner" || p.to === "trusted" || p.to === "cleared" ? ({ title: "Standing rose", body: `You are ${String(p.to).replace("inner", "inner circle")} now.` }) : null,
 };
 const PUBLIC_BUZZ: Record<string, (p: any) => { title: string; body: string } | null> = {
   "world_event.published": (p) => ({ title: "New campaign", body: `${p.name} has begun in your sector.` }),

@@ -14,6 +14,7 @@ import * as wire from "./wire.ts";
 import * as hunt from "./hunt.ts";
 import * as territory from "./territory.ts";
 import * as handoff from "./handoff.ts";
+import * as trust from "./trust.ts";
 import * as intrigue from "./intrigue.ts";
 import * as bounties from "./bounties.ts";
 import * as director from "./director.ts";
@@ -217,7 +218,7 @@ class DirectorAgent {
           await crises.sweep();
           rivalry.awardTitles();
           // The five loops: the morning wire, the burn notice, territory, handoffs. Each is a cheap sweep.
-          for (const [name, fn] of [["wire", wire.sweep], ["hunt", hunt.sweep], ["handoff", handoff.sweep]] as const) { try { fn(); } catch (e) { console.warn(`[${name}] sweep failed:`, (e as Error).message); } }
+          for (const [name, fn] of [["wire", wire.sweep], ["hunt", hunt.sweep], ["handoff", handoff.sweep], ["trust", trust.sweep]] as const) { try { fn(); } catch (e) { console.warn(`[${name}] sweep failed:`, (e as Error).message); } }
           try { const t = territory.sweep(); if (t.length) this.note("territory settled", t); } catch (e) { console.warn("[territory] sweep failed:", (e as Error).message); }
           // The archive: keep artifacts lying in every sector with operatives; close deadlocks; let the chiefs deal, steal and spoil.
           for (const a of all<{ area_id: string }>("SELECT DISTINCT area_id FROM presence WHERE mode='field' AND expires_at>? AND area_id IS NOT NULL", now())) archive.seed(a.area_id);

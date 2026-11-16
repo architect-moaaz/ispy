@@ -1,5 +1,6 @@
 import { get, run, logEvent } from "./db.ts";
 import { RANKS } from "./content.ts";
+import { onChange as trustChanged, recoveryBonus } from "./trust.ts";
 
 export function rankFor(xp: number) {
   let r: (typeof RANKS)[number] = RANKS[1];
@@ -10,10 +11,12 @@ export const rankIndex = (rank: string) => Math.max(0, RANKS.findIndex((r) => r.
 
 /** The only place XP, trust and credits change. Logs the reward and any promotion. */
 export function award(playerId: string, xp: number, trust: number, why: string, credits = 0) {
-  const before = get<{ xp: number }>("SELECT xp FROM players WHERE id=?", playerId)!;
+  const before = get<{ xp: number; trust: number }>("SELECT xp, trust FROM players WHERE id=?", playerId)!;
+  trust = recoveryBonus(before.trust, trust); // clean work counts double on the way out of the bottom tiers
   run("UPDATE players SET xp = xp + ?, trust = MIN(100, MAX(0, trust + ?)), credits = MAX(0, credits + ?) WHERE id=?", xp, trust, credits, playerId);
-  const after = get<{ xp: number }>("SELECT xp FROM players WHERE id=?", playerId)!;
+  const after = get<{ xp: number; trust: number }>("SELECT xp, trust FROM players WHERE id=?", playerId)!;
   logEvent("reward", "authority", { xp, trust, credits, why }, playerId);
+  if (after.trust !== before.trust) trustChanged(playerId, before.trust, after.trust);
   const b = rankFor(before.xp).rank, a = rankFor(after.xp).rank;
   if (a !== b) logEvent("rank_up", "authority", { from: b, to: a }, playerId);
 }

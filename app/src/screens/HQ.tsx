@@ -110,8 +110,15 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
 
       <Surface>
         <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <Gauge label="Chief's trust" value={briefing.standing.trust / 100} text={`${briefing.standing.trust}%`} color={color} />
+          <Gauge label="Chief's trust" value={briefing.standing.trust / 100} text={`${briefing.standing.trust}%`} color={color} sub={briefing.standing.tier.name.toUpperCase()} />
           <Gauge label="Next rank" value={briefing.standing.xp / Math.max(1, briefing.standing.nextRankAt)} text={briefing.standing.rank.replace("_", " ")} color={C.cyan} sub={`${briefing.standing.xp} / ${briefing.standing.nextRankAt} XP`} />
+        </View>
+        <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.hair, paddingTop: 8 }}>
+          <Label>Standing · {briefing.standing.tier.name}</Label>
+          <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 13, lineHeight: 18 }}>{briefing.standing.tier.blurb}</Text>
+          {briefing.standing.tier.perks.length > 0 && <Text style={{ color: C.ok, fontFamily: F.typed, fontSize: 12, marginTop: 4 }}>{briefing.standing.tier.perks.map((x) => `+ ${x}`).join("   ")}</Text>}
+          {briefing.standing.tier.limits.length > 0 && <Text style={{ color: C.amber, fontFamily: F.typed, fontSize: 12, marginTop: 2 }}>{briefing.standing.tier.limits.map((x) => `− ${x}`).join("   ")}</Text>}
+          <Text style={{ color: C.dim, fontFamily: F.typed, fontSize: 12, marginTop: 4 }}>{briefing.standing.tier.nextAt != null ? `${briefing.standing.tier.nextName} at ${briefing.standing.tier.nextAt}. ` : "The top of the ladder. "}{briefing.standing.tier.dropAt != null ? `Below ${briefing.standing.tier.dropAt} you drop. ` : ""}Clean scans +2, a desk night or the wire +1, a parcel landed +2. Abandoning −1, a spoofed scan −1, a wrong accusation −5.</Text>
         </View>
         <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: C.hair, paddingTop: 8 }}>
           <Label>Standing orders</Label>

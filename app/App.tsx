@@ -93,7 +93,8 @@ function Shell() {
     const off = onLive((type, data: any) => {
       if (type === "reward" && data?.xp) { setToast(`${data.xp > 0 ? "+" : ""}${data.xp} XP${data.credits ? ` · +${data.credits} CREDITS` : ""}${data.why ? ` · ${String(data.why).toUpperCase()}` : ""}`); setTimeout(() => setToast(null), 5000); }
       if (type === "rank_up" && data?.to) { setToast(`PROMOTED · ${String(data.to).replace("_", " ").toUpperCase()}`); setTimeout(() => setToast(null), 6000); }
-      if (["chief.message", "reward", "rank_up", "presence.check_in", "presence.check_out", "live.open"].includes(type)) refreshMe();
+      if (type === "trust.tier" && data?.to) { setToast(`STANDING ${data.dir === "down" ? "FELL" : "ROSE"} · ${String(data.to).replace("inner", "inner circle").toUpperCase()}`); setTimeout(() => setToast(null), 6000); }
+      if (["chief.message", "reward", "rank_up", "trust.tier", "presence.check_in", "presence.check_out", "live.open"].includes(type)) refreshMe();
       if (type === "admin.paused" || type === "admin.resumed") api.world().then(setWorld).catch(() => {});
     });
     const id = setInterval(refreshMe, 45_000);

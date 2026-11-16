@@ -17,7 +17,7 @@ const TYPES = [
   "presence.check_in", "presence.check_out", "location.flagged",
   "faceoff.started", "faceoff.resolved", "signals.spawned", "cache.spun", "signal.captured", "leak.delivered",
   "wire.sent", "wire.done", "wire.missed", "hunt.started", "hunt.resolved", "hunt.burned", "hunt.close_call", "hunt.warm",
-  "handoff.offered", "handoff.pending", "handoff.ready", "handoff.dropped", "handoff.landed", "handoff.failed", "handoff.note", "desk_night.solved", "territory.report",
+  "handoff.offered", "handoff.pending", "handoff.ready", "handoff.dropped", "handoff.landed", "handoff.failed", "handoff.note", "desk_night.solved", "territory.report", "trust.tier",
 ];
 
 export function onLive(fn: Listener) { listeners.add(fn); return () => { listeners.delete(fn); }; }

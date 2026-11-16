@@ -32,12 +32,15 @@ export interface Player {
   rank: Rank;
   xp: number;
   trust: number; // 0..100
+  tier: TrustTier; // what that trust buys, and costs
   skills: Skills;
   walkRadiusM: number;
   dailyFieldCap: number;
   fieldToday: number;
   credits: number;
 }
+export type TrustTierId = "burned" | "suspect" | "watched" | "cleared" | "trusted" | "inner";
+export interface TrustTier { id: TrustTierId; name: string; blurb: string; min: number; nextAt: number | null; nextName: string | null; dropAt: number | null; perks: string[]; limits: string[]; openOffers: number; xpMult: number }
 
 export interface Area {
   id: string;
@@ -226,7 +229,7 @@ export interface Briefing {
   chiefName: string;
   factionName: string;
   headline: string;
-  standing: { rank: Rank; xp: number; trust: number; nextRankAt: number };
+  standing: { rank: Rank; xp: number; trust: number; nextRankAt: number; tier: TrustTier };
   recent: string[];
   today?: {
     sector: string | null; control: Record<FactionId, number>;

@@ -39,7 +39,7 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
           </View>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 14, borderTopWidth: 1, borderTopColor: C.hair, paddingTop: 12 }}>
-          <Stat label="Chief's trust" value={`${player.trust}%`} />
+          <Stat label="Chief's trust" value={`${player.trust}% · ${player.tier.name}`} />
           <Stat label="Walk radius" value={`${player.walkRadiusM} m`} />
           <Stat label="Field today" value={`${player.fieldToday} of ${player.dailyFieldCap}`} right />
         </View>
