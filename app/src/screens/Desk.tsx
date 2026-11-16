@@ -6,6 +6,7 @@ import { ART } from "../art";
 import { onLive } from "../live";
 import { C, F } from "../theme";
 import { Body, Button, Choice, Display, Dossier, Input, Kicker, Panel, Screen, Spinner, Stamp, Typed, fmtCountdown } from "../ui";
+import { DeskNight } from "./Loops";
 
 export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
   const [kitOpen, setKitOpen] = useState(false);
@@ -118,6 +119,7 @@ export function Desk({ onOffDuty }: { onOffDuty: () => void }) {
           <Text style={{ fontFamily: F.typed, fontSize: 12, color: C.onPaperDim, marginTop: 8 }}>Expires in {fmtCountdown(detail.mission.expiresAt, now)}</Text>
         </Dossier>
       )}
+      <DeskNight />
       {err && <Body style={{ color: C.stamp }}>{err}</Body>}
       <Button title="Stand down" kind="ghost" onPress={onOffDuty} />
     </Screen>

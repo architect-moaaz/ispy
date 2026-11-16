@@ -15,6 +15,9 @@ const TYPES = [
   "case.confirmed", "case.rejected", "case.exposed", "bounty.completed", "bounty.claimed", "bounty.published", "world_event.fragment",
   "world_event.published", "world_event.resolved", "director.dispatch", "admin.paused", "admin.resumed", "contest.formed",
   "presence.check_in", "presence.check_out", "location.flagged",
+  "faceoff.started", "faceoff.resolved", "signals.spawned", "cache.spun", "signal.captured", "leak.delivered",
+  "wire.sent", "wire.done", "wire.missed", "hunt.started", "hunt.resolved", "hunt.burned", "hunt.close_call", "hunt.warm",
+  "handoff.offered", "handoff.pending", "handoff.ready", "handoff.dropped", "handoff.landed", "handoff.failed", "handoff.note", "desk_night.solved", "territory.report",
 ];
 
 export function onLive(fn: Listener) { listeners.add(fn); return () => { listeners.delete(fn); }; }

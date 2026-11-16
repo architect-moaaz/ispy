@@ -19,6 +19,12 @@ import * as rivalry from "./rivalry.ts";
 import * as tools from "./tools.ts";
 import * as archive from "./archive.ts";
 import * as distractions from "./distractions.ts";
+import * as fixes from "./fixes.ts";
+import * as wire from "./wire.ts";
+import * as hunt from "./hunt.ts";
+import * as territory from "./territory.ts";
+import * as handoff from "./handoff.ts";
+import { H } from "./hooks.ts";
 
 export const DEV_SIM = process.env.DEV_SIM === "1";
 /** Once an operative finishes a site, it is theirs (their agency's) for this long: nobody else can run it. */
@@ -31,7 +37,7 @@ export const lockOn = (targetId: string | null) => targetId ? get<LockRow>("SELE
 /** Collaborative work and intel extraction are open to everyone regardless of locks. */
 const exemptFromLocks = (m: { template_id: string; params: string }) => {
   const pr = parse<any>(m.params, {});
-  return m.template_id === "EXTRACTION" || !!pr?.crisisId || !!pr?.heistArtifactId || !!pr?.distractionId || !!pr?.tipId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
+  return m.template_id === "EXTRACTION" || !!pr?.crisisId || !!pr?.heistArtifactId || !!pr?.distractionId || !!pr?.tipId || !!pr?.wireId || !!pr?.handoffId || (Array.isArray(pr?.jointWith) && pr.jointWith.length > 0);
 };
 /** Who holds how many sites in a sector right now. */
 export function sectorControl(areaId: string): Record<FactionId, number> {
@@ -119,6 +125,7 @@ export function checkIn(player: Player, body: { mode: Mode; lat?: number; lng?: 
        expires_at=excluded.expires_at, last_lat=excluded.last_lat, last_lng=excluded.last_lng, last_fix_at=excluded.last_fix_at`,
     player.id, areaId, body.mode, t, exp, lat, lng, lat != null ? t : null);
   logEvent("presence.check_in", "player", { mode: body.mode, areaId, openedSector: opened }, player.id);
+  if (lat != null && lng != null) sawFix(player.id, lat, lng);
   if (opened) void furnishSector(opened);
   return getPresence(player.id)!;
 }
@@ -143,6 +150,7 @@ export function heartbeat(player: Player, body: { lat?: number; lng?: number; si
     const area = areaForPoint(body.lat, body.lng);
     run("UPDATE presence SET expires_at=?, area_id=?, last_lat=?, last_lng=?, last_fix_at=? WHERE player_id=?",
       exp, area?.id ?? null, body.lat, body.lng, now(), player.id);
+    sawFix(player.id, body.lat, body.lng);
   } else {
     run("UPDATE presence SET expires_at=? WHERE player_id=?", exp, player.id);
   }
@@ -226,7 +234,7 @@ const XP: Record<TemplateId, number> = { RECON: 120, DEAD_DROP: 180, EXTRACTION:
 function createMission(f: Faction, areaId: string, template: TemplateId, mode: Mode, target: TargetRow | null, params: Record<string, unknown>, seed: string, over?: { title?: string; brief?: string; reservedFor?: string }) {
   const id = uid();
   // Some packages are locked: the right tool, used on site through the dial, opens them. Never on extractions or crisis work.
-  if (mode === "field" && template !== "EXTRACTION" && !(params as any).crisisId && !(params as any).heistArtifactId && !(params as any).distractionId && !(params as any).lock) {
+  if (mode === "field" && template !== "EXTRACTION" && !(params as any).crisisId && !(params as any).heistArtifactId && !(params as any).distractionId && !(params as any).wireId && !(params as any).handoffId && !(params as any).lock) {
     const lock = tools.rollLock(rand(seed + ":lock"));
     if (lock) params = { ...params, lock };
   }
@@ -417,6 +425,8 @@ function summary(m: MissionRow, p?: Player, pres?: PresenceRow | null): MissionS
     deskLink: link ? { state: link.state as any, fallbackAt: link.started_at ? new Date(Date.parse(link.started_at) + link.fallback_after_s * 1000).toISOString() : "" } : null,
     chain: (() => { const c = chains.chainOf(m.params); return c ? chains.chainSummary(c.chainId) : null; })(),
     heldBy: m.target_id ? lockOn(m.target_id)?.faction_id ?? null : null,
+    handoff: handoff.summaryFor(parse<any>(m.params, {}), p?.id ?? null),
+    wire: !!parse<any>(m.params, {}).wireId,
     lock: tools.lockView(parse<any>(m.params, {}).lock), unlocked: !parse<any>(m.params, {}).lock || !!parse<any>(m.params, {}).unlockedWith,
     crisis: (() => {
       const pr = parse<any>(m.params, {});
@@ -587,6 +597,7 @@ function verifyFix(player: Player, m: MissionRow, body: ScanRequest, t: TargetRo
   const distance = distanceM(body.lat, body.lng, t.lat, t.lng);
   run("INSERT INTO scans(player_id,mission_id,lat,lng,trust,reasons,at) VALUES(?,?,?,?,?,?,?)", player.id, m.id, body.lat, body.lng, trust, json(reasons), now());
   run("UPDATE presence SET last_lat=?, last_lng=?, last_fix_at=? WHERE player_id=?", body.lat, body.lng, now(), player.id);
+  sawFix(player.id, body.lat, body.lng);
   return { trust, reasons, distance };
 }
 
@@ -693,6 +704,8 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
     const control = sectorControl(m.area_id);
     logEvent("site.held", "authority", { targetId: m.target_id, target: get<{ name: string }>("SELECT name FROM targets WHERE id=?", m.target_id)?.name, faction: m.faction_id, until, control }, player.id);
   }
+  // Every clean verification at a site is a point toward the week's territory count, locks or not.
+  if (m.target_id) territory.onHeld(m.area_id, m.faction_id);
   if (m.desk_link_id) run("UPDATE desk_links SET state='closed' WHERE id=? AND state<>'fulfilled'", m.desk_link_id);
   logEvent("mission.verified", "authority", { missionId: m.id, title: m.title, template: m.template_id, trust, distance, contestOutcome, flagged }, player.id);
   award(player.id, xp, flagged ? 0 : 2, m.title);
@@ -733,6 +746,9 @@ function complete(player: Player, m: MissionRow, trust: number, distance: number
       chiefSay(player.id, r.say, r.done ? `operation ${r.name} complete` : `operation ${r.name}: next link`, true);
     }
   }
+  // The morning wire and the handoff: a personal order lands, the chief answers in person.
+  if (pr?.wireId) { const w = wire.onVerified(pr.wireId, player.id); if (w) { xp += w.xp; debrief = w.say; chiefSay(player.id, w.say, "morning wire done", true); } }
+  if (pr?.handoffId) { const r = handoff.onVerified(pr, player.id); if (r) { xp += r.xp; debrief = r.say; } }
   if (faceoff) debrief = `First in. ${faceoff.rival} of ${factionById(faceoff.rivalFaction).name} watched you take it. ${debrief}`;
   if (artifact) debrief = `${debrief} Recovered: ${artifact.name}. It is in the archive; nobody else will ever hold it.`;
   if (heist) debrief = `Lifted. ${heist.name} is out of ${factionById(heist.victim).name}'s archive and into ours. ${debrief}`;
@@ -798,6 +814,19 @@ function describe(type: string, p: any): string {
     case "mission.expired": return `Expired: ${p.title}`;
     case "mission.abandoned": return `Abandoned ${p.title}`;
     case "mission.leg_complete": return `Checkpoint ${p.leg} confirmed`;
+    case "wire.sent": return `Morning wire: ${p.target} before ${String(p.deadline).slice(11, 16)}`;
+    case "wire.done": return `Morning wire answered${p.streak >= 2 ? ` — ${p.streak} mornings running` : ""}`;
+    case "wire.missed": return `Morning wire missed: ${p.target}`;
+    case "hunt.burned": return "Burn notice: your file is out for seven days";
+    case "hunt.close_call": return `Someone came close at ${p.at}${p.called ? " and called it" : ""}`;
+    case "hunt.warm": return "Close to the burned operative";
+    case "handoff.offered": return `Handoff: carry to ${p.target}`;
+    case "handoff.dropped": return `Dropped the parcel at ${p.target}`;
+    case "handoff.ready": return `Pickup at ${p.target}, forty minutes`;
+    case "handoff.landed": return `Handoff landed with ${p.partner} at ${p.target}`;
+    case "handoff.failed": return `Handoff at ${p.target} failed`;
+    case "handoff.note": return `${p.from} wrote in your file: “${p.text}”`;
+    case "desk_night.solved": return p.allDone ? "Desk night complete" : "Desk night puzzle solved";
     case "reward": { const sgn = (n: number) => `${n > 0 ? "+" : ""}${n}`; const parts = [p.xp ? `${sgn(p.xp)} XP` : null, p.trust ? `${sgn(p.trust)} trust` : null, p.credits ? `${sgn(p.credits)} credits` : null].filter(Boolean); return `${parts.join(", ") || "No change"} · ${p.why}`; }
     case "rank_up": return `Promoted to ${p.to}`;
     case "presence.check_in": return p.mode === "desk" ? "Deployed to the intel desk" : "Deployed to the field";
@@ -948,3 +977,35 @@ export function worldStatus() {
 }
 
 export const bearing = bearingDeg;
+
+// ---------- lent to the feature modules (wire, hunt, territory, handoff, desk nights) ----------
+/** Every field fix the server sees: the routine log, and the burn notice's proximity check. */
+function sawFix(playerId: string, lat: number, lng: number) {
+  try { fixes.log(playerId, lat, lng); hunt.onFix(playerId, lat, lng); } catch (e) { console.warn("[fixes]", (e as Error).message); }
+}
+/** A reserved field order at a known site with a chief-voiced brief; the pool never shows it to anyone else. */
+export function spawnOrder(o: { factionId: FactionId; areaId: string; template: TemplateId; targetId: string; params: Record<string, unknown>; title: string; brief: string; reservedFor: string; ttlMs: number; rewardXp?: number }): string | null {
+  const target = get<TargetRow>("SELECT * FROM targets WHERE id=?", o.targetId);
+  if (!target) return null;
+  const id = createMission(factionById(o.factionId), o.areaId, o.template, "field", target, o.params, `${o.title}:${o.reservedFor}:${now().slice(0, 13)}`, { title: o.title, brief: o.brief, reservedFor: o.reservedFor });
+  run("UPDATE missions SET expires_at=?, reward_xp=COALESCE(?, reward_xp) WHERE id=?", new Date(Date.now() + o.ttlMs).toISOString(), o.rewardXp ?? null, id);
+  return id;
+}
+/** Hand an operative a mission outright: it becomes their active field order, no offer window. */
+export function assignDirect(playerId: string, missionId: string): boolean {
+  return tx(() => {
+    const m = get<MissionRow>("SELECT * FROM missions WHERE id=? AND state IN ('pool','offered')", missionId);
+    if (!m) return false;
+    if (get("SELECT 1 FROM missions WHERE assignee_id=? AND mode='field' AND state='active'", playerId)) return false;
+    run("UPDATE offers SET state='expired' WHERE mission_id=? AND state='open'", missionId);
+    run("UPDATE offers SET state='declined' WHERE player_id=? AND state='open'", playerId);
+    run("UPDATE missions SET state='active', assignee_id=?, accepted_at=?, version=version+1 WHERE id=?", playerId, now(), m.id);
+    logEvent("mission.accepted", "player", { missionId: m.id, title: m.title, contested: false, direct: true }, playerId);
+    return true;
+  });
+}
+H.spawnOrder = spawnOrder;
+H.offerDirect = offerDirect;
+H.assignDirect = assignDirect;
+H.chiefSay = chiefSay;
+H.walkRadiusM = (id) => { try { return playerView(id).walkRadiusM; } catch { return 1200; } };

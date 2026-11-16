@@ -21,6 +21,11 @@ import * as lineop from "./lineop.ts";
 import * as scene from "./scene.ts";
 import * as director from "./director.ts";
 import * as auditor from "./auditor.ts";
+import * as wire from "./wire.ts";
+import * as hunt from "./hunt.ts";
+import * as territory from "./territory.ts";
+import * as handoff from "./handoff.ts";
+import * as desknight from "./desknight.ts";
 import { directorAgent } from "./directorAgent.ts";
 import { startChiefAgents } from "./chiefAgent.ts";
 import { openStream, streamClients } from "./stream.ts";
@@ -324,6 +329,30 @@ app.post("/v1/admin/crisis/resolve", async () => { const c = crises.activeCrisis
 app.get("/v1/admin/audit", async () => ({ audits: auditor.latestAudits() }));
 app.post("/v1/admin/audit", async () => auditor.runAudit(1));
 app.post("/v1/admin/dispatch", async () => { await director.publishDispatches(true); return { dispatches: director.recentDispatches(3) }; });
+
+// ---- the five loops: morning wire, burn notice, territory, handoffs, desk nights ----
+app.get("/v1/wire", async (req) => wire.view(need(req).id));
+app.post("/v1/wire/accept", async (req) => { const p = need(req); const r = wire.accept(p.id); return { mission: activeMission(p, "field"), ...r }; });
+app.get("/v1/hunt", async (req) => hunt.view(req.player?.id ?? null));
+app.post("/v1/hunt/expose", async (req) => { const b = z.object({ lat: z.number(), lng: z.number(), sim: z.boolean().optional() }).parse(req.body); if (b.sim && !DEV_SIM) throw new ApiError(400, "simulated location is not allowed"); return hunt.expose(need(req).id, b.lat, b.lng); });
+app.get("/v1/territory", async (req) => {
+  const q = req.query as { lat?: string; lng?: string };
+  const pres = req.player ? getPresence(req.player.id) : null;
+  const last = req.player ? get<{ last_lat: number | null; last_lng: number | null }>("SELECT last_lat, last_lng FROM presence WHERE player_id=?", req.player.id) : null;
+  const lat = q.lat ? Number(q.lat) : last?.last_lat ?? null, lng = q.lng ? Number(q.lng) : last?.last_lng ?? null;
+  return { ...territory.view(lat, lng, req.player?.factionId ?? null), yourSector: pres?.areaId ?? null };
+});
+app.get("/v1/handoffs", async (req) => handoff.view(need(req).id));
+app.post<{ Params: { id: string } }>("/v1/handoffs/:id/mark", async (req) => handoff.mark(need(req).id, req.params.id, z.object({ text: z.string().min(1).max(140) }).parse(req.body).text));
+app.post<{ Params: { id: string } }>("/v1/handoffs/:id/note", async (req) => handoff.note(need(req).id, req.params.id, z.object({ text: z.string().min(1).max(120) }).parse(req.body).text));
+app.get("/v1/desk/night", async (req) => { const p = need(req); if (!p.factionId) throw new ApiError(400, "join a faction first"); return desknight.view(p.id, p.factionId); });
+app.post<{ Params: { n: string } }>("/v1/desk/night/:n", async (req) => { const p = need(req); if (!p.factionId) throw new ApiError(400, "join a faction first"); return desknight.submit(p.id, p.factionId, Number(req.params.n), z.object({ answer: z.string().max(64) }).parse(req.body).answer); });
+// Admin: fire the loops by hand.
+app.post("/v1/admin/wire", async (req) => wire.sendNow(z.object({ codename: z.string() }).parse(req.body).codename));
+app.post("/v1/admin/hunt", async (req) => { const b = z.object({ codename: z.string(), days: z.number().min(0.01).max(14).optional() }).parse(req.body); return hunt.burnNow(b.codename, b.days); });
+app.post("/v1/admin/handoff", async (req) => { const b = z.object({ a: z.string(), b: z.string() }).parse(req.body); return handoff.forcePair(b.a, b.b); });
+app.post("/v1/admin/territory/settle", async () => ({ lines: territory.sweep() }));
+app.post("/v1/admin/loops", async () => { wire.sweep(); hunt.sweep(); handoff.sweep(); return { ok: true, territory: territory.sweep() }; });
 
 // ---- live stream & push ----
 app.get("/v1/stream", async (req, reply) => { const p = need(req); openStream(p.id, reply); return reply; });

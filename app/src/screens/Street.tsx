@@ -37,14 +37,14 @@ type LL = { lat: number; lng: number };
 
 const ROAD_WIDTH: Record<string, number> = { motorway: 12, trunk: 11, primary: 9, secondary: 7.5, tertiary: 6.5, residential: 5, unclassified: 5, living_street: 4.5, service: 3.5, pedestrian: 4, footway: 1.8, path: 1.5, steps: 1.5, cycleway: 2, track: 2.5 };
 
-export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, operative, motion, onMap, onAR }: {
+export function Street({ fix, course, heading, route, target, beacons, scene, factionColor, territoryColor = null, operative, motion, onMap, onAR }: {
   fix: Fix; course: number | null; heading: number | null; route: WalkingRoute | null; target: (LL & { name: string; radiusM: number }) | null;
-  beacons: Beacon[]; scene: Scene | null; factionColor: string; operative: OperativeId; motion?: MotionTracker; onMap: () => void; onAR: () => void;
+  beacons: Beacon[]; scene: Scene | null; factionColor: string; territoryColor?: string | null; operative: OperativeId; motion?: MotionTracker; onMap: () => void; onAR: () => void;
 }) {
   // Everything three.js lives in refs: the render loop reads the latest props without re-creating the scene.
   const world = useRef<{ gl: ExpoWebGLRenderingContext; renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; origin: LL; city: THREE.Group; live: THREE.Group; avatar: Avatar; raf: number } | null>(null);
-  const latest = useRef({ fix, course, heading, route, target, beacons, scene, factionColor, operative });
-  latest.current = { fix, course, heading, route, target, beacons, scene, factionColor, operative };
+  const latest = useRef({ fix, course, heading, route, target, beacons, scene, factionColor, territoryColor, operative });
+  latest.current = { fix, course, heading, route, target, beacons, scene, factionColor, territoryColor, operative };
   const [speed, setSpeed] = useState(0);
   const [demo, setDemo] = useState<number | null>(null); // tap the gait line to preview walk and run while standing
   // Free look: drag to orbit round the operative, drag up and down for height, pinch for distance.
@@ -164,8 +164,9 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     dress(latest.current.operative);
     world.current = { gl, renderer, scene: sc, camera, origin, city, live, avatar, raf: 0 };
     if (Platform.OS === "web") (globalThis as any).__street = world; // inspection in the web preview only
-    buildCity(world.current, latest.current.scene);
+    buildCity(world.current, latest.current.scene, latest.current.territoryColor);
     let lastScene = latest.current.scene;
+    let lastOwner = latest.current.territoryColor;
     let lastPhotos = photos;
     void loadPhotos().catch((e) => { report("street.photos", e); photosLoading = null; return null; }).then((p) => { const W = world.current; if (!W || !p) return; console.log("[street] photos ready"); (ground.material as THREE.MeshStandardMaterial).map = p.asphalt; p.asphalt.repeat.set(200, 200); (ground.material as THREE.MeshStandardMaterial).color.set(0x4f5b64); (ground.material as THREE.MeshStandardMaterial).needsUpdate = true; });
     let lastLive = "";
@@ -181,7 +182,7 @@ export function Street({ fix, course, heading, route, target, beacons, scene, fa
     const frame = (W: NonNullable<typeof world.current>) => {
       const L = latest.current;
       const nowT = Date.now(); const dt = Math.min(0.1, (nowT - last) / 1000); last = nowT;
-      if (L.scene !== lastScene || photos !== lastPhotos) { lastScene = L.scene; lastPhotos = photos; buildCity(W, L.scene); }
+      if (L.scene !== lastScene || photos !== lastPhotos || L.territoryColor !== lastOwner) { lastScene = L.scene; lastPhotos = photos; lastOwner = L.territoryColor; buildCity(W, L.scene, L.territoryColor); }
       if (dressed && dressed !== L.operative) { dressed = L.operative; dress(L.operative); }
       const key = `${L.route?.coords.length ?? 0}:${L.target?.lat}:${L.target?.lng}:${L.beacons.map((b) => b.name).join("|")}`;
       if (key !== lastLive) { lastLive = key; buildLive(W, L.route, L.target, L.beacons.filter((b) => haversine(b, L.fix) > 6)); } // nothing standing on the operative's own spot
@@ -611,7 +612,7 @@ function clearGroup(g: THREE.Group) {
   for (const o of [...g.children]) { g.remove(o); (o as any).geometry?.dispose?.(); const m = (o as any).material; if (m) (Array.isArray(m) ? m : [m]).forEach((x: any) => x.dispose?.()); }
 }
 
-function buildCity(W: { origin: LL; city: THREE.Group }, scene: Scene | null) {
+function buildCity(W: { origin: LL; city: THREE.Group }, scene: Scene | null, owner: string | null = null) {
   clearGroup(W.city);
   if (!scene) return;
   // Extrusions carry two material groups: caps (roof) first, sides second. Side UVs are in metres,
@@ -639,8 +640,10 @@ function buildCity(W: { origin: LL; city: THREE.Group }, scene: Scene | null) {
   }
   const roadMat = photos ? (() => { const t = photos.asphalt.clone(); t.needsUpdate = true; t.repeat.set(1, 1 / 8); return new THREE.MeshStandardMaterial({ color: 0x8b969d, map: t, roughness: 0.7, metalness: 0.1 }); })() : new THREE.MeshStandardMaterial({ color: 0x252f38, roughness: 1 });
   const lampPole = new THREE.MeshStandardMaterial({ color: 0x2a343c, roughness: 0.8 });
-  const lampHead = new THREE.MeshBasicMaterial({ color: 0xffc46a });
-  const lampPool = new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.09, depthWrite: false });
+  // The lamps burn in the colour of whoever owns these streets this week; sodium amber when nobody does.
+  const lampTint = owner ? new THREE.Color(owner).lerp(new THREE.Color(0xffc46a), 0.35) : new THREE.Color(0xffc46a);
+  const lampHead = new THREE.MeshBasicMaterial({ color: lampTint });
+  const lampPool = new THREE.MeshBasicMaterial({ color: owner ? lampTint : new THREE.Color(0xffb347), transparent: true, opacity: 0.09, depthWrite: false });
   const kerbMat = new THREE.MeshStandardMaterial({ color: 0x3a4650, roughness: 1 });
   const pathMat = new THREE.MeshStandardMaterial({ color: 0x33414a, roughness: 1 });
   const laneMat = new THREE.MeshBasicMaterial({ color: 0x6d7f8a, transparent: true, opacity: 0.35 });

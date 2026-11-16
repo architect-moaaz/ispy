@@ -16,10 +16,19 @@ const WORTH_A_BUZZ: Record<string, (p: any) => { title: string; body: string } |
   "bounty.completed": (p) => ({ title: "Contract closed", body: `${p.title ?? "Your contract"} paid out.` }),
   "case.exposed": () => ({ title: "Cover burned", body: "A rival investigator identified you. Your chief has instructions." }),
   "rank_up": (p) => ({ title: "Promoted", body: `You are now ${String(p.to ?? "").replace("_", " ")}.` }),
+  "wire.missed": (p) => ({ title: "Morning wire missed", body: `${p.target ?? "The site"} came and went. Your chief noticed.` }),
+  "hunt.burned": () => ({ title: "Burn notice", body: "Your file is out. Every service has your name for seven days." }),
+  "hunt.close_call": (p) => ({ title: "You were made", body: `Someone saw you at ${p.at ?? "just now"}.${p.called ? " They called it, and missed." : ""} Move.` }),
+  "handoff.ready": (p) => ({ title: "Parcel down", body: `It is at ${p.target ?? "the site"}. Forty minutes.` }),
+  "handoff.landed": (p) => ({ title: "Handoff landed", body: `${p.partner ?? "Your partner"} carried it home. Paid.` }),
+  "handoff.note": (p) => ({ title: "A line in your file", body: `${p.from ?? "Your partner"}: “${p.text ?? ""}”` }),
 };
 const PUBLIC_BUZZ: Record<string, (p: any) => { title: string; body: string } | null> = {
   "world_event.published": (p) => ({ title: "New campaign", body: `${p.name} has begun in your sector.` }),
   "world_event.resolved": (p) => ({ title: "Campaign over", body: p.winner ? `${String(p.winner).toUpperCase()} took ${p.name}.` : `${p.name} ended with no winner.` }),
+  "hunt.started": (p) => ({ title: "Burn notice", body: `${String(p.codename ?? "An operative").toUpperCase()} is burned for seven days. Their trail is on your board.` }),
+  "hunt.resolved": (p) => ({ title: p.state === "caught" ? "Made" : "A Ghost", body: p.state === "caught" ? `${String(p.by ?? "").toUpperCase()} made ${String(p.codename).toUpperCase()}.` : `${String(p.codename).toUpperCase()} survived the week untouched.` }),
+  "territory.report": (p) => ({ title: "The map redrew", body: Array.isArray(p.lines) && p.lines.length ? String(p.lines[0]) : "The week's territory is settled." }),
 };
 
 export function registerPushToken(playerId: string, token: string) {

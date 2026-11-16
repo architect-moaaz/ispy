@@ -7,6 +7,7 @@ import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Display, Panel, Screen, Spinner, fmtCountdown } from "../ui";
 import { ART } from "../art";
+import { HandoffPanel, HuntPanel, TerritoryPanel } from "./Loops";
 
 /** Bounty board, the live global event, and the operative's inventory. */
 export function Board() {
@@ -79,6 +80,10 @@ export function Board() {
           <Text style={[s.site, { color: C.dim, marginTop: 6 }]}>Sites held, face-offs won, signals caught. Resets Monday.</Text>
         </View>
       )}
+
+      <TerritoryPanel />
+      <HuntPanel />
+      <HandoffPanel />
       {world?.control && Object.values(world.control).some((c) => Object.values(c).some((n) => n > 0)) && (
         <View style={s.control}>
           <Text style={s.eyebrow}>Sector control · a finished site is held for two hours</Text>

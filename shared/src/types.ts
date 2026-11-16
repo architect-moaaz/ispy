@@ -135,6 +135,8 @@ export interface MissionSummary {
   heldBy?: FactionId | null; // agency currently holding the site (first finished keeps it for two hours)
   lock?: { kind: LockKind; tool: ToolId; label: string } | null; // the package's lock, opened with the right tool on site
   unlocked?: boolean; // lock opened (or no lock)
+  handoff?: { id: string; role: "drop" | "pick"; partner: string | null; deadline: string | null; mark: string | null; state: string } | null; // a two-operative parcel relay
+  wire?: boolean; // this morning's personal order from the chief
 }
 export type LockKind = "sealed" | "cipher" | "jammed" | "shadowed";
 
@@ -378,3 +380,29 @@ export interface BackChannelOptions {
   recent: { kind: string; about: string; to: string; outcome: string; at: string }[];
 }
 export interface TipResult { ok: boolean; reason?: string; left?: number; credits?: number }
+
+// ---- The five loops ----
+/** The Morning Wire: one personal order a day, near your routine, with a window. */
+export interface WireView {
+  wire: { id: string; missionId: string; state: "sent" | "done" | "missed"; target: string; lat: number | null; lng: number | null; deadline: string; sentAt: string; doneAt: string | null; boosted: boolean; brief: string; accepted: boolean } | null;
+  streak: number; missedInRow: number;
+}
+/** The Burn Notice: the month's hunted operative, their cold trail (hunters) or close calls (the burned). */
+export interface HuntView {
+  hunt: { id: string; codename: string; factionId: FactionId; endsAt: string; youAreIt: boolean; yourAgency: boolean; closeCalls: { at: string; called: boolean }[]; trail: { lat: number; lng: number; at: string }[]; lastSeenAt: string | null } | null;
+  last: { codename: string; state: string; at: string | null } | null;
+}
+export interface ExposeResult { ok: boolean; reason?: string; warm?: boolean; caught?: boolean }
+/** Territory: each sector's owner (last week's count) and this week's standings. */
+export interface TerritoryArea { id: string; name: string; lat: number; lng: number; radiusM: number; distanceM: number; owner: FactionId | null; ownerSince: string | null; standings: Record<FactionId, number>; leader: FactionId | null; yours: boolean }
+export interface TerritoryView { week: string; resetsAt: string; areas: TerritoryArea[]; report: string[]; yourSector: string | null }
+/** Handoffs: the live one and the file of partners. */
+export interface HandoffView {
+  live: { id: string; role: "drop" | "pick"; state: string; target: string; deadline: string | null; mark: string | null; partner: string | null } | null;
+  past: { id: string; role: "drop" | "pick"; partner: string; partnerFaction: FactionId | null; outcome: string; target: string; at: string | null; yourNote: string | null; theirNote: string | null }[];
+  pairs: { partner: string; landed: number; failed: number }[];
+}
+/** Desk Nights: three puzzles a day; all three and tomorrow's wire pays more. */
+export interface DeskNightPuzzle { n: number; kind: "cipher" | "analysis" | "trace"; title: string; prompt: string; options?: string[]; system?: string; xp: number }
+export interface DeskNightView { day: string; puzzles: DeskNightPuzzle[]; solved: number[]; allDone: boolean; boostTomorrow: boolean; xpEach: number }
+export interface DeskNightResult { correct: boolean; xp?: number; allDone?: boolean; debrief: string }

@@ -7,6 +7,7 @@ import { onLive } from "../live";
 import { C, F, factionColor } from "../theme";
 import { Body, Button, Hero, Input, Label, Screen, Spinner, Surface } from "../ui";
 import { ART } from "../art";
+import { WirePanel } from "./Loops";
 
 const SPECIALTY: Record<string, string> = {
   oracle: "Investigation, evidence and pattern recognition",
@@ -56,6 +57,7 @@ export function HQ({ factionId, onDuty }: { factionId: string | null; onDuty: ()
         <Text style={{ color: C.dim, fontSize: 13, marginBottom: 8 }}>{SPECIALTY[briefing.chief]}</Text>
         {lastLine && <Text style={{ color: C.text, fontFamily: F.typed, fontSize: 13.5, lineHeight: 19 }} numberOfLines={3}>“{lastLine}”</Text>}
       </Hero>
+      <WirePanel />
       {briefing.today && (
         <Surface accent={C.amber}>
           <Label color={C.amber}>Today{briefing.today.sector ? ` in ${briefing.today.sector}` : ""}</Label>

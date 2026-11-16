@@ -26,7 +26,7 @@ import type {
   Presence,
   ScanRequest,
   ScanResponse,
-  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry, ToolkitResponse, ToolUseResult, UnlockResult, ArchiveView, ArchiveActionResult, PlantResult, BackChannelOptions, TipResult } from "@ispy/shared";
+  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry, ToolkitResponse, ToolUseResult, UnlockResult, ArchiveView, ArchiveActionResult, PlantResult, BackChannelOptions, TipResult, WireView, HuntView, ExposeResult, TerritoryView, HandoffView, DeskNightView, DeskNightResult } from "@ispy/shared";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
 const TOKEN_KEY = "ispy.token";
@@ -147,4 +147,15 @@ export const api = {
   titles: () => get<{ titles: TitleEntry[] }>("/v1/titles"),
   history: () => get<{ events: { at: string; text: string }[] }>("/v1/profile/history"),
   devTargets: () => get<{ targets: DevTarget[] }>("/v1/dev/targets"),
+  // The five loops.
+  wireToday: () => get<WireView>("/v1/wire"),
+  acceptWire: () => post<{ mission: MissionSummary | null; missionId: string }>("/v1/wire/accept"),
+  hunt: () => get<HuntView>("/v1/hunt"),
+  expose: (fix: { lat: number; lng: number; sim?: boolean }) => post<ExposeResult>("/v1/hunt/expose", fix),
+  territory: (lat?: number, lng?: number) => get<TerritoryView>(lat != null && lng != null ? `/v1/territory?lat=${lat}&lng=${lng}` : "/v1/territory"),
+  handoffs: () => get<HandoffView>("/v1/handoffs"),
+  handoffMark: (id: string, text: string) => post<{ ok: true; mark: string }>(`/v1/handoffs/${id}/mark`, { text }),
+  handoffNote: (id: string, text: string) => post<{ ok: true }>(`/v1/handoffs/${id}/note`, { text }),
+  deskNight: () => get<DeskNightView>("/v1/desk/night"),
+  deskNightSubmit: (n: number, answer: string) => post<DeskNightResult>(`/v1/desk/night/${n}`, { answer }),
 };

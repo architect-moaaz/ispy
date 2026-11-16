@@ -18,6 +18,7 @@ import { ARGuide } from "./ARGuide";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { Debrief } from "./Debrief";
 import { ART } from "../art";
+import { HandoffMark, HuntPanel, WirePanel } from "./Loops";
 import { DevPanel } from "./DevPanel";
 import { ARScan } from "./ARScan";
 import { CaptureRitual, FieldMarkers, NearbyTracker, SelectionCard, type Selection } from "./FieldLayer";
@@ -44,6 +45,14 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   const [now, setNow] = useState(Date.now());
   const [targets, setTargets] = useState<{ id: string; name: string; lat: number; lng: number }[]>([]);
   const [sector, setSector] = useState<{ lat: number; lng: number; radiusM: number } | null>(null);
+  // Whose streets these are this week (the sector octagon and the 3D lamps take the colour), and the burned operative's cold trail.
+  const [ownerColor, setOwnerColor] = useState<string | null>(null);
+  const [trail, setTrail] = useState<{ lat: number; lng: number }[]>([]);
+  useEffect(() => {
+    const load = () => api.territory().then((t) => { const a = t.areas.find((x) => x.id === presence.areaId) ?? t.areas[0]; setOwnerColor(a?.owner ? factionColor(a.owner) : null); }).catch(() => {});
+    load();
+    return onLive((ty) => { if (ty === "territory.report") load(); });
+  }, [presence.areaId]);
   const [route, setRoute] = useState<WalkingRoute | null>(null);
   const [guiding, setGuiding] = useState(false);
   // Ambient layer: what is around you on the map, and what you have tapped.
@@ -234,7 +243,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
   ] : [];
   const target3d = target ? { ...target, name: nav ? nav.targetName : selPoint?.name ?? "the site", radiusM: nav?.approachRadiusM ?? 40 } : null;
   if (view === "3d" && fix && !ar) {
-    return <ErrorBoundary where="3D street" onBack={() => setView("map")}><Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} operative={operative} motion={motion} onMap={() => setView("map")} onAR={() => setView("ar")} /></ErrorBoundary>;
+    return <ErrorBoundary where="3D street" onBack={() => setView("map")}><Street fix={fix} course={course} heading={heading} route={route} target={target3d} beacons={beacons} scene={scene3d} factionColor={factionColor(factionId)} territoryColor={ownerColor} operative={operative} motion={motion} onMap={() => setView("map")} onAR={() => setView("ar")} /></ErrorBoundary>;
   }
   if (view === "ar" && fix && !ar) {
     return <ErrorBoundary where="AR guide" onBack={() => setView("map")}><ARGuide fix={fix} heading={heading ?? course} route={route} target={target3d} beacons={beacons} onMap={() => setView("map")} on3D={() => setView("3d")} /></ErrorBoundary>;
@@ -282,7 +291,7 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
         <SatMap center={center} zoom={zoom} width={width} height={height}>
           {(project) => (projectRef.current = project) && (
             <MapOverlay project={project} width={width} height={height} fix={fix} offers={field ? [] : offers} target={target ? { ...target, name: nav ? nav.targetName : selPoint!.name, locked: nav ? !nav.unlocked : false, duel: !!nav?.faceoff } : null}
-              contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} route={route} nextTurn={route && fix && !onSite ? guide(route, fix).next : null} />
+              contacts={contacts} bearing={bearing} dist={dist} nearest={nearest} radius={nav?.approachRadiusM ?? 45} sector={sector} sectorColor={ownerColor} trail={trail} route={route} nextTurn={route && fix && !onSite ? guide(route, fix).next : null} />
           )}
         </SatMap>
         {field && !mission && (
@@ -381,7 +390,10 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
           {nav.heldBy && nav.heldBy !== factionId && <Text style={[s.mono, { color: C.red, letterSpacing: 1.2 }]}>SITE HELD BY A RIVAL · YOU WILL ARRIVE LATE</Text>}
           {nav.lock && <Text style={[s.mono, { color: nav.lockOpen ? C.ok : C.amber, letterSpacing: 1.2 }]}>{nav.lockOpen ? `PACKAGE OPENED WITH ${nav.lock.tool.toUpperCase()}` : `${nav.lock.label.toUpperCase()} PACKAGE · BRING A ${nav.lock.tool.toUpperCase()} · OPEN IT IN AR SCAN ON SITE`}</Text>}
           {mission.contested && <Stamp text="Contested" size={16} style={{ marginBottom: 6 }} />}
+          {mission.wire && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>MORNING WIRE · YOUR CHIEF'S PERSONAL ORDER</Text>}
+          {mission.handoff?.role === "pick" && <Text style={[s.mono, { color: C.amber, letterSpacing: 1.2 }]}>HANDOFF · THE PICKUP{mission.handoff.partner ? ` · LEFT BY ${mission.handoff.partner.toUpperCase()}` : ""}</Text>}
           <Typed>{mission.brief}</Typed>
+          <HandoffMark mission={mission} />
           {nav.steps.map((st, i) => <Typed key={i} style={{ color: C.dim, marginBottom: 2 }}>{i + 1}. {st}</Typed>)}
           {!nav.unlocked && <Typed style={{ color: C.amber }}>Locked until your analyst cracks the cipher{mission.deskLink?.fallbackAt ? `, or at ${new Date(mission.deskLink.fallbackAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} you get a solo version` : ""}.</Typed>}
           {scan?.result === "needs_code" && (
@@ -402,6 +414,8 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
 
       {!mission && (
         <View style={{ marginTop: 12 }}>
+          <WirePanel compact onTaken={(m) => { if (m) setMission(m); refresh(); }} />
+          <HuntPanel quiet fix={fix} onTrail={setTrail} />
           <Text style={s.sectionTitle}>Mission board · {offers.length} available</Text>
           {offers.length === 0 && <Dossier tab={C.cyanDim}><Body dim style={{ marginBottom: 0 }}>{notice ?? "Your chief is choosing. Orders land within seconds when the sector has open targets."}</Body></Dossier>}
           {offers.map((o) => (
@@ -453,11 +467,11 @@ export function SpyVision({ presence, devSim, onHQ, onBoard, onOffDuty, codename
 import { SpinSheet as SpinSheetHost } from "./FieldLayer";
 
 // ---------- overlay ----------
-function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector, route, nextTurn }: {
+function MapOverlay({ project, width, height, fix, offers, target, contacts, bearing, dist, nearest, radius, sector, sectorColor, trail = [], route, nextTurn }: {
   project: Projector; width: number; height: number; fix: Fix | null; offers: OfferCard[];
   target: { lat: number; lng: number; name: string; locked: boolean; duel?: boolean } | null; contacts: Contact[];
   bearing: number | null; dist: number | null; nearest: number | null; radius: number;
-  sector: { lat: number; lng: number; radiusM: number } | null;
+  sector: { lat: number; lng: number; radiusM: number } | null; sectorColor?: string | null; trail?: { lat: number; lng: number }[];
   route: WalkingRoute | null; nextTurn: { lat: number; lng: number; type: string } | null;
 }) {
   const turn = nextTurn && nextTurn.type !== "arrive" ? project(nextTurn) : null;
@@ -491,7 +505,9 @@ function MapOverlay({ project, width, height, fix, offers, target, contacts, bea
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-        {sectorPts && <Polygon points={sectorPts} fill={C.cyan} fillOpacity={0.05} stroke={C.cyan} strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="10 6" />}
+        {sectorPts && <Polygon points={sectorPts} fill={sectorColor ?? C.cyan} fillOpacity={sectorColor ? 0.09 : 0.05} stroke={sectorColor ?? C.cyan} strokeOpacity={0.75} strokeWidth={1.5} strokeDasharray="10 6" />}
+        {/* the burned operative's cold trail: an hour stale, a hundred metres coarse, fading with age */}
+        {trail.map((t, i) => { const p = project(t); return <Circle key={"trail" + i} cx={p.x} cy={p.y} r={5} fill={C.red} fillOpacity={0.25 + 0.6 * (i + 1) / trail.length} stroke={C.red} strokeOpacity={0.6} strokeWidth={1} />; })}
         {/* approach radius + reticle on the live target */}
         {tgt && (
           <G>

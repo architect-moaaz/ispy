@@ -7,8 +7,9 @@ import { bus, type Signal } from "./bus.ts";
  */
 const MINE = new Set(["chief.message", "mission.offered", "mission.accepted", "mission.verified", "mission.expired", "mission.abandoned",
   "desk_link.fulfilled", "desk_link.fallback", "reward", "rank_up", "signals.spawned", "signal.captured", "cache.spun", "faceoff.started", "faceoff.resolved", "otw.named", "decoy.sprung", "tool.crafted", "artifact.recovered", "artifact.lost", "distraction.planted", "distraction.sprung", "leak.delivered", "artifact.stolen", "dossier.assembled", "intel.deal", "evidence.found", "evidence.decoy_detected", "case.opened", "case.confirmed",
-  "case.rejected", "case.exposed", "bounty.completed", "bounty.claimed", "world_event.fragment", "presence.check_in", "presence.check_out", "location.flagged"]);
-const PUBLIC = new Set(["world_event.published", "world_event.resolved", "director.dispatch", "admin.paused", "admin.resumed", "bounty.published", "contest.formed"]);
+  "case.rejected", "case.exposed", "bounty.completed", "bounty.claimed", "world_event.fragment", "presence.check_in", "presence.check_out", "location.flagged",
+  "wire.sent", "wire.done", "wire.missed", "hunt.burned", "hunt.close_call", "hunt.warm", "handoff.offered", "handoff.pending", "handoff.ready", "handoff.dropped", "handoff.landed", "handoff.failed", "handoff.note", "desk_night.solved"]);
+const PUBLIC = new Set(["world_event.published", "world_event.resolved", "director.dispatch", "admin.paused", "admin.resumed", "bounty.published", "contest.formed", "hunt.started", "hunt.resolved", "territory.report"]);
 
 /** What the app is allowed to learn from an event: the type and a few safe fields. */
 function publicPayload(s: Signal) {
@@ -28,6 +29,14 @@ function publicPayload(s: Signal) {
     case "faceoff.resolved": return { faceoffId: p.faceoffId, target: p.target, outcome: p.outcome, rival: p.rival, rivalFaction: p.rivalFaction, winner: p.winner, winnerFaction: p.winnerFaction };
     case "otw.named": return { codename: p.codename, week: p.week };
     case "decoy.sprung": return { by: p.by };
+    case "wire.sent": return { target: p.target, deadline: p.deadline };
+    case "wire.done": return { streak: p.streak, xp: p.xp };
+    case "wire.missed": return { target: p.target, misses: p.misses };
+    case "hunt.started": case "hunt.resolved": return { codename: p.codename, factionId: p.factionId ?? null, state: p.state ?? "live", by: p.by ?? null, endsAt: p.endsAt ?? null };
+    case "hunt.close_call": return { at: p.at, called: !!p.called };
+    case "handoff.ready": case "handoff.offered": case "handoff.landed": case "handoff.failed": return { target: p.target, partner: p.partner ?? null, deadline: p.deadline ?? null };
+    case "handoff.note": return { from: p.from, text: p.text };
+    case "territory.report": return { lines: p.lines };
     case "distraction.planted": return { target: p.target, expiresAt: p.expiresAt };
     case "distraction.sprung": return { target: p.target, by: p.by, byFaction: p.byFaction };
     case "leak.delivered": return { kind: p.kind };

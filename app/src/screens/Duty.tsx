@@ -8,6 +8,7 @@ import { Body, Button, Display, Kicker, Screen, Surface } from "../ui";
 import { DevPanel } from "./DevPanel";
 import { Desk } from "./Desk";
 import { SpyVision } from "./SpyVision";
+import { DeskNight, WirePanel } from "./Loops";
 
 export function Duty({ presence, devSim, onPresence, onHQ, onBoard, codename, factionId, rank, xp }: { presence: Presence | null; devSim: boolean; onPresence: (p: Presence | null) => void; onHQ: () => void; onBoard: () => void; codename: string; factionId: string | null; rank: string; xp: number }) {
   const [busy, setBusy] = useState(false);
@@ -72,7 +73,9 @@ export function Duty({ presence, devSim, onPresence, onHQ, onBoard, codename, fa
       <Display>Mission control</Display>
       <Kicker>{rookie ? "Clearance granted · first assignment" : "Awaiting deployment"}</Kicker>
       <Body dim>Field operatives walk to real targets on the satellite map. Intel analysts crack the codes that unlock them. Both climb the same ladder.</Body>
+      {!rookie && <WirePanel />}
       {rookie ? <>{desk}{field}</> : <>{field}{desk}</>}
+      {!rookie && <DeskNight />}
       {err && <Body style={{ color: C.red }}>{err}</Body>}
     </Screen>
   );
