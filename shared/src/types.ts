@@ -409,3 +409,12 @@ export interface HandoffView {
 export interface DeskNightPuzzle { n: number; kind: "cipher" | "analysis" | "trace"; title: string; prompt: string; options?: string[]; system?: string; xp: number }
 export interface DeskNightView { day: string; puzzles: DeskNightPuzzle[]; solved: number[]; allDone: boolean; boostTomorrow: boolean; xpEach: number }
 export interface DeskNightResult { correct: boolean; xp?: number; allDone?: boolean; debrief: string }
+
+// ---- Sign in with Google / Meta ----
+export type AuthProvider = "google" | "facebook" | "dev";
+export interface Identity { provider: AuthProvider; email: string | null; name: string | null; since: string }
+export interface OAuthRequest { provider: AuthProvider; token?: string; codename?: string; dev?: { subject: string; email?: string; name?: string } }
+export type OAuthResponse =
+  | { token: string; player: Player; created: boolean; linked: boolean }
+  | { needsCodename: true; suggestion: string; provider: AuthProvider; name: string | null; email: string | null };
+export interface AuthProviders { google: boolean; facebook: boolean; dev: boolean }

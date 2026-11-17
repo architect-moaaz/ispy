@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Image, Text, View } from "react-native";
-import type { Faction, Player, SkillKey, TitleEntry, ToolkitResponse } from "@ispy/shared";
+import type { Faction, Identity, Player, SkillKey, TitleEntry, ToolkitResponse } from "@ispy/shared";
+import { available, signInWith, type Provider } from "../auth";
 import { api, setToken } from "../api";
 import { getOperative, loadOperative, setOperative, type OperativeId } from "../prefs";
 import { OperativePicker } from "../operatives";
@@ -97,6 +98,7 @@ export function Profile({ player, faction, onSignOut }: { player: Player; factio
         <Label>Operative · 3D street</Label>
         <View style={{ marginTop: 6 }}><OperativePicker value={operative} onChange={(id) => { setOperativeState(id); void setOperative(id); }} accent={color} /></View>
       </Surface>
+      <LinkedAccounts />
       <Button title="Sign out" kind="ghost" onPress={async () => { await setToken(null); onSignOut(); }} />
     </Screen>
   );
@@ -108,5 +110,51 @@ function Stat({ label, value, right }: { label: string; value: string; right?: b
       <Text style={{ color: C.text, fontFamily: F.displayMed, fontSize: 22, lineHeight: 24 }}>{value}</Text>
       <Text style={{ color: C.dim, fontSize: 12 }}>{label}</Text>
     </View>
+  );
+}
+
+
+/** Google and Meta accounts attached to this codename: sign in on another phone and the file follows. */
+function LinkedAccounts() {
+  const [ids, setIds] = useState<Identity[] | null>(null);
+  const [providers, setProviders] = useState<{ google: boolean; facebook: boolean; dev: boolean } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = () => Promise.all([api.identities().then((r) => setIds(r.identities)), api.world().then((w) => setProviders(w.auth ?? null))]).catch(() => {});
+  useEffect(() => { load(); }, []);
+  const can = available();
+  const rows: { id: Provider | "dev"; name: string }[] = [
+    ...(providers?.google && can.google ? [{ id: "google" as const, name: "Google" }] : []),
+    ...(providers?.facebook && can.facebook ? [{ id: "facebook" as const, name: "Meta" }] : []),
+    ...(providers?.dev ? [{ id: "dev" as const, name: "Dev account" }] : []),
+  ];
+  if (!ids || rows.length === 0) return null;
+  const link = async (p: Provider | "dev") => {
+    setBusy(p); setMsg(null);
+    try {
+      const body = p === "dev" ? { provider: "dev" as const, dev: { subject: `dev-${Math.random().toString(36).slice(2, 8)}`, name: "Dev Agent" } } : await signInWith(p).then((t) => (t ? { provider: t.provider, token: t.token } : null));
+      if (!body) return;
+      const r = await api.oauth(body);
+      if ("token" in r) { await setToken(r.token); setMsg(r.linked ? "Linked. This codename follows that account now." : "That account already belongs to another codename; you are signed in as them."); }
+      await load();
+    } catch (e: any) { setMsg(e.message); } finally { setBusy(null); }
+  };
+  const unlink = async (p: string) => { setBusy(p); try { await api.unlinkIdentity(p); await load(); } catch (e: any) { setMsg(e.message); } finally { setBusy(null); } };
+  return (
+    <Surface>
+      <Kicker>Linked accounts</Kicker>
+      <Body dim>Attach an account and this codename, rank and file follow you to a new phone. The chiefs still only ever see the codename.</Body>
+      {rows.map((r) => {
+        const have = ids.find((i) => i.provider === r.id);
+        return (
+          <View key={r.id} style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 8 }}>
+            <Text style={{ color: C.text, fontFamily: F.displayMed, fontSize: 13, letterSpacing: 1.2, width: 90 }}>{r.name.toUpperCase()}</Text>
+            <Text style={{ color: C.dim, fontSize: 12.5, flex: 1 }} numberOfLines={1}>{have ? have.email ?? have.name ?? "linked" : "not linked"}</Text>
+            <Button title={have ? "Unlink" : "Link"} kind="ghost" onPress={() => (have ? unlink(r.id) : link(r.id))} loading={busy === r.id} style={{ marginTop: 0, paddingVertical: 6, paddingHorizontal: 12 }} />
+          </View>
+        );
+      })}
+      {msg && <Body style={{ color: C.cyan, marginTop: 6 }}>{msg}</Body>}
+    </Surface>
   );
 }

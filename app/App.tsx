@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useFonts, BarlowCondensed_600SemiBold, BarlowCondensed_800ExtraBold } from "@expo-google-fonts/barlow-condensed";
 import { CourierPrime_400Regular, CourierPrime_700Bold } from "@expo-google-fonts/courier-prime";
 import type { Faction, Player, Presence } from "@ispy/shared";
+import { signOutProviders } from "./src/auth";
 import { api, loadToken, setToken, setUnauthorizedHandler, type World } from "./src/api";
 import { connectLive, disconnectLive, onLive } from "./src/live";
 import { registerForPush } from "./src/push";
@@ -56,6 +57,8 @@ function Shell() {
 
   const signOut = useCallback(async () => {
     disconnectLive();
+    try { await api.signout(); } catch { /* the token dies locally either way */ }
+    try { await signOutProviders(); } catch { /* nothing cached */ }
     await setToken(null);
     setPlayer(null); setFaction(null); setPresence(null);
   }, []);
@@ -105,7 +108,7 @@ function Shell() {
   if (intro) return <View style={s.root}><Intro onDone={() => setIntro(false)} /></View>;
 
   let body: React.ReactNode;
-  if (!player) body = <Welcome onRegistered={(p) => { setPlayer(p); }} />;
+  if (!player) body = <Welcome onRegistered={(p) => { setPlayer(p); }} providers={world?.auth} />;
   else if (!player.factionId) body = <Assessment onRecruited={(p) => { setPlayer(p); refreshMe(); setTab("duty"); }} />;
   else if (tab === "hq") body = <HQ factionId={player.factionId} onDuty={() => setTab("duty")} />;
   else if (tab === "profile") body = <Profile player={player} faction={faction} onSignOut={signOut} />;

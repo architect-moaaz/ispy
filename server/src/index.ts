@@ -26,6 +26,7 @@ import * as hunt from "./hunt.ts";
 import * as territory from "./territory.ts";
 import * as handoff from "./handoff.ts";
 import * as desknight from "./desknight.ts";
+import * as auth from "./auth.ts";
 import { directorAgent } from "./directorAgent.ts";
 import { startChiefAgents } from "./chiefAgent.ts";
 import { openStream, streamClients } from "./stream.ts";
@@ -77,7 +78,7 @@ const need = (req: { player: ReturnType<typeof playerView> | null }) => {
 };
 
 // ---- public ----
-app.get("/v1/world", async () => ({ ...worldStatus(), devSim: DEV_SIM, llm: llmEnabled() }));
+app.get("/v1/world", async () => ({ ...worldStatus(), devSim: DEV_SIM, llm: llmEnabled(), auth: auth.providers() }));
 
 app.post("/v1/auth/register", async (req) => {
   const { codename } = z.object({ codename: z.string().trim().min(2).max(24).regex(/^[\w .-]+$/, "letters, digits, space, . _ - only") }).parse(req.body);
@@ -92,8 +93,23 @@ app.post("/v1/auth/register", async (req) => {
 
 app.get("/v1/me", async (req) => {
   const p = need(req);
-  return { player: p, faction: playerFaction(p), presence: getPresence(p.id), unreadChief: unreadChief(p.id) };
+  return { player: p, faction: playerFaction(p), presence: getPresence(p.id), unreadChief: unreadChief(p.id), identities: auth.identitiesOf(p.id) };
 });
+
+// ---- sign in with Google / Meta ----
+app.post("/v1/auth/oauth", async (req) => {
+  const b = z.object({
+    provider: z.enum(["google", "facebook", "dev"]), token: z.string().max(8192).optional(), codename: z.string().trim().max(24).optional(),
+    dev: z.object({ subject: z.string().min(1).max(64), email: z.string().max(120).optional(), name: z.string().max(60).optional() }).optional(),
+  }).parse(req.body);
+  const v = await auth.verify(b.provider, b.token ?? "", b.dev);
+  const r = auth.signIn(v, req.player?.id ?? null, b.codename ?? null);
+  if ("needsCodename" in r) return r;
+  return { token: r.token, player: playerView(r.playerId), created: r.created, linked: r.linked };
+});
+app.get("/v1/auth/identities", async (req) => ({ identities: auth.identitiesOf(need(req).id) }));
+app.delete<{ Params: { provider: string } }>("/v1/auth/identities/:provider", async (req) => { auth.unlink(need(req).id, z.enum(["google", "facebook", "dev"]).parse(req.params.provider)); return { ok: true }; });
+app.post("/v1/auth/signout", async (req) => { need(req); const a = req.headers.authorization; if (a?.startsWith("Bearer ")) auth.signOut(a.slice(7)); return { ok: true }; });
 
 // ---- onboarding ----
 app.get("/v1/assessment", async (req) => {

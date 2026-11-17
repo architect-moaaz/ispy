@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { Animated, Dimensions, Easing, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { api, setToken } from "../api";
+import { available, signInWith, type Provider } from "../auth";
+import type { AuthProviders } from "@ispy/shared";
 import { C, F } from "../theme";
 import { Button, Input, Typed } from "../ui";
 import { FactionEmblem } from "../graphics";
@@ -18,8 +20,11 @@ import { OperativePicker } from "../operatives";
  */
 const AGENCIES = [["raven", "RAVEN", "Patience. Pattern. Proof."], ["phantom", "PHANTOM", "If they saw you, you were never there."], ["cipher", "CIPHER", "Everything is a system. Systems break."]] as const;
 
-export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void }) {
+export function Welcome({ onRegistered, providers }: { onRegistered: (p: Player) => void; providers?: AuthProviders }) {
   const [codename, setCodename] = useState("");
+  // A provider sign-in that still needs a codename: the identity is verified, the file is not yet named.
+  const [pending, setPending] = useState<{ provider: Provider | "dev"; token?: string; dev?: { subject: string; email?: string; name?: string }; who: string } | null>(null);
+  const [authBusy, setAuthBusy] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -47,11 +52,37 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
     bar.setValue(0);
     Animated.timing(bar, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.quad), useNativeDriver: false }).start();
     try {
-      const [r] = await Promise.all([api.register(c), new Promise((res) => setTimeout(res, 1400))]);
+      const call = pending
+        ? api.oauth({ provider: pending.provider, token: pending.token, dev: pending.dev, codename: c }).then((r) => { if ("needsCodename" in r) throw new Error("Pick a codename to finish."); return r; })
+        : api.register(c);
+      const [r] = await Promise.all([call, new Promise((res) => setTimeout(res, 1400))]);
       await setToken(r.token); onRegistered(r.player);
     } catch (e: any) { setErr(e.message ?? "Could not register. Try another codename."); setSending(false); }
     finally { setBusy(false); }
   };
+  // Continue with Google or Meta: a known account signs straight in; a new one comes back for a codename.
+  const withProvider = async (provider: Provider | "dev") => {
+    setAuthBusy(provider); setErr(null);
+    try {
+      let body: Parameters<typeof api.oauth>[0];
+      if (provider === "dev") body = { provider: "dev", dev: { subject: `dev-${Math.random().toString(36).slice(2, 8)}`, name: "Dev Agent", email: "dev@example.test" } };
+      else { const t = await signInWith(provider); if (!t) return; body = { provider: t.provider, token: t.token }; }
+      const r = await api.oauth(body);
+      if ("needsCodename" in r) {
+        setPending({ provider: body.provider, token: body.token, dev: body.dev, who: r.name ?? r.email ?? provider });
+        if (!codename.trim()) setCodename(r.suggestion);
+        return;
+      }
+      await setToken(r.token); onRegistered(r.player);
+    } catch (e: any) { setErr(e.message ?? "Sign-in failed."); }
+    finally { setAuthBusy(null); }
+  };
+  const can = available();
+  const buttons: { id: Provider | "dev"; title: string }[] = [
+    ...(providers?.google && can.google ? [{ id: "google" as const, title: "Continue with Google" }] : []),
+    ...(providers?.facebook && can.facebook ? [{ id: "facebook" as const, title: "Continue with Meta" }] : []),
+    ...(providers?.dev ? [{ id: "dev" as const, title: "Dev sign-in" }] : []),
+  ];
   const name = codename.trim().toUpperCase();
   return (
     <View style={{ flex: 1, backgroundColor: C.ink }}>
@@ -62,12 +93,19 @@ export function Welcome({ onRegistered }: { onRegistered: (p: Player) => void })
           <Text style={s.eyebrow}>CLEARANCE · STEP 1 OF 2</Text>
           <Text style={s.head}>They are recruiting.{"\n"}Quietly.</Text>
           <Typed style={{ marginTop: 6 }}>Three chiefs will read your file. None of them will meet you. Choose the name they will know you by.</Typed>
+          {buttons.length > 0 && !pending && (
+            <View style={{ marginTop: 12 }}>
+              {buttons.map((b) => <Button key={b.id} title={b.title} kind="ghost" onPress={() => withProvider(b.id)} loading={authBusy === b.id} disabled={!!authBusy || sending} style={{ marginTop: 8, paddingVertical: 12 }} />)}
+              <Text style={[s.eyebrow, { textAlign: "center", marginTop: 10 }]}>OR A CODENAME ALONE · YOU CAN ATTACH AN ACCOUNT LATER ON ME</Text>
+            </View>
+          )}
+          {pending && <Typed style={{ color: C.ok, marginTop: 10 }}>Verified as {pending.who}. Now the codename: the only name the chiefs will ever know.</Typed>}
 
           {/* the identity card, live */}
           <View style={s.card}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={s.cardEyebrow}>INTELLIGENCE ID · CANDIDATE</Text>
-              <Text style={[s.cardEyebrow, { color: C.red }]}>● UNCLEARED</Text>
+              <Text style={[s.cardEyebrow, { color: pending ? C.ok : C.red }]}>{pending ? `● ${pending.provider === "facebook" ? "META" : pending.provider.toUpperCase()} VERIFIED` : "● UNCLEARED"}</Text>
             </View>
             <View style={{ flexDirection: "row", alignItems: "flex-end", marginTop: 10 }}>
               <Text style={s.cardName}>{name || "CODENAME"}</Text>

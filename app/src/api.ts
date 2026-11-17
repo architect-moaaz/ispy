@@ -26,7 +26,7 @@ import type {
   Presence,
   ScanRequest,
   ScanResponse,
-  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry, ToolkitResponse, ToolUseResult, UnlockResult, ArchiveView, ArchiveActionResult, PlantResult, BackChannelOptions, TipResult, WireView, HuntView, ExposeResult, TerritoryView, HandoffView, DeskNightView, DeskNightResult } from "@ispy/shared";
+  WorldStatus, CrisisView, MapResponse, SpinResult, CaptureResult, CollectionEntry, LadderResponse, TitleEntry, ToolkitResponse, ToolUseResult, UnlockResult, ArchiveView, ArchiveActionResult, PlantResult, BackChannelOptions, TipResult, WireView, HuntView, ExposeResult, TerritoryView, HandoffView, DeskNightView, DeskNightResult, AuthProviders, Identity, OAuthRequest, OAuthResponse } from "@ispy/shared";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
 const TOKEN_KEY = "ispy.token";
@@ -89,8 +89,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 const get = <T,>(p: string) => request<T>("GET", p);
 const post = <T,>(p: string, b?: unknown) => request<T>("POST", p, b ?? {});
 
-export type World = WorldStatus & { devSim: boolean };
-export type Me = { player: Player; faction: Faction | null; presence: Presence | null; unreadChief?: number };
+export type World = WorldStatus & { devSim: boolean; auth?: AuthProviders };
+export type Me = { player: Player; faction: Faction | null; presence: Presence | null; unreadChief?: number; identities?: Identity[] };
 export type DevTarget = { id: string; name: string; lat: number; lng: number };
 
 export const api = {
@@ -158,4 +158,9 @@ export const api = {
   handoffNote: (id: string, text: string) => post<{ ok: true }>(`/v1/handoffs/${id}/note`, { text }),
   deskNight: () => get<DeskNightView>("/v1/desk/night"),
   deskNightSubmit: (n: number, answer: string) => post<DeskNightResult>(`/v1/desk/night/${n}`, { answer }),
+  // Sign in with Google / Meta.
+  oauth: (b: OAuthRequest) => post<OAuthResponse>("/v1/auth/oauth", b),
+  identities: () => get<{ identities: Identity[] }>("/v1/auth/identities"),
+  unlinkIdentity: (provider: string) => request<{ ok: true }>("DELETE", `/v1/auth/identities/${provider}`),
+  signout: () => post<{ ok: true }>("/v1/auth/signout"),
 };
